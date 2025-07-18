@@ -9,8 +9,6 @@ import geocoder
 import requests
 import csv
 import pytz
-import time as time_module
-from textblob import TextBlob
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import praw
 from gnews import GNews
@@ -28,18 +26,20 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import gym
 from gym import spaces
-import backtrader as bt
-import optuna
 import traceback
 import warnings
 import logging
 from torch.distributions import Normal
 import torch.nn.functional as F
 from copy import deepcopy
-from collections import deque
-import random
+import requests
+from requests.exceptions import HTTPError, RequestException
+from urllib.parse import quote
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import logging
 from dotenv import load_dotenv
 from dhanhq import dhanhq
+
 
 # Setup logging
 logging.basicConfig(
@@ -123,7 +123,6 @@ class VirtualPortfolio:
             logger.warning(f"Insufficient cash for buy order: {asset}, qty: {qty}, price: {price}")
             return False
         try:
-            # Place order using Dhan API
             self.api.place_order(
                 security_id=self.get_security_id(asset),
                 exchange_segment="NSE_EQ",
@@ -180,14 +179,16 @@ class VirtualPortfolio:
 
     def get_security_id(self, ticker):
         """Fetch security ID for a ticker from Dhan API or a mapping."""
-        # This is a placeholder; implement based on Dhan API documentation
-        # You may need to fetch the security ID from Dhan's instrument list
         try:
-            instruments = self.api.get_instruments(exchange="NSE")
+            # Convert ticker to Dhan format (remove .NS, .BO suffixes)
+            dhan_symbol = ticker.split('.')[0] if ticker.endswith(('.NS', '.BO')) else ticker
+
+            # Use fetch_security_list instead of get_instruments
+            instruments = self.api.fetch_security_list("compact")
             for inst in instruments:
-                if inst["trading_symbol"] == ticker:
-                    return inst["security_id"]
-            logger.error(f"Security ID not found for {ticker}")
+                if inst.get("trading_symbol") == dhan_symbol and inst.get("exchange_segment") == "NSE":
+                    return inst.get("security_id")
+            logger.error(f"Security ID not found for {ticker} (converted to {dhan_symbol})")
             return None
         except Exception as e:
             logger.error(f"Error fetching security ID for {ticker}: {e}")
@@ -257,24 +258,74 @@ class VirtualPortfolio:
             except Exception as e:
                 logger.error(f"Error fetching price for {asset}: {e}")
         return prices
+    
 
 class PaperExecutor:
     def __init__(self, portfolio, config):
         self.portfolio = portfolio
         self.mode = config["mode"]
+        self.dhanhq = portfolio.api  # Use the dhanhq client from VirtualPortfolio
 
-    def execute_trade(self, asset, action, qty, price):
-        """Execute a simulated trade in paper mode."""
-        if self.mode != "paper":
-            raise ValueError("Executor is not in paper trading mode")
-        if action == "buy":
-            return self.portfolio.buy(asset, qty, price)
-        elif action == "sell":
-            return self.portfolio.sell(asset, qty, price)
-        else:
-            logger.error(f"Invalid action: {action}")
-            return False
+    def execute_trade(self, action, ticker, qty, price, stop_loss, take_profit):
+        try:
+            # Fetch security ID
+            security_id = self.get_security_id(ticker)
+            if security_id is None:
+                error_msg = f"Could not find security ID for {ticker}"
+                logger.error(error_msg)
+                return {"success": False, "message": error_msg}
 
+            # Place order using correct Dhan API parameters
+            order = self.dhanhq.place_order(
+                security_id=security_id,
+                exchange_segment=self.dhanhq.NSE,  # Use dhan.NSE constant
+                transaction_type=self.dhanhq.BUY if action.upper() == "BUY" else self.dhanhq.SELL,
+                order_type=self.dhanhq.LIMIT,  # Use dhan.LIMIT constant
+                product_type=self.dhanhq.INTRA,  # Use dhan.INTRA constant
+                quantity=int(qty),
+                price=float(price),
+                validity=self.dhanhq.DAY  # Use dhan.DAY constant
+            )
+
+            logger.info(f"Trade executed: {action} {qty} units of {ticker} at ₹{price}")
+            return {
+                "success": True,
+                "action": action,
+                "ticker": ticker,
+                "qty": qty,
+                "price": price,
+                "stop_loss": stop_loss,
+                "take_profit": take_profit,
+                "order": order
+            }
+        except Exception as e:
+            logger.error(f"Error executing {action} order for {ticker}: {str(e)}")
+            return {"success": False, "message": str(e)}
+
+    def convert_ticker_to_dhan_format(self, ticker):
+        """Convert yfinance ticker format to Dhan API format."""
+        # Remove .NS, .BO suffixes for Indian stocks
+        if ticker.endswith('.NS') or ticker.endswith('.BO'):
+            return ticker.split('.')[0]
+        return ticker
+
+    def get_security_id(self, symbol, exchange="NSE"):
+        """Fetch security ID for a ticker from Dhan API."""
+        try:
+            # Convert ticker to Dhan format
+            dhan_symbol = self.convert_ticker_to_dhan_format(symbol)
+
+            # Use fetch_security_list instead of get_instruments
+            instruments = self.dhanhq.fetch_security_list("compact")
+            for inst in instruments:
+                if inst.get("trading_symbol") == dhan_symbol and inst.get("exchange_segment") == exchange:
+                    return inst.get("security_id")
+            logger.error(f"Security ID not found for {symbol} (converted to {dhan_symbol})")
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching security ID for {symbol}: {str(e)}")
+            return None
+        
 class PerformanceReport:
     def __init__(self, portfolio):
         self.portfolio = portfolio
@@ -289,7 +340,6 @@ class PerformanceReport:
         daily_roi = ((total_value / starting_value) - 1) * 100
         cumulative_roi = daily_roi  # Simplified for daily report
 
-        # Calculate Sharpe Ratio (simplified)
         returns = [t["price"] for t in self.portfolio.trade_log if t["action"] == "sell"]
         if len(returns) > 1:
             returns = np.array(returns)
@@ -297,7 +347,6 @@ class PerformanceReport:
         else:
             sharpe_ratio = 0
 
-        # Calculate Max Drawdown
         values = [starting_value] + [metrics["total_value"]]
         max_drawdown = 0
         peak = values[0]
@@ -349,7 +398,8 @@ class PortfolioTracker:
 
 class Stock:
     COINGECKO_API = "https://api.coingecko.com/api/v3"
-    ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
+    NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
+    GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
     STOCKTWITS_BASE_URL = "https://api.stocktwits.com/api/2/streams/symbol"
     FMPC_API_KEY = os.getenv("FMPC_API_KEY")
     MARKETAUX_API_KEY = os.getenv("MARKETAUX_API_KEY")
@@ -454,25 +504,64 @@ class Stock:
         else:
             return data
 
-    def alpha_vantage_sentiment(self, ticker):
+    def newsapi_sentiment(self, ticker):
         try:
-            url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={ticker}&apikey={self.ALPHA_VANTAGE_API_KEY}"
+            url = f"https://newsapi.org/v2/everything?q={ticker}&apiKey={self.NEWSAPI_KEY}"
             response = requests.get(url)
             response.raise_for_status()
             data = response.json()
             sentiments = {"positive": 0, "negative": 0, "neutral": 0}
-            if "feed" in data:
-                for article in data["feed"][:10]:
-                    sentiment_score = float(article.get("overall_sentiment_score", 0))
-                    if sentiment_score > 0.1:
+            if "articles" in data:
+                for article in data["articles"][:10]:
+                    description = article.get("description", "") or article.get("content", "")[:200]
+                    sentiment = self.sentiment_analyzer.polarity_scores(description)
+                    if sentiment["compound"] > 0.1:
                         sentiments["positive"] += 1
-                    elif sentiment_score < -0.1:
+                    elif sentiment["compound"] < -0.1:
                         sentiments["negative"] += 1
                     else:
                         sentiments["neutral"] += 1
             return sentiments
         except Exception as e:
-            logger.error(f"Error fetching Alpha Vantage sentiment: {e}")
+            logger.error(f"Error fetching NewsAPI sentiment: {e}")
+            return {"positive": 0, "negative": 0, "neutral": 0}
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10), retry=retry_if_exception_type(HTTPError))
+    def _make_request(self, url):
+        response = requests.get(url)
+        response.raise_for_status()
+        return response
+
+    def gnews_sentiment(self, ticker):
+        try:
+            # Remove .NS suffix from ticker
+            query = ticker.replace(".NS", "")
+            query = quote(query)  # Encode query for URL
+            url = f"https://gnews.io/api/v4/search?q={query}&lang=en&country=in&token={self.GNEWS_API_KEY}"
+            logger.debug(f"Requesting GNews API: {url}")
+            
+            response = self._make_request(url)
+            data = response.json()
+            logger.debug(f"Response status: {response.status_code}, content: {response.text[:200]}")
+            
+            sentiments = {"positive": 0, "negative": 0, "neutral": 0}
+            if not data or "articles" not in data or not data["articles"]:
+                logger.warning(f"No articles found for ticker {ticker}. Response: {response.text[:200]}")
+                return sentiments
+
+            for article in data["articles"][:10]:
+                description = article.get("description", "") or article.get("content", "")[:200]
+                sentiment = self.sentiment_analyzer.polarity_scores(description)
+                if sentiment["compound"] > 0.1:
+                    sentiments["positive"] += 1
+                elif sentiment["compound"] < -0.1:
+                    sentiments["negative"] += 1
+                else:
+                    sentiments["neutral"] += 1
+            return sentiments
+
+        except Exception as e:
+            logger.error(f"Error fetching GNews sentiment: {e}")
             return {"positive": 0, "negative": 0, "neutral": 0}
 
     def reddit_sentiment(self, ticker):
@@ -517,21 +606,23 @@ class Stock:
 
     def fetch_combined_sentiment(self, ticker):
         try:
-            alpha_sentiment = self.alpha_vantage_sentiment(ticker)
+            newsapi_sentiment = self.newsapi_sentiment(ticker)
+            gnews_sentiment = self.gnews_sentiment(ticker)
             reddit_sentiment = self.reddit_sentiment(ticker)
             google_sentiment = self.google_news_sentiment(ticker)
 
             aggregated = {
-                "positive": (alpha_sentiment["positive"] + reddit_sentiment["positive"] +
-                            google_sentiment["positive"]),
-                "negative": (alpha_sentiment["negative"] + reddit_sentiment["negative"] +
-                            google_sentiment["negative"]),
-                "neutral": (alpha_sentiment["neutral"] + reddit_sentiment["neutral"] +
-                           google_sentiment["neutral"])
+                "positive": (newsapi_sentiment["positive"] + gnews_sentiment["positive"] +
+                            reddit_sentiment["positive"] + google_sentiment["positive"]),
+                "negative": (newsapi_sentiment["negative"] + gnews_sentiment["negative"] +
+                            reddit_sentiment["negative"] + google_sentiment["negative"]),
+                "neutral": (newsapi_sentiment["neutral"] + gnews_sentiment["neutral"] +
+                           reddit_sentiment["neutral"] + google_sentiment["neutral"])
             }
 
             return {
-                "alpha_vantage": alpha_sentiment,
+                "newsapi": newsapi_sentiment,
+                "gnews": gnews_sentiment,
                 "reddit": reddit_sentiment,
                 "google_news": google_sentiment,
                 "aggregated": aggregated
@@ -539,7 +630,8 @@ class Stock:
         except Exception as e:
             logger.error(f"Error fetching combined sentiment: {e}")
             return {
-                "alpha_vantage": {"positive": 0, "negative": 0, "neutral": 0},
+                "newsapi": {"positive": 0, "negative": 0, "neutral": 0},
+                "gnews": {"positive": 0, "negative": 0, "neutral": 0},
                 "reddit": {"positive": 0, "negative": 0, "neutral": 0},
                 "google_news": {"positive": 0, "negative": 0, "neutral": 0},
                 "aggregated": {"positive": 0, "negative": 0, "neutral": 0}
@@ -655,7 +747,7 @@ class Stock:
 
             annual_return = stock_returns.mean() * 252
             annual_volatility = stock_returns.std() * np.sqrt(252)
-            risk_free_rate = 0.06  # Adjusted for Indian risk-free rate (e.g., 10-year G-Sec yield)
+            risk_free_rate = 0.06  # Adjusted for Indian risk-free rate
             sharpe_ratio = (annual_return - risk_free_rate) / annual_volatility if annual_volatility != 0 else "N/A"
 
             beta = "N/A"
@@ -700,6 +792,10 @@ class Stock:
             price_std = history['Close'].std()
             volume_std = history['Volume'].std()
             
+            min_price = 0.01
+            max_price = history['Close'].max() * 2
+            max_volume = history['Volume'].max() * 10
+            
             for i in range(len(adv_history)):
                 perturbation = np.random.uniform(-epsilon, epsilon) * price_std
                 noise = np.random.normal(0, noise_factor * price_std)
@@ -732,12 +828,21 @@ class Stock:
                         adv_history['High'].iloc[i] *= spike_factor
                         adv_history['Low'].iloc[i] *= spike_factor
                         adv_history['Volume'].iloc[i] *= 1.3
+                
+                adv_history['Close'].iloc[i] = np.clip(adv_history['Close'].iloc[i], min_price, max_price)
+                adv_history['Open'].iloc[i] = np.clip(adv_history['Open'].iloc[i], min_price, max_price)
+                adv_history['High'].iloc[i] = np.clip(adv_history['High'].iloc[i], min_price, max_price)
+                adv_history['Low'].iloc[i] = np.clip(adv_history['Low'].iloc[i], min_price, max_price)
+                adv_history['Volume'].iloc[i] = np.clip(adv_history['Volume'].iloc[i], 0, max_volume)
             
-            adv_history['Close'] = adv_history['Close'].clip(lower=0.01)
-            adv_history['Open'] = adv_history['Open'].clip(lower=0.01)
-            adv_history['High'] = adv_history['High'].clip(lower=0.01)
-            adv_history['Low'] = adv_history['Low'].clip(lower=0.01)
-            adv_history['Volume'] = adv_history['Volume'].clip(lower=0)
+            adv_history.replace([np.inf, -np.inf], np.nan, inplace=True)
+            adv_history.fillna({
+                'Close': history['Close'].mean(),
+                'Open': history['Open'].mean(),
+                'High': history['High'].mean(),
+                'Low': history['Low'].mean(),
+                'Volume': history['Volume'].mean()
+            }, inplace=True)
             
             return adv_history
         
@@ -758,9 +863,9 @@ class Stock:
                 down = -delta.clip(upper=0)
                 roll_up = up.ewm(com=periods-1, adjust=False).mean()
                 roll_down = down.ewm(com=periods-1, adjust=False).mean()
-                rs = roll_up / roll_down
+                rs = roll_up / roll_down.where(roll_down != 0, 1e-10)
                 rsi = 100.0 - (100.0 / (1.0 + rs))
-                return rsi
+                return rsi.clip(0, 100)
 
             history["RSI"] = calculate_rsi(history["Close"])
 
@@ -790,7 +895,7 @@ class Stock:
                     self.max_event_magnitude = max_event_magnitude
                     self.max_steps = len(history) - 1
                     self.current_step = 0
-                    self.initial_balance = 100000  # Adjusted for INR
+                    self.initial_balance = 100000
                     self.balance = self.initial_balance
                     self.shares_held = 0
                     self.net_worth = self.initial_balance
@@ -1258,12 +1363,12 @@ class Stock:
             def calculate_rsi(data, periods=14):
                 delta = data.diff()
                 up = delta.clip(lower=0)
-                down = -1 * delta.clip(upper=0)
+                down = -delta.clip(upper=0)
                 roll_up = up.ewm(com=periods-1, adjust=False).mean()
                 roll_down = down.ewm(com=periods-1, adjust=False).mean()
-                rs = roll_up / roll_down
+                rs = roll_up / roll_down.where(roll_down != 0, 1e-10)
                 rsi = 100.0 - (100.0 / (1.0 + rs))
-                return rsi
+                return rsi.clip(0, 100)
 
             history["RSI"] = calculate_rsi(history["Close"])
 
@@ -1477,19 +1582,21 @@ class Stock:
                 delta = combined_history['Close'].diff()
                 gain = delta.where(delta > 0, 0).rolling(window=14).mean()
                 loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
-                rs = gain / loss
+                rs = gain / loss.where(loss != 0, 1e-10)
                 data['RSI'] = 100 - (100 / (1 + rs))
+                data['RSI'] = data['RSI'].clip(0, 100)
 
                 data['BB_Middle'] = data['SMA_20']
                 stddev = combined_history['Close'].rolling(window=20).std()
                 data['BB_Upper'] = data['BB_Middle'] + 2 * stddev
                 data['BB_Lower'] = data['BB_Middle'] - 2 * stddev
-                data['BB_Width'] = (data['BB_Upper'] - data['BB_Lower']) / data['BB_Middle']
+                data['BB_Width'] = (data['BB_Upper'] - data['BB_Lower']) / data['BB_Middle'].where(data['BB_Middle'] != 0, 1e-10)
 
                 data['Volume_Change'] = combined_history['Volume'].pct_change()
                 data['Volume_SMA_5'] = combined_history['Volume'].rolling(window=5).mean()
                 data['Volume_SMA_20'] = combined_history['Volume'].rolling(window=20).mean()
-                data['Volume_Ratio'] = combined_history['Volume'] / data['Volume_SMA_5']
+                data['Volume_Ratio'] = combined_history['Volume'] / data['Volume_SMA_5'].where(data['Volume_SMA_5'] != 0, 1e-10)
+                data['Volume_Ratio'] = data['Volume_Ratio'].clip(0, 100)
 
                 data['Price_Change'] = combined_history['Close'].pct_change()
                 data['Price_Change_5d'] = combined_history['Close'].pct_change(periods=5)
@@ -1498,8 +1605,8 @@ class Stock:
                 data['Volatility_5d'] = data['Price_Change'].rolling(window=5).std()
                 data['Volatility_20d'] = data['Price_Change'].rolling(window=20).std()
 
-                data['Price_to_SMA50'] = combined_history['Close'] / data['SMA_50'] - 1
-                data['Price_to_SMA200'] = combined_history['Close'] / data['SMA_200'] - 1
+                data['Price_to_SMA50'] = combined_history['Close'] / data['SMA_50'].where(data['SMA_50'] != 0, 1e-10) - 1
+                data['Price_to_SMA200'] = combined_history['Close'] / data['SMA_200'].where(data['SMA_200'] != 0, 1e-10) - 1
 
                 data['ROC_5'] = (combined_history['Close'] / combined_history['Close'].shift(5) - 1) * 100
                 data['ROC_10'] = (combined_history['Close'] / combined_history['Close'].shift(10) - 1) * 100
@@ -1518,7 +1625,7 @@ class Stock:
 
                 low_14 = combined_history['Low'].rolling(window=14).min()
                 high_14 = combined_history['High'].rolling(window=14).max()
-                data['%K'] = (combined_history['Close'] - low_14) / (high_14 - low_14) * 100
+                data['%K'] = (combined_history['Close'] - low_14) / (high_14 - low_14).where(high_14 != low_14, 1e-10) * 100
                 data['%D'] = data['%K'].rolling(window=3).mean()
 
                 tr1 = abs(combined_history['High'] - combined_history['Low'])
@@ -1536,161 +1643,179 @@ class Stock:
                 smoothed_minus_dm = minus_dm.rolling(window=14).sum()
                 smoothed_atr = atr.rolling(window=14).sum()
 
-                plus_di = 100 * smoothed_plus_dm / smoothed_atr
-                minus_di = 100 * smoothed_minus_dm / smoothed_atr
-                dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+                plus_di = 100 * smoothed_plus_dm / smoothed_atr.where(smoothed_atr !=0 , 1e-10)
+                minus_di = 100 * smoothed_minus_dm / smoothed_atr.where(smoothed_atr != 0, 1e-10)
+                dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di).where((plus_di + minus_di) != 0, 1e-10)
                 data['ADX'] = dx.rolling(window=14).mean()
                 data['Plus_DI'] = plus_di
                 data['Minus_DI'] = minus_di
+                data['ADX'] = data['ADX'].clip(0, 100)
+                data['Plus_DI'] = data['Plus_DI'].clip(0, 100)
+                data['Minus_DI'] = data['Minus_DI'].clip(0, 100)
 
-                sentiment_score = sentiment["positive"] / (sentiment["positive"] + sentiment["negative"] + sentiment["neutral"] + 1e-10)
                 data['Sentiment_Score'] = sentiment_score
+                data['Trend_Direction'] = 1 if trend_direction == "UPTREND" else -1
 
-                data['Trend_Direction'] = np.where(data['SMA_50'] > data['SMA_200'], 1, -1)
-
+                # Replace infinities and fill NaNs with reasonable defaults
+                data.replace([np.inf, -np.inf], np.nan, inplace=True)
+                data = data.fillna({
+                    'SMA_5': data['Close'], 'SMA_20': data['Close'], 'SMA_50': data['Close'], 'SMA_200': data['Close'],
+                    'EMA_12': data['Close'], 'EMA_26': data['Close'], 'MACD': 0, 'MACD_Signal': 0, 'MACD_Histogram': 0,
+                    'RSI': 50, 'BB_Middle': data['Close'], 'BB_Upper': data['Close'] * 1.1, 'BB_Lower': data['Close'] * 0.9,
+                    'BB_Width': 0, 'Volume_Change': 0, 'Volume_SMA_5': combined_history['Volume'],
+                    'Volume_SMA_20': combined_history['Volume'], 'Volume_Ratio': 1, 'Price_Change': 0,
+                    'Price_Change_5d': 0, 'Price_Change_20d': 0, 'Volatility_5d': 0, 'Volatility_20d': 0,
+                    'Price_to_SMA50': 0, 'Price_to_SMA200': 0, 'ROC_5': 0, 'ROC_10': 0, 'OBV': 0, 'OBV_EMA': 0,
+                    '%K': 50, '%D': 50, 'ADX': 25, 'Plus_DI': 25, 'Minus_DI': 25, 'Sentiment_Score': 0.5,
+                    'Trend_Direction': 0
+                })
+                data = data.clip(lower=-1e10, upper=1e10)  # Clip extreme values
                 data.dropna(inplace=True)
 
-                if len(data) < 100:
-                    logger.error(f"Insufficient data for ML analysis of {ticker} after feature engineering")
+                logger.info("Preparing data for ML prediction...")
+                features = [
+                    'Close', 'SMA_5', 'SMA_20', 'SMA_50', 'SMA_200', 'EMA_12', 'EMA_26', 'MACD',
+                    'MACD_Signal', 'MACD_Histogram', 'RSI', 'BB_Middle', 'BB_Upper', 'BB_Lower',
+                    'BB_Width', 'Volume_Change', 'Volume_SMA_5', 'Volume_SMA_20', 'Volume_Ratio',
+                    'Price_Change', 'Price_Change_5d', 'Price_Change_20d', 'Volatility_5d',
+                    'Volatility_20d', 'Price_to_SMA50', 'Price_to_SMA200', 'ROC_5', 'ROC_10',
+                    'OBV', 'OBV_EMA', '%K', '%D', 'ADX', 'Plus_DI', 'Minus_DI', 'Sentiment_Score',
+                    'Trend_Direction'
+                ]
+                X = data[features]
+                y = data['Close'].shift(-prediction_days)
+
+                if len(X) < prediction_days + 1:
+                    logger.error(f"Insufficient data for {ticker} after preprocessing")
                     ml_analysis = {
                         "success": False,
                         "message": f"Insufficient data for ML analysis of {ticker}"
                     }
                 else:
-                    logger.info(f"Preparing data for ML training...")
-                    features = [
-                        'SMA_5', 'SMA_20', 'SMA_50', 'SMA_200', 'EMA_12', 'EMA_26', 'MACD',
-                        'MACD_Signal', 'MACD_Histogram', 'RSI', 'BB_Middle', 'BB_Upper',
-                        'BB_Lower', 'BB_Width', 'Volume_Change', 'Volume_SMA_5',
-                        'Volume_SMA_20', 'Volume_Ratio', 'Price_Change', 'Price_Change_5d',
-                        'Price_Change_20d', 'Volatility_5d', 'Volatility_20d',
-                        'Price_to_SMA50', 'Price_to_SMA200', 'ROC_5', 'ROC_10', 'OBV',
-                        'OBV_EMA', '%K', '%D', 'ADX', 'Plus_DI', 'Minus_DI',
-                        'Sentiment_Score', 'Trend_Direction'
-                    ]
-
-                    X = data[features]
-                    y = data['Close'].shift(-prediction_days)
-
                     X = X[:-prediction_days]
                     y = y[:-prediction_days]
+                    X = X.dropna()
+                    y = y[X.index]
 
-                    if len(X) < 50 or len(y) < 50:
-                        logger.error(f"Not enough data points for ML training for {ticker}")
+                    # Check for invalid values in X and y
+                    logger.info("Checking feature matrix for invalid values...")
+                    if np.any(np.isnan(X)) or np.any(np.isinf(X)) or np.any(X.abs() > 1e10):
+                        logger.error(f"Invalid values in feature matrix for {ticker}. Skipping ML analysis.")
+                        for col in X.columns:
+                            if np.any(np.isnan(X[col])) or np.any(np.isinf(X[col])):
+                                logger.error(f"Column {col} contains NaN or infinite values")
                         ml_analysis = {
                             "success": False,
-                            "message": f"Not enough data points for ML training for {ticker}"
+                            "message": f"Invalid values in feature matrix for {ticker}"
+                        }
+                    elif np.any(np.isnan(y)) or np.any(np.isinf(y)):
+                        logger.error(f"Invalid values in target variable for {ticker}. Skipping ML analysis.")
+                        ml_analysis = {
+                            "success": False,
+                            "message": f"Invalid values in target variable for {ticker}"
                         }
                     else:
                         scaler_X = MinMaxScaler()
                         scaler_y = MinMaxScaler()
-
                         X_scaled = scaler_X.fit_transform(X)
                         y_scaled = scaler_y.fit_transform(y.values.reshape(-1, 1)).ravel()
 
-                        train_size = int(len(X_scaled) * 0.8)
-                        X_train, X_test = X_scaled[:train_size], X_scaled[train_size:]
-                        y_train, y_test = y_scaled[:train_size], y_scaled[train_size:]
+                        X_train, X_test, y_train, y_test = train_test_split(
+                            X_scaled, y_scaled, test_size=0.2, shuffle=False
+                        )
 
                         logger.info(f"Training ML models for {ticker}...")
-                        rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
-                        gb_model = GradientBoostingRegressor(n_estimators=100, random_state=42)
-                        xgb_model = XGBRegressor(n_estimators=100, random_state=42)
-
-                        stacking_model = StackingRegressor(
-                            estimators=[
-                                ('rf', rf_model),
-                                ('gb', gb_model),
-                                ('xgb', xgb_model)
-                            ],
-                            final_estimator=LinearRegression()
+                        base_models = [
+                            ('rf', RandomForestRegressor(n_estimators=100, random_state=42)),
+                            ('gb', GradientBoostingRegressor(n_estimators=100, random_state=42)),
+                            ('xgb', XGBRegressor(n_estimators=100, random_state=42))
+                        ]
+                        meta_model = LinearRegression()
+                        stacking_regressor = StackingRegressor(
+                            estimators=base_models,
+                            final_estimator=meta_model
                         )
 
-                        stacking_model.fit(X_train, y_train)
+                        stacking_regressor.fit(X_train, y_train)
+                        y_pred_scaled = stacking_regressor.predict(X_test)
+                        y_pred = scaler_y.inverse_transform(y_pred_scaled.reshape(-1, 1)).ravel()
 
-                        predictions_scaled = stacking_model.predict(X_test)
-                        predictions = scaler_y.inverse_transform(predictions_scaled.reshape(-1, 1)).ravel()
+                        mse = mean_squared_error(scaler_y.inverse_transform(y_test.reshape(-1, 1)), y_pred)
+                        mae = mean_absolute_error(scaler_y.inverse_transform(y_test.reshape(-1, 1)), y_pred)
+                        r2 = r2_score(scaler_y.inverse_transform(y_test.reshape(-1, 1)), y_pred)
 
-                        mse = mean_squared_error(scaler_y.inverse_transform(y_test.reshape(-1, 1)), predictions)
-                        r2 = r2_score(scaler_y.inverse_transform(y_test.reshape(-1, 1)), predictions)
-
-                        latest_features = X_scaled[-1].reshape(1, -1)
-                        predicted_price_scaled = stacking_model.predict(latest_features)
+                        last_features = X.iloc[-1:].values
+                        last_features_scaled = scaler_X.transform(last_features)
+                        predicted_price_scaled = stacking_regressor.predict(last_features_scaled)
                         predicted_price = scaler_y.inverse_transform(predicted_price_scaled.reshape(-1, 1))[0][0]
 
-                        logger.info(f"Training adversarial deep learning models for {ticker}...")
-                        adv_training = self.adversarial_training_loop(
-                            X_train=X_train,
-                            y_train=y_train,
-                            X_test=X_test,
-                            y_test=y_test,
-                            input_size=len(features),
-                            seq_length=20,
-                            num_epochs=50,
-                            adv_lambda=0.1
+                        logger.info(f"Performing adversarial training for {ticker}...")
+                        adv_training_result = self.adversarial_training_loop(
+                            X_train, y_train, X_test, y_test, input_size=X.shape[1]
                         )
 
-                        if adv_training["success"]:
-                            lstm_pred = adv_training["lstm_model"].eval()
-                            transformer_pred = adv_training["transformer_model"].eval()
+                        if adv_training_result["success"]:
+                            lstm_model = adv_training_result["lstm_model"]
+                            transformer_model = adv_training_result["transformer_model"]
+                            lstm_metrics = adv_training_result["lstm_metrics"]
+                            transformer_metrics = adv_training_result["transformer_metrics"]
 
-                            latest_sequence = X_scaled[-20:].reshape(1, 20, len(features))
-                            latest_sequence_tensor = torch.tensor(latest_sequence, dtype=torch.float32).to(self.device)
+                            last_sequence = X_scaled[-20:]  # Assuming seq_length=20
+                            last_sequence = last_sequence[np.newaxis, :, :]
+                            last_sequence_tensor = torch.tensor(last_sequence, dtype=torch.float32).to(self.device)
 
+                            lstm_model.eval()
+                            transformer_model.eval()
                             with torch.no_grad():
-                                lstm_price_scaled = lstm_pred(latest_sequence_tensor).cpu().numpy()
-                                transformer_price_scaled = transformer_pred(latest_sequence_tensor).cpu().numpy()
+                                lstm_pred_scaled = lstm_model(last_sequence_tensor).cpu().numpy()
+                                transformer_pred_scaled = transformer_model(last_sequence_tensor).cpu().numpy()
+                            lstm_pred = scaler_y.inverse_transform(lstm_pred_scaled)[0][0]
+                            transformer_pred = scaler_y.inverse_transform(transformer_pred_scaled)[0][0]
 
-                            lstm_price = scaler_y.inverse_transform(lstm_price_scaled)[0][0]
-                            transformer_price = scaler_y.inverse_transform(transformer_price_scaled)[0][0]
-
-                            final_predicted_price = (predicted_price + lstm_price + transformer_price) / 3
+                            ensemble_pred = (predicted_price + lstm_pred + transformer_pred) / 3
                         else:
-                            logger.warning(f"Adversarial training failed for {ticker}, using ensemble prediction only")
-                            final_predicted_price = predicted_price
+                            logger.warning(f"Adversarial training failed for {ticker}. Using stacking regressor prediction.")
+                            lstm_metrics = {"mse": "N/A", "r2": "N/A", "adv_mse": "N/A", "adv_r2": "N/A"}
+                            transformer_metrics = {"mse": "N/A", "r2": "N/A", "adv_mse": "N/A", "adv_r2": "N/A"}
+                            lstm_pred = predicted_price
+                            transformer_pred = predicted_price
+                            ensemble_pred = predicted_price
 
-                        logger.info(f"Training RL agent for {ticker}...")
+                        logger.info(f"Performing RL training with adversarial events for {ticker}...")
                         rl_result = self.train_rl_with_adversarial_events(
-                            history=combined_history,
-                            ml_predicted_price=final_predicted_price,
-                            current_price=current_price,
-                            num_episodes=100,
-                            adversarial_freq=0.2,
-                            max_event_magnitude=0.1
+                            extended_history,
+                            ensemble_pred,
+                            current_price
                         )
 
                         ml_analysis = {
                             "success": True,
-                            "predicted_price": float(final_predicted_price),
-                            "current_price": float(current_price),
-                            "prediction_confidence": float(r2),
+                            "predicted_price": float(ensemble_pred),
+                            "confidence": float(r2),
                             "mse": float(mse),
-                            "ensemble_metrics": {
+                            "mae": float(mae),
+                            "r2_score": float(r2),
+                            "stacking_regressor_metrics": {
                                 "mse": float(mse),
+                                "mae": float(mae),
                                 "r2": float(r2)
                             },
-                            "deep_learning_metrics": adv_training.get("lstm_metrics", {}),
-                            "transformer_metrics": adv_training.get("transformer_metrics", {}),
-                            "rl_recommendation": rl_result.get("recommendation", "HOLD"),
-                            "rl_performance_pct": rl_result.get("performance_pct", 0),
-                            "prediction_date": (datetime.now() + timedelta(days=prediction_days)).strftime("%Y-%m-%d")
+                            "lstm_metrics": lstm_metrics,
+                            "transformer_metrics": transformer_metrics,
+                            "rl_metrics": rl_result,
+                            "ensemble_components": {
+                                "stacking_regressor": float(predicted_price),
+                                "lstm": float(lstm_pred),
+                                "transformer": float(transformer_pred)
+                            }
                         }
 
-            return {
+            result = {
                 "success": True,
-                "stock_data": {
-                    "symbol": ticker,
-                    "name": stock_data["name"],
-                    "current_price": stock_data["current_price"],
-                    "market_cap": market_cap,
-                    "volume": volume,
-                    "pe_ratio": pe_ratio,
-                    "dividend_yield": dividend_yield,
-                    "52_week_high": high_52w,
-                    "52_week_low": low_52w,
-                    "sector": sector,
-                    "industry": industry
-                },
+                "stock_data": stock_data,
+                "recommendation": recommendation,
+                "buy_score": float(buy_score),
+                "sell_score": float(sell_score),
                 "technical_indicators": {
                     "sma_50": float(sma_50),
                     "sma_200": float(sma_200),
@@ -1699,158 +1824,661 @@ class Stock:
                     "macd": float(macd),
                     "signal_line": float(signal_line),
                     "macd_histogram": float(macd_histogram),
-                    "bollinger_upper": float(bb_upper),
-                    "bollinger_lower": float(bb_lower),
+                    "bb_upper": float(bb_upper),
+                    "bb_lower": float(bb_lower),
                     "volatility": float(volatility),
-                    "momentum": float(momentum)
+                    "momentum": float(momentum),
+                    "volume_trend": volume_trend
                 },
-                "sentiment_analysis": sentiment_data,
-                "recommendation": {
-                    "action": recommendation,
-                    "buy_score": float(buy_score),
-                    "sell_score": float(sell_score),
-                    "support_level": float(support_level),
-                    "resistance_level": float(resistance_level),
-                    "risk_level": risk_level,
-                    "timeframe": timeframe,
-                    "explanation": explanation
-                },
-                "mpt_metrics": mpt_metrics,
-                "institutional_data": institutional_data,
-                "mutual_fund_data": mutual_fund_data,
-                "financial_statements": {
+                "fundamental_analysis": {
+                    "market_cap": market_cap,
+                    "pe_ratio": pe_ratio,
+                    "dividend_yield": dividend_yield,
+                    "52w_high": high_52w,
+                    "52w_low": low_52w,
                     "balance_sheet": balance_sheet_filtered,
                     "income_statement": income_statement_filtered,
                     "cash_flow": cash_flow_filtered
                 },
+                "sentiment_analysis": sentiment_data,
+                "mpt_metrics": mpt_metrics,
+                "institutional_holders": institutional_data,
+                "mutual_fund_holders": mutual_fund_data,
+                "support_level": float(support_level),
+                "resistance_level": float(resistance_level),
+                "risk_level": risk_level,
+                "timeframe": timeframe,
+                "explanation": explanation,
                 "ml_analysis": ml_analysis,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
 
+            return result
+
         except Exception as e:
-            logger.error(f"Error analyzing stock {ticker}: {e}")
+            logger.error(f"Error analyzing {ticker}: {e}")
             traceback.print_exc()
             return {
                 "success": False,
-                "message": f"Error analyzing stock {ticker}: {str(e)}"
+                "message": f"Error analyzing {ticker}: {str(e)}"
+            }
+    def save_analysis_to_files(self, analysis, output_dir="stock_analysis"):
+        try:
+            if not analysis.get("success", False):
+                logger.error(f"Cannot save analysis: {analysis.get('message', 'Unknown error')}")
+                return {"success": False, "message": analysis.get('message', 'Unknown error')}
+
+            os.makedirs(output_dir, exist_ok=True)
+            ticker = analysis.get("stock_data", {}).get("symbol", "UNKNOWN")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            sanitized_ticker = ticker.replace(".", "_")
+
+            json_filename = os.path.join(output_dir, f"{sanitized_ticker}_analysis_{timestamp}.json")
+            csv_filename = os.path.join(output_dir, f"{sanitized_ticker}_summary_{timestamp}.csv")
+            log_filename = os.path.join(output_dir, "ml_logs.txt")
+
+            # Save full analysis to JSON
+            json_data = self.convert_np_types(analysis)
+            with open(json_filename, "w", encoding="utf-8") as f:
+                json.dump(json_data, f, indent=4, ensure_ascii=False)
+            logger.info(f"Saved full analysis to {json_filename}")
+
+            # Prepare CSV summary
+            stock_data = analysis.get("stock_data", {})
+            ml_analysis = analysis.get("ml_analysis", {})
+            current_price = stock_data.get("current_price", {})
+            predicted_price = ml_analysis.get("predicted_price", "N/A")
+            
+            # Handle current_price and predicted_price
+            current_price_usd = current_price.get("USD", "N/A") if isinstance(current_price, dict) else current_price
+            predicted_price_usd = predicted_price if isinstance(predicted_price, (int, float)) else "N/A"
+
+            # Calculate predicted change percentage if possible
+            predicted_change_pct = "N/A"
+            if isinstance(current_price_usd, (int, float)) and isinstance(predicted_price_usd, (int, float)) and current_price_usd != 0:
+                predicted_change_pct = ((predicted_price_usd - current_price_usd) / current_price_usd) * 100
+
+            csv_data = {
+                "Symbol": ticker,
+                "Name": stock_data.get("name", "N/A"),
+                "Current_Price_USD": current_price_usd,
+                "Predicted_Price": predicted_price_usd,
+                "Recommendation": analysis.get("recommendation", "N/A"),
+                "Buy_Score": analysis.get("buy_score", "N/A"),
+                "Sell_Score": analysis.get("sell_score", "N/A"),
+                "Risk_Level": analysis.get("risk_level", "N/A"),
+                "Sector": stock_data.get("sector", "N/A"),
+                "Industry": stock_data.get("industry", "N/A"),
+                "Timestamp": timestamp
             }
 
-def is_market_open():
-    """Check if Indian stock market (NSE) is open (9:15 AM to 3:30 PM IST, Monday to Friday)."""
-    ist = pytz.timezone('Asia/Kolkata')
-    now = datetime.now(ist)
-    market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-    market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    is_weekday = now.weekday() < 5  # Monday to Friday
-    is_open = is_weekday and market_open <= now <= market_close
-    logger.info(f"Market open check: {is_open} at {now}")
-    return is_open
+            with open(csv_filename, "w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=csv_data.keys())
+                writer.writeheader()
+                writer.writerow(csv_data)
+            logger.info(f"Saved summary to {csv_filename}")
 
-def trading_loop(config, stock_analyzer, portfolio, executor, tracker, reporter):
-    """Main trading loop for continuous operation."""
-    tickers = config["tickers"]
-    data_feed = DataFeed(tickers)
-    max_attempts = 3
+            # Log ML, RL, and Stock Analysis Report details
+            if ml_analysis.get("success", False):
+                log_entry = f"\n[{timestamp}] Analysis for {ticker}\n"
+                log_entry += "=" * 50 + "\n"
+                log_entry += "Stock Analysis Report\n"
+                log_entry += "=" * 50 + "\n"
+                log_entry += analysis.get("explanation", "No recommendation explanation available")  # Use top-level explanation
+                log_entry += "\n"  # Add spacing after the report
+                log_entry += f"Prediction Days: 30\n"
+                log_entry += f"Current Price (USD): {current_price_usd}\n"
+                log_entry += f"Predicted Price (USD): {predicted_price_usd}\n"
+                log_entry += f"Predicted Change (%): {predicted_change_pct:.2f}\n" if predicted_change_pct != "N/A" else "Predicted Change (%): N/A\n"
+                log_entry += f"Confidence Score: {ml_analysis.get('confidence', 'N/A')}\n"
+                log_entry += f"Pattern: Technical and Sentiment Analysis\n"
+                log_entry += "Model Scores:\n"
+                logger.debug(f"stacking_regressor_metrics: {ml_analysis.get('stacking_regressor_metrics', {})}")  # Debug logging
+                for model, scores in ml_analysis.get("stacking_regressor_metrics", {}).items():
+                    log_entry += f"  {model}:\n"
+                    if isinstance(scores, dict):
+                        for metric, value in scores.items():
+                            log_entry += f"    {metric}: {value}\n"
+                    else:
+                        log_entry += f"    Score: {scores}\n"  # Handle float case
+                log_entry += f"Best Model: Stacking Ensemble\n"
 
-    while True:
-        if not is_market_open():
-            logger.info("Market is closed. Waiting for 1 hour...")
-            time.sleep(3600)
-            continue
+                # Log LSTM and Transformer epoch logs
+                adv_results = {}  # Update if adversarial results are stored differently
+                for model, logs in [
+                    ("LSTM", adv_results.get("lstm_epoch_logs", {})),
+                    ("Transformer", adv_results.get("transformer_epoch_logs", {}))
+                ]:
+                    if logs:
+                        log_entry += f"{model} Epoch Logs:\n"
+                        for epoch, loss in logs.items():
+                            log_entry += f"  {epoch}: Loss = {loss:.4f}\n"
 
-        for ticker in tickers:
-            attempt = 1
-            while attempt <= max_attempts:
-                try:
-                    logger.info(f"Analyzing {ticker}...")
-                    analysis = stock_analyzer.analyze_stock(ticker, config["benchmark_tickers"])
+                # Log RL results
+                rl_results = ml_analysis.get("rl_metrics", {})
+                if rl_results.get("success", False):
+                    log_entry += "Reinforcement Learning Results:\n"
+                    log_entry += f"  Recommendation: {rl_results.get('recommendation', 'N/A')}\n"
+                    log_entry += f"  Performance (%): {rl_results.get('performance_pct', 'N/A')}\n"
+                    log_entry += f"  Average Reward: {rl_results.get('average_reward', 'N/A')}\n"
+                    log_entry += f"  Average Events/Episode: {rl_results.get('average_events_per_episode', 'N/A')}\n"
+                    log_entry += "  Actions Distribution:\n"
+                    for action, prob in rl_results.get("actions_distribution", {}).items():
+                        log_entry += f"    {action}: {prob:.4f}\n"
+                    log_entry += "  RL Epoch Logs:\n"
+                    for log in rl_results.get("epoch_logs", []):
+                        log_entry += (f"    Episode {log.get('episode', 'N/A')}: "
+                                    f"Reward = {log.get('total_reward', 'N/A'):.2f}, "
+                                    f"Avg Reward = {log.get('average_reward', 'N/A'):.2f}, "
+                                    f"Events = {log.get('events_triggered', 'N/A')}\n")
 
-                    if not analysis["success"]:
-                        logger.error(f"Analysis failed for {ticker}: {analysis['message']}")
-                        break
+                with open(log_filename, "a", encoding="utf-8") as f:
+                    f.write(log_entry)
+                logger.info(f"Appended ML, RL, and Stock Analysis Report to {log_filename}")
 
-                    recommendation = analysis["recommendation"]["action"]
-                    current_price = analysis["stock_data"]["current_price"]["INR"]
-                    predicted_price = analysis["ml_analysis"].get("predicted_price", current_price)
-                    risk_level = analysis["recommendation"]["risk_level"]
+            return {
+                "success": True,
+                "json_file": json_filename,
+                "csv_file": csv_filename,
+                "log_file": log_filename
+            }
 
-                    logger.info(f"Recommendation for {ticker}: {recommendation}, Current Price: ₹{current_price:.2f}, Predicted: ₹{predicted_price:.2f}")
+        except Exception as e:
+            logger.error(f"Error saving analysis: {str(e)}")
+            traceback.print_exc()
+            return {
+                "success": False,
+                "message": f"Error saving analysis: {str(e)}"
+            }
 
-                    position_size = config["position_size"]
-                    if risk_level == "HIGH":
-                        position_size *= 0.5
-                    elif risk_level == "LOW":
-                        position_size *= 1.5
+class StockTradingBot:
+    def __init__(self, config):
+        self.config = config
+        self.timezone = pytz.timezone("Asia/Kolkata")  # Changed to India timezone
+        self.data_feed = DataFeed(config["tickers"])
+        self.portfolio = VirtualPortfolio(config)
+        self.executor = PaperExecutor(self.portfolio, config)
+        self.tracker = PortfolioTracker(self.portfolio, config)
+        self.reporter = PerformanceReport(self.portfolio)
+        self.stock_analyzer = Stock(
+            reddit_client_id=config.get("reddit_client_id"),
+            reddit_client_secret=config.get("reddit_client_secret"),
+            reddit_user_agent=config.get("reddit_user_agent")
+        )
+        self.initialize()
 
-                    current_prices = data_feed.get_live_prices()
-                    if ticker not in current_prices or not current_prices[ticker].get("price"):
-                        logger.warning(f"No live price data for {ticker}")
-                        break
+    def initialize(self):
+        """Initialize the bot and its components."""
+        logger.info("Initializing Stock Trading Bot for Indian market...")
+        self.portfolio.initialize_portfolio()
 
-                    trade_qty = int((portfolio.cash * position_size) / current_price)
+    def is_market_open(self):
+        """Check if the NSE is open."""
+        try:
+            nse = mcal.get_calendar("NSE")
+            now = datetime.now(self.timezone)
+            schedule = nse.schedule(start_date=now.date(), end_date=now.date())
+            if schedule.empty:
+                logger.info(f"Market is closed on {now.date()} (no schedule found).")
+                return False
+            market_open = schedule.iloc[0]["market_open"].astimezone(self.timezone)
+            market_close = schedule.iloc[0]["market_close"].astimezone(self.timezone)
+            is_open = market_open <= now <= market_close
+            logger.debug(f"Market check: Now={now}, Open={market_open}, Close={market_close}, Is Open={is_open}")
+            return is_open
+        except Exception as e:
+            logger.error(f"Error checking NSE market status: {e}")
+            return False
 
-                    if recommendation in ["BUY", "STRONG BUY"] and predicted_price > current_price * 1.05:
-                        if trade_qty > 0:
-                            success = executor.execute_trade(ticker, "buy", trade_qty, current_price)
-                            if success:
-                                logger.info(f"Executed BUY for {ticker}: {trade_qty} shares @ ₹{current_price:.2f}")
-                            else:
-                                logger.error(f"Failed to execute BUY for {ticker}")
-                    elif recommendation in ["SELL", "STRONG SELL"] and predicted_price < current_price * 0.95:
-                        holdings = portfolio.holdings.get(ticker, {}).get("qty", 0)
-                        if holdings > 0:
-                            success = executor.execute_trade(ticker, "sell", holdings, current_price)
-                            if success:
-                                logger.info(f"Executed SELL for {ticker}: {holdings} shares @ ₹{current_price:.2f}")
-                            else:
-                                logger.error(f"Failed to execute SELL for {ticker}")
+    def make_trading_decision(self, analysis):
+        if not analysis.get("success"):
+            logger.warning(f"Skipping trading decision for {analysis.get('stock_data', {}).get('symbol')} due to failed analysis")
+            return None
 
-                    tracker.log_metrics()
-                    reporter.generate_report()
-                    break
+        ticker = analysis["stock_data"]["symbol"]
+        recommendation = analysis["recommendation"]
+        current_price = analysis["stock_data"]["current_price"]["INR"]  # Changed to INR
+        ml_analysis = analysis["ml_analysis"]
+        technical_indicators = analysis["technical_indicators"]
+        sentiment_data = analysis["sentiment_analysis"]
+        risk_level = analysis["risk_level"]
+        support_level = analysis["support_level"]
+        resistance_level = analysis["resistance_level"]
+        volatility = technical_indicators["volatility"]
+        metrics = self.portfolio.get_metrics()
+        available_cash = metrics["cash"]
+        total_value = metrics["total_value"]
+        history = yf.Ticker(ticker).history(period="2y")
 
-                except Exception as e:
-                    logger.error(f"Error processing {ticker} on attempt {attempt}: {e}")
-                    attempt += 1
-                    if attempt > max_attempts:
-                        logger.error(f"Max attempts reached for {ticker}. Skipping...")
-                        break
-                    time.sleep(5)
+        # Signal weights
+        weights = {
+            "technical": 0.4,
+            "sentiment": 0.3,
+            "ml": 0.2,
+            "rl": 0.1
+        }
+        scores = {"buy": 0.0, "sell": 0.0}
 
-        logger.info(f"Completed cycle for all tickers. Waiting {config['sleep_interval']} seconds...")
-        time.sleep(config["sleep_interval"])
+        # Technical Score
+        technical_score = 0.0
+        if recommendation in ["BUY", "STRONG BUY"]:
+            technical_score += 0.6
+            if technical_indicators["rsi"] < 35:
+                technical_score += 0.3
+            if technical_indicators["macd"] > technical_indicators["signal_line"]:
+                technical_score += 0.2
+            if current_price < technical_indicators["bb_lower"]:
+                technical_score += 0.2
+            if technical_indicators["sma_50"] > technical_indicators["sma_200"]:
+                technical_score += 0.2
+            scores["buy"] += technical_score * weights["technical"]
+        elif recommendation in ["SELL", "STRONG SELL"]:
+            technical_score -= 0.6
+            if technical_indicators["rsi"] > 65:
+                technical_score -= 0.3
+            if technical_indicators["macd"] < technical_indicators["signal_line"]:
+                technical_score -= 0.2
+            if current_price > technical_indicators["bb_upper"]:
+                technical_score -= 0.2
+            if technical_indicators["sma_50"] < technical_indicators["sma_200"]:
+                technical_score -= 0.2
+            scores["sell"] += abs(technical_score) * weights["technical"]
 
-if __name__ == "__main__":
+        # Sentiment Score
+        sentiment_score = 0.0
+        aggregated = sentiment_data["aggregated"]
+        total_sentiment = aggregated["positive"] + aggregated["negative"] + aggregated["neutral"]
+        sentiment_ratio = aggregated["positive"] / total_sentiment if total_sentiment > 0 else 0.5
+        sentiment_score = (sentiment_ratio - 0.5) * 2
+        if sentiment_score > 0:
+            scores["buy"] += sentiment_score * weights["sentiment"]
+        else:
+            scores["sell"] += abs(sentiment_score) * weights["sentiment"]
+
+        # ML Score
+        ml_score = 0.0
+        if ml_analysis.get("success"):
+            ensemble_r2 = ml_analysis["r2_score"]
+            predicted_price = ml_analysis["predicted_price"]
+            price_change_pct = ((predicted_price - current_price) / current_price) if current_price > 0 else 0
+            if price_change_pct > 0.03 and ensemble_r2 > 0.4:
+                ml_score += min(price_change_pct * 2, 1.0) * ensemble_r2
+            elif price_change_pct < -0.03 and ensemble_r2 > 0.4:
+                ml_score -= min(abs(price_change_pct) * 2, 1.0) * ensemble_r2
+            if ml_score > 0:
+                scores["buy"] += ml_score * weights["ml"]
+            else:
+                scores["sell"] += abs(ml_score) * weights["ml"]
+
+        # RL Score
+        if ml_analysis.get("rl_metrics", {}).get("success"):
+            rl_recommendation = ml_analysis["rl_metrics"]["recommendation"]
+            if rl_recommendation == "SELL":
+                scores["sell"] += 0.3 * weights["rl"]
+            elif rl_recommendation == "BUY":
+                scores["buy"] += 0.3 * weights["rl"]
+
+        final_buy_score = scores["buy"]
+        final_sell_score = scores["sell"]
+
+        # Confidence Thresholds
+        base_confidence_threshold = 0.12
+        confidence_threshold = min(base_confidence_threshold + (volatility * 0.4), 0.18)
+        if risk_level == "HIGH":
+            confidence_threshold += 0.04
+        elif risk_level == "LOW":
+            confidence_threshold -= 0.04
+        sell_confidence_threshold = confidence_threshold * 0.75
+
+        # Calculate unrealized PnL
+        current_prices = self.portfolio.get_current_prices()
+        current_ticker_price = current_prices.get(ticker, {"price": current_price})["price"]
+        unrealized_pnl = (
+            (current_ticker_price - self.portfolio.holdings[ticker]["avg_price"])
+            * self.portfolio.holdings[ticker]["qty"]
+            if ticker in self.portfolio.holdings else 0
+        )
+
+        # Signals
+        buy_signals = sum([
+            technical_score > 0,
+            sentiment_score > 0,
+            ml_score > 0,
+            ml_analysis.get("rl_metrics", {}).get("recommendation") == "BUY"
+        ])
+        sell_signals = sum([
+            technical_score < 0,
+            sentiment_score < 0,
+            ml_score < 0,
+            current_ticker_price < support_level * 0.97,
+            current_ticker_price > resistance_level * 1.03,
+            unrealized_pnl < -0.06 * total_value,
+            ml_analysis.get("rl_metrics", {}).get("recommendation") == "SELL"
+        ])
+
+        # Portfolio Constraints
+        max_exposure_per_stock = total_value * 0.25
+        current_stock_exposure = self.portfolio.holdings.get(ticker, {"qty": 0})["qty"] * current_ticker_price
+        sector = analysis["stock_data"]["sector"]
+        sector_exposure = sum(
+            data["qty"] * price["price"]
+            for asset, data in self.portfolio.holdings.items()
+            for price in [self.portfolio.get_current_prices().get(asset, {"price": 0})]
+            if analysis["stock_data"].get("sector") == sector
+        )
+        max_sector_exposure = total_value * 0.4
+
+        # Calculate ATR for volatility-based sizing
+        high_low = history['High'] - history['Low']
+        high_close = abs(history['High'] - history['Close'].shift())
+        low_close = abs(history['Low'] - history['Close'].shift())
+        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        atr = true_range.rolling(window=14).mean().iloc[-1]
+        atr = float(atr) if not pd.isna(atr) else volatility * current_ticker_price
+
+        # Kelly Criterion for position sizing
+        win_prob = min(final_buy_score / 0.4, 1.0) if final_buy_score > 0 else 0.5
+        expected_return = (ml_analysis.get("predicted_price", current_ticker_price) / current_ticker_price - 1) if current_ticker_price > 0 else 0
+        loss_prob = 1 - win_prob
+        kelly_fraction = (win_prob * (expected_return + 1) - 1) / expected_return if expected_return > 0 else 0.15
+        kelly_fraction = max(min(kelly_fraction, 0.3), 0.1)
+
+        # Liquidity Check
+        avg_daily_volume = history["Volume"].rolling(window=20).mean().iloc[-1]
+        max_trade_volume = avg_daily_volume * 0.015
+        max_qty_by_volume = max_trade_volume if not pd.isna(max_trade_volume) else float('inf')
+
+        # Stop-Loss and Take-Profit
+        stop_loss = support_level * 0.97 if support_level > 0 else current_ticker_price * 0.94
+        take_profit = resistance_level * 1.03 if resistance_level > 0 else current_ticker_price * 1.12
+
+        # Trailing Stop-Loss
+        if ticker in self.portfolio.holdings:
+            avg_price = self.portfolio.holdings[ticker]["avg_price"]
+            trailing_stop_pct = 0.06
+            highest_price = max(history["Close"].iloc[-30:]) if not history.empty else current_ticker_price
+            trailing_stop = highest_price * (1 - trailing_stop_pct)
+            if current_ticker_price < trailing_stop:
+                logger.info(f"Trailing Stop-Loss triggered for {ticker}: Price ₹{current_ticker_price:.2f} < Trailing Stop ₹{trailing_stop:.2f}")
+                holding_qty = self.portfolio.holdings[ticker]["qty"]
+                success = self.executor.execute_trade(ticker, "sell", holding_qty, current_ticker_price)
+                return {
+                    "action": "sell",
+                    "ticker": ticker,
+                    "qty": holding_qty,
+                    "price": current_ticker_price,
+                    "stop_loss": trailing_stop,
+                    "take_profit": take_profit,
+                    "success": success,
+                    "confidence_score": final_sell_score,
+                    "signals": sell_signals,
+                    "reason": "trailing_stop_loss"
+                }
+
+        # Stop-Loss and Take-Profit
+        if ticker in self.portfolio.holdings:
+            if current_ticker_price < stop_loss:
+                logger.info(f"Stop-Loss triggered for {ticker}: Price ₹{current_ticker_price:.2f} < Stop-Loss ₹{stop_loss:.2f}")
+                holding_qty = self.portfolio.holdings[ticker]["qty"]
+                success = self.executor.execute_trade(ticker, "sell", holding_qty, current_ticker_price)
+                return {
+                    "action": "sell",
+                    "ticker": ticker,
+                    "qty": holding_qty,
+                    "price": current_ticker_price,
+                    "stop_loss": stop_loss,
+                    "take_profit": take_profit,
+                    "success": success,
+                    "confidence_score": final_sell_score,
+                    "signals": sell_signals,
+                    "reason": "stop_loss"
+                }
+            elif current_ticker_price > take_profit:
+                logger.info(f"Take-Profit triggered for {ticker}: Price ₹{current_ticker_price:.2f} > Take-Profit ₹{take_profit:.2f}")
+                holding_qty = self.portfolio.holdings[ticker]["qty"]
+                success = self.executor.execute_trade(ticker, "sell", holding_qty, current_ticker_price)
+                return {
+                    "action": "sell",
+                    "ticker": ticker,
+                    "qty": holding_qty,
+                    "price": current_ticker_price,
+                    "stop_loss": stop_loss,
+                    "take_profit": take_profit,
+                    "success": success,
+                    "confidence_score": final_sell_score,
+                    "signals": sell_signals,
+                    "reason": "take_profit"
+                }
+
+        # Max Holding Period
+        max_holding_days = 60
+        if ticker in self.portfolio.holdings:
+            first_trade = min(
+                (datetime.strptime(t["timestamp"], "%Y-%m-%d %H:%M:%S.%f") for t in self.portfolio.trade_log if t["asset"] == ticker and t["action"] == "buy"),
+                default=datetime.now()
+            )
+            holding_days = (datetime.now() - first_trade).days
+            if holding_days > max_holding_days and unrealized_pnl < 0:
+                logger.info(f"Max holding period exceeded for {ticker}: {holding_days} days, Unrealized PnL: ₹{unrealized_pnl:.2f}")
+                holding_qty = self.portfolio.holdings[ticker]["qty"]
+                success = self.executor.execute_trade(ticker, "sell", holding_qty, current_ticker_price)
+                return {
+                    "action": "sell",
+                    "ticker": ticker,
+                    "qty": holding_qty,
+                    "price": current_ticker_price,
+                    "stop_loss": stop_loss,
+                    "take_profit": take_profit,
+                    "success": success,
+                    "confidence_score": final_sell_score,
+                    "signals": sell_signals,
+                    "reason": "max_holding_period"
+                }
+
+        # Buy Quantity Calculation
+        buy_qty = 0
+        if final_buy_score > confidence_threshold and buy_signals >= 2:
+            if available_cash < 5000:  # Minimum trade value in INR
+                logger.info(f"Skipping BUY for {ticker}: Insufficient cash (₹{available_cash:.2f} < ₹5000)")
+            else:
+                position_size_pct = kelly_fraction * 0.6
+                target_position_value = total_value * position_size_pct
+                volatility_factor = max(0.4, min(1.6, 1.0 / (1 + atr / current_ticker_price))) if current_ticker_price > 0 else 1.0
+                target_position_value *= volatility_factor
+                confidence_factor = 0.6 + (final_buy_score / 0.4) * 0.4
+                confidence_factor = min(max(confidence_factor, 0.6), 1.0)
+                target_position_value *= confidence_factor
+                target_position_value = max(5000, min(target_position_value, max_exposure_per_stock - current_stock_exposure))
+                target_position_value = min(target_position_value, max_sector_exposure - sector_exposure)
+                buy_qty = target_position_value / current_ticker_price if current_ticker_price > 0 else 0
+                buy_qty = min(buy_qty, max_qty_by_volume, available_cash / current_ticker_price)
+                buy_qty = max(0, int(buy_qty))
+
+        # Sell Quantity Calculation
+        sell_qty = 0
+        if ticker in self.portfolio.holdings and final_sell_score > sell_confidence_threshold and sell_signals >= 2:
+            holding_qty = self.portfolio.holdings[ticker]["qty"]
+            price_to_take_profit = (current_ticker_price - take_profit) / take_profit if take_profit > 0 else 0
+            price_to_stop_loss = (stop_loss - current_ticker_price) / stop_loss if stop_loss > 0 else 0
+            sell_factor = min(max(final_sell_score * 1.5, abs(price_to_take_profit), abs(price_to_stop_loss)), 1.0)
+            if final_sell_score > 0.4 or current_ticker_price < stop_loss or current_ticker_price > take_profit:
+                sell_qty = holding_qty
+            else:
+                sell_qty = holding_qty * sell_factor
+                volatility_factor = max(0.4, min(1.6, 1.0 / (1 + atr / current_ticker_price))) if current_ticker_price > 0 else 1.0
+                sell_qty *= volatility_factor
+            sell_qty = max(0, int(min(sell_qty, holding_qty)))
+
+        # Validate Exposure Limits
+        if buy_qty > 0:
+            new_stock_exposure = current_stock_exposure + buy_qty * current_ticker_price
+            new_sector_exposure = sector_exposure + buy_qty * current_ticker_price
+            if new_stock_exposure > max_exposure_per_stock or new_sector_exposure > max_sector_exposure:
+                buy_qty = min(
+                    (max_exposure_per_stock - current_stock_exposure) / current_ticker_price,
+                    (max_sector_exposure - sector_exposure) / current_ticker_price
+                ) if current_ticker_price > 0 else 0
+                buy_qty = max(0, int(buy_qty))
+
+        # Backoff Logic
+        recent_trades = [t for t in self.portfolio.trade_log if datetime.strptime(t["timestamp"], "%Y-%m-%d %H:%M:%S.%f") > datetime.now() - timedelta(hours=12)]
+        recent_pnl = sum(
+            (t["price"] - self.portfolio.holdings.get(t["asset"], {"avg_price": t["price"]})["avg_price"]) * t["qty"]
+            for t in recent_trades if t["action"] == "sell"
+        )
+        trade_frequency = len(recent_trades)
+        backoff = (recent_pnl < -0.015 * total_value or trade_frequency > 8) and not (
+            current_ticker_price < stop_loss or unrealized_pnl < -0.06 * total_value
+        )
+
+        # Execute Trades
+        trade = None
+        if (
+            buy_qty > 0
+            and final_buy_score > confidence_threshold
+            and buy_signals >= 2
+            and buy_qty * current_ticker_price <= available_cash
+            and not backoff
+        ):
+            logger.info(
+                f"Executing BUY for {ticker}: {buy_qty:.0f} units at ₹{current_ticker_price:.2f}, "
+                f"Position Value: ₹{buy_qty * current_price:.2f} ({(buy_qty * current_price / total_value * 100):.2f}% of portfolio), "
+                f"Stop-Loss: ₹{stop_loss:.2f}, Take-Profit: ₹{take_profit:.2f}, ATR: ₹{atr:.2f}, Kelly Fraction: {kelly_fraction:.2f}"
+            )
+            success = self.executor.execute_trade("buy", ticker, buy_qty, current_ticker_price, stop_loss, take_profit)
+            trade = {
+                "action": "buy",
+                "ticker": ticker,
+                "qty": buy_qty,
+                "price": current_ticker_price,
+                "stop_loss": stop_loss,
+                "take_profit": take_profit,
+                "success": success,
+                "confidence_score": final_buy_score,
+                "signals": buy_signals,
+                "reason": "signal_based"
+            }
+        elif (
+            sell_qty > 0
+            and final_sell_score > sell_confidence_threshold
+            and sell_signals >= 2
+            and ticker in self.portfolio.holdings
+            and not backoff
+        ):
+            logger.info(
+                f"Executing SELL for {ticker}: {sell_qty:.0f} units at ₹{current_ticker_price:.2f}, "
+                f"Position Value: ₹{sell_qty * current_price:.2f} ({(sell_qty * current_price / total_value * 100):.2f}% of portfolio), "
+                f"Stop-Loss: ₹{stop_loss:.2f}, Take-Profit: ₹{take_profit:.2f}, ATR: ₹{atr:.2f}"
+            )
+            success = self.executor.execute_trade("sell", ticker, sell_qty, current_ticker_price, stop_loss, take_profit)
+            trade = {
+                "action": "sell",
+                "ticker": ticker,
+                "qty": sell_qty,
+                "price": current_ticker_price,
+                "stop_loss": stop_loss,
+                "take_profit": take_profit,
+                "success": success,
+                "confidence_score": final_sell_score,
+                "signals": sell_signals,
+                "reason": "signal_based"
+            }
+        else:
+            hold_conditions = (
+                abs(final_buy_score - final_sell_score) < 0.06
+                or (support_level * 0.98 < current_ticker_price < resistance_level * 1.02)
+                or (buy_signals < 2 and sell_signals < 2)
+            )
+            if hold_conditions:
+                logger.info(f"HOLD {ticker}: Neutral market conditions, "
+                            f"Price ₹{current_ticker_price:.2f} within Support ₹{support_level:.2f} "
+                            f"and Resistance ₹{resistance_level:.2f}, "
+                            f"Buy Score={final_buy_score:.2f}, Sell Score={final_sell_score:.2f}")
+                trade = {
+                    "action": "hold",
+                    "ticker": ticker,
+                    "qty": 0,
+                    "price": current_ticker_price,
+                    "stop_loss": stop_loss,
+                    "take_profit": take_profit,
+                    "success": True,
+                    "confidence_score": max(final_buy_score, final_sell_score),
+                    "signals": max(buy_signals, sell_signals),
+                    "reason": "neutral_conditions"
+                }
+
+        if trade is None:
+            logger.info(f"No trade executed for {ticker}: Buy Score={final_buy_score:.2f}, "
+                        f"Sell Score={final_sell_score:.2f}, Buy Signals={buy_signals}, "
+                        f"Sell Signals={sell_signals}, Buy Qty={buy_qty:.0f}, Sell Qty={sell_qty:.0f}, "
+                        f"Backoff={backoff}, Cash=₹{available_cash:.2f}, ATR=₹{atr:.2f}")
+
+        return trade
+
+    def run_analysis(self, ticker):
+        """Run analysis for a given ticker and return the result."""
+        return self.stock_analyzer.analyze_stock(
+            ticker,
+            benchmark_tickers=self.config.get("benchmark_tickers", ["^NSEI"]),
+            prediction_days=self.config.get("prediction_days", 30),
+            training_period=self.config.get("period", "3y")
+        )
+
+    def run(self):
+        """Main bot loop to run analysis, make trades, and generate reports."""
+        logger.info("Starting Stock Trading Bot for Indian market...")
+        while True:
+            try:
+                # if not self.is_market_open():
+                #     logger.info("NSE market is closed, waiting...")
+                #     time.sleep(300)  # Wait 5 minutes
+                #     continue
+
+                logger.info("Logging portfolio metrics at start of trading cycle...")
+                self.tracker.log_metrics()
+
+                for ticker in self.config["tickers"]:
+                    logger.info(f"Processing {ticker}...")
+                    analysis = self.run_analysis(ticker)
+                    if analysis.get("success"):
+                        save_result = self.stock_analyzer.save_analysis_to_files(analysis)
+                        if save_result.get("success"):
+                            logger.info(f"Saved analysis files: {save_result}")
+                        else:
+                            logger.warning(f"Failed to save analysis: {save_result.get('message')}")
+                        trade = self.make_trading_decision(analysis)
+                        if trade and trade["success"]:
+                            logger.info(f"Trade executed: {trade}")
+                    else:
+                        logger.warning(f"Analysis failed for {ticker}: {analysis.get('message')}")
+
+                report = self.reporter.generate_report()
+                logger.info(f"Daily Report: {report}")
+
+                logger.info("Logging portfolio metrics at end of trading cycle...")
+                self.tracker.log_metrics()
+
+                time.sleep(self.config.get("sleep_interval", 300))
+            except Exception as e:
+                logger.error(f"Error in main loop: {e}")
+                time.sleep(60)
+
+def main():
     config = {
-        "tickers": ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS"],
-        "benchmark_tickers": ["^NSEI"],
-        "starting_balance": 1000000,  # INR
-        "position_size": 0.1,
+        "tickers": ["SBIN.NS","TCS.NS","TATAMOTORS.NS","ETERNAL.NS","POWERGRID.NS","WIPRO.NS"],
+        "starting_balance": 1000000,  # Default starting balance in INR
+        "current_portfolio_value": 1000000,  # Initial portfolio value
+        "current_pnl": 0,  # Initial PnL
         "mode": "paper",
-        "sleep_interval": 300,  # 5 minutes
         "dhan_client_id": os.getenv("DHAN_CLIENT_ID"),
         "dhan_access_token": os.getenv("DHAN_ACCESS_TOKEN"),
-        "current_portfolio_value": 0,
-        "current_pnl": 0
+        "period": "3y",
+        "prediction_days": 30,
+        "benchmark_tickers": ["^NSEI"],
+        "sleep_interval": 300  # 5 minutes
     }
 
-    stock_analyzer = Stock(
-        reddit_client_id=os.getenv("REDDIT_CLIENT_ID"),
-        reddit_client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
-        reddit_user_agent=os.getenv("REDDIT_USER_AGENT")
-    )
-
-    portfolio = VirtualPortfolio(config)
-    executor = PaperExecutor(portfolio, config)
-    tracker = PortfolioTracker(portfolio, config)
-    reporter = PerformanceReport(portfolio)
-
-    logger.info("Starting trading bot...")
-    try:
-        trading_loop(config, stock_analyzer, portfolio, executor, tracker, reporter)
-    except KeyboardInterrupt:
-        logger.info("Shutting down trading bot...")
-        portfolio.save_portfolio()
-        portfolio.save_trade_log()
-        reporter.generate_report()
-        logger.info("Shutdown complete.")
+    bot = StockTradingBot(config)
+    bot.run()
+if __name__ == "__main__":
+    main()

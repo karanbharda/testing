@@ -1,0 +1,25 @@
+[2025-07-18 10:24:33] 
+Trade Executed:
+Action: BUY
+Ticker: RELIANCE.NS
+Quantity: 169
+Price: ₹1472.70
+Stop-Loss: ₹1399.07
+Take-Profit: ₹1619.97
+Confidence Score: 0.58
+Signals: {'rsi': 46.704580805994716, 'macd': 9.391714370299951, 'sma_50': 1459.0440063476562, 'sma_200': 1325.200501098633, 'sentiment_score': 0.55}
+Reason: Recommendation for Reliance Industries Limited (RELIANCE.NS): BUY
+Current Price: ₹1472.70
+
+Buy Score: 0.583, Sell Score: 0.534
+
+Bullish Factors:
+- Stock is in an uptrend (50-day SMA > 200-day SMA).
+
+Risk Assessment:
+- Volatility: 0.0095 (higher values indicate higher risk)
+- Sector: Energy
+- Industry: Oil & Gas Refining & Marketing
+
+Success: True
+

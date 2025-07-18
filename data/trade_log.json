@@ -1,48 +1,100 @@
 [
     {
-        "asset": "META",
-        "action": "buy",
-        "qty": 2,
-        "price": 702.12,
-        "timestamp": "2025-06-17 19:03:54.482920"
-    },
-    {
         "asset": "UBER",
         "action": "buy",
-        "qty": 24,
-        "price": 84.78,
-        "timestamp": "2025-06-17 19:07:31.169310"
+        "qty": 9,
+        "price": 97.09,
+        "timestamp": "2025-07-08 19:04:27.196064"
     },
     {
         "asset": "FUBO",
         "action": "buy",
-        "qty": 630,
-        "price": 3.21,
-        "timestamp": "2025-06-17 19:10:49.189943"
+        "qty": 252,
+        "price": 3.66,
+        "timestamp": "2025-07-08 19:08:12.510101"
     },
     {
         "asset": "XPEV",
         "action": "buy",
-        "qty": 273,
-        "price": 18.93,
-        "timestamp": "2025-06-17 19:14:34.861616"
+        "qty": 130,
+        "price": 17.91,
+        "timestamp": "2025-07-08 19:12:02.720549"
     },
     {
-        "asset": "AGX",
+        "asset": "LI",
         "action": "buy",
-        "qty": 9,
-        "price": 218.59,
-        "timestamp": "2025-06-17 19:17:57.126212"
-    },
-    {
-        "asset": "NFLX",
-        "action": "buy",
-        "qty": 1,
-        "price": 1226.56,
-        "timestamp": "2025-06-17 19:21:14.214802"
+        "qty": 87,
+        "price": 26.95,
+        "timestamp": "2025-07-08 19:15:55.328849"
     },
     {
         "asset": "META",
         "action": "buy",
-        "qty": 2,
-        "price": 
+        "qty": 1,
+        "price": 717.64,
+        "timestamp": "2025-07-08 19:23:24.078243"
+    },
+    {
+        "asset": "AGX",
+        "action": "buy",
+        "qty": 4,
+        "price": 208.2,
+        "timestamp": "2025-07-08 19:31:20.497346"
+    },
+    {
+        "asset": "PLTR",
+        "action": "buy",
+        "qty": 6,
+        "price": 138.09,
+        "timestamp": "2025-07-08 19:35:08.247733"
+    },
+    {
+        "asset": "APPS",
+        "action": "buy",
+        "qty": 138,
+        "price": 5.86,
+        "timestamp": "2025-07-08 19:39:22.974674"
+    },
+    {
+        "asset": "UBER",
+        "action": "sell",
+        "qty": 3,
+        "price": 97.12,
+        "timestamp": "2025-07-08 19:53:03.350726"
+    },
+    {
+        "asset": "FUBO",
+        "action": "buy",
+        "qty": 77,
+        "price": 3.71,
+        "timestamp": "2025-07-08 19:57:03.908470"
+    },
+    {
+        "asset": "XPEV",
+        "action": "sell",
+        "qty": 130,
+        "price": 18.09,
+        "timestamp": "2025-07-08 20:01:11.631325"
+    },
+    {
+        "asset": "LI",
+        "action": "sell",
+        "qty": 87,
+        "price": 26.91,
+        "timestamp": "2025-07-08 20:05:15.031074"
+    },
+    {
+        "asset": "AGX",
+        "action": "sell",
+        "qty": 4,
+        "price": 209.5,
+        "timestamp": "2025-07-08 20:21:08.995798"
+    },
+    {
+        "asset": "APPS",
+        "action": "sell",
+        "qty": 138,
+        "price": 5.95,
+        "timestamp": "2025-07-08 20:29:09.053971"
+    }
+]

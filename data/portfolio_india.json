@@ -1,4 +1,9 @@
 {
-    "cash": 1000000,
-    "holdings": {}
+    "cash": 751113.7,
+    "holdings": {
+        "RELIANCE.NS": {
+            "qty": 169,
+            "avg_price": 1472.7
+        }
+    }
 }

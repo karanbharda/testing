@@ -1887,7 +1887,7 @@ def main():
         "period": "3y",  # Extended from 2y
         "sleep_interval": 3600,
         "min_data_points": 100,
-        "ml_epochs": 200  
+        "ml_epochs": 200
     }
 
     bot = CryptoTradingBot(config)

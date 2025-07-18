@@ -27,7 +27,6 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import gym
 from gym import spaces
-import backtrader as bt
 import optuna
 import traceback
 import warnings
@@ -35,8 +34,6 @@ import logging
 from torch.distributions import Normal
 import torch.nn.functional as F
 from copy import deepcopy
-from collections import deque
-import random
 from dotenv import load_dotenv
 from alpaca_trade_api.rest import REST
 
@@ -2354,11 +2351,7 @@ class StockTradingBot:
                 time.sleep(60)  # Wait before retrying
 
 def main():
-    """Entry point for the trading bot."""
-    from alpaca_trade_api.rest import REST
-    import os
-    from dotenv import load_dotenv
-    load_dotenv()
+  
 
     api = REST(
         os.getenv("ALPACA_API_KEY"),
@@ -2373,7 +2366,7 @@ def main():
     current_pnl = portfolio_value - last_equity
 
     config = {
-        "tickers" : [ "META", "UBER", "FUBO", "XPEV", "AGX", "NFLX"],
+        "tickers" : ["UBER", "FUBO", "XPEV", "LI","LNTH","META","BKNG","AGX","PLTR","APPS","NFLX","TSLA"],
         "starting_balance": current_cash,
         "current_portfolio_value": portfolio_value,
         "current_pnl": current_pnl,
