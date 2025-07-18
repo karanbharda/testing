@@ -850,3 +850,1332 @@ Reinforcement Learning Results:
     Episode 80: Reward = 14389615.25, Avg Reward = 5143474.37, Events = 140
     Episode 90: Reward = 1752438.49, Avg Reward = 8609701.89, Events = 145
     Episode 100: Reward = 20666066.53, Avg Reward = 11572326.22, Events = 155
+
+[20250718_113154] Analysis for RELIANCE.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for RELIANCE INDUSTRIES LTD (RELIANCE.NS): STRONG SELL
+Current Price: ₹1472.50
+
+Buy Score: -0.421, Sell Score: 0.521
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0095 (higher values indicate higher risk)
+- Sector: Energy
+- Industry: Oil & Gas Refining & Marketing
+
+Prediction Days: 30
+Current Price (USD): 17.09
+Predicted Price (USD): 1483.3315526603258
+Predicted Change (%): 8579.53
+Confidence Score: 0.4328797928209759
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 8684.65363782192
+  mae:
+    Score: 72.77336497555561
+  r2:
+    Score: 0.4328797928209759
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 24.061750634059834
+  Average Reward: 5888107.421866277
+  Average Events/Episode: 147.23
+  Actions Distribution:
+    hold: 0.9568
+    buy: 0.0176
+    sell: 0.0257
+  RL Epoch Logs:
+    Episode 10: Reward = -328674.51, Avg Reward = 4089813.87, Events = 131
+    Episode 20: Reward = -8568982.73, Avg Reward = 4259178.34, Events = 154
+    Episode 30: Reward = 8587260.42, Avg Reward = 4094319.53, Events = 150
+    Episode 40: Reward = 21229671.61, Avg Reward = 6609724.07, Events = 130
+    Episode 50: Reward = 4747619.63, Avg Reward = 6257728.94, Events = 151
+    Episode 60: Reward = 11309407.37, Avg Reward = 6162424.34, Events = 145
+    Episode 70: Reward = 4212409.68, Avg Reward = 6827669.67, Events = 152
+    Episode 80: Reward = 13972049.96, Avg Reward = 7303718.38, Events = 139
+    Episode 90: Reward = -2644786.00, Avg Reward = 9027541.94, Events = 148
+    Episode 100: Reward = -10506841.62, Avg Reward = 4248955.14, Events = 154
+
+[20250718_113431] Analysis for TCS.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for TATA CONSULTANCY SERV LT (TCS.NS): STRONG SELL
+Current Price: ₹3207.60
+
+Buy Score: -0.731, Sell Score: 0.831
+
+Bearish Factors:
+- Stock is in a downtrend (50-day SMA < 200-day SMA).
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0104 (higher values indicate higher risk)
+- Sector: Technology
+- Industry: Information Technology Services
+
+Prediction Days: 30
+Current Price (USD): 37.22
+Predicted Price (USD): 3196.1698535040578
+Predicted Change (%): 8487.24
+Confidence Score: 0.80819562834696
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 28010.342352883486
+  mae:
+    Score: 119.88286231252448
+  r2:
+    Score: 0.80819562834696
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: HOLD
+  Performance (%): -4.192505086897916
+  Average Reward: 10214407.313930226
+  Average Events/Episode: 148.09
+  Actions Distribution:
+    hold: 0.9324
+    buy: 0.0365
+    sell: 0.0311
+  RL Epoch Logs:
+    Episode 10: Reward = -2550940.16, Avg Reward = 4458810.24, Events = 123
+    Episode 20: Reward = 18624366.55, Avg Reward = 12378035.06, Events = 146
+    Episode 30: Reward = 33474424.24, Avg Reward = 11916635.33, Events = 128
+    Episode 40: Reward = 5220958.41, Avg Reward = 13586838.17, Events = 153
+    Episode 50: Reward = 8307988.03, Avg Reward = 14684979.71, Events = 142
+    Episode 60: Reward = 16448465.33, Avg Reward = 6612660.36, Events = 151
+    Episode 70: Reward = -3433669.05, Avg Reward = 8461370.44, Events = 146
+    Episode 80: Reward = -3728518.16, Avg Reward = 6600986.45, Events = 123
+    Episode 90: Reward = 1342625.68, Avg Reward = 7976096.94, Events = 148
+    Episode 100: Reward = 19417040.60, Avg Reward = 15467660.43, Events = 165
+
+[20250718_113717] Analysis for HDFCBANK.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for HDFC BANK LTD (HDFCBANK.NS): STRONG SELL
+Current Price: ₹1972.00
+
+Buy Score: -0.513, Sell Score: 0.613
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0081 (higher values indicate higher risk)
+- Sector: Financial Services
+- Industry: Banks - Regional
+
+Prediction Days: 30
+Current Price (USD): 22.88
+Predicted Price (USD): 1522.6135441168908
+Predicted Change (%): 6554.78
+Confidence Score: -0.4320054197223704
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 28412.809846623913
+  mae:
+    Score: 141.69832845476813
+  r2:
+    Score: -0.4320054197223704
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 30.336273149025818
+  Average Reward: 7148346.115839405
+  Average Events/Episode: 147.97
+  Actions Distribution:
+    hold: 0.9230
+    buy: 0.0446
+    sell: 0.0324
+  RL Epoch Logs:
+    Episode 10: Reward = 14623266.21, Avg Reward = 8169505.74, Events = 146
+    Episode 20: Reward = 22603716.25, Avg Reward = 4415753.66, Events = 145
+    Episode 30: Reward = 6083779.18, Avg Reward = 7013104.65, Events = 145
+    Episode 40: Reward = -2521671.11, Avg Reward = 9224932.80, Events = 169
+    Episode 50: Reward = 26179385.28, Avg Reward = 11093688.99, Events = 148
+    Episode 60: Reward = 10736698.39, Avg Reward = 8066482.02, Events = 149
+    Episode 70: Reward = 260095.17, Avg Reward = 4733849.13, Events = 140
+    Episode 80: Reward = 4512126.88, Avg Reward = 3798148.37, Events = 164
+    Episode 90: Reward = 30157244.37, Avg Reward = 10857100.76, Events = 129
+    Episode 100: Reward = -5688695.28, Avg Reward = 4110895.03, Events = 121
+
+[20250718_113951] Analysis for INFY.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for INFOSYS LIMITED (INFY.NS): STRONG SELL
+Current Price: ₹1587.70
+
+Buy Score: -0.628, Sell Score: 0.728
+
+Bearish Factors:
+- Stock is in a downtrend (50-day SMA < 200-day SMA).
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0114 (higher values indicate higher risk)
+- Sector: Technology
+- Industry: Information Technology Services
+
+Prediction Days: 30
+Current Price (USD): 18.42
+Predicted Price (USD): 1424.079109361299
+Predicted Change (%): 7631.16
+Confidence Score: -0.3699587433937679
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 41603.959846584155
+  mae:
+    Score: 176.26274994086103
+  r2:
+    Score: -0.3699587433937679
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: SELL
+  Performance (%): -30.200545301760023
+  Average Reward: 4247612.7902904935
+  Average Events/Episode: 148.59
+  Actions Distribution:
+    hold: 0.9216
+    buy: 0.0405
+    sell: 0.0378
+  RL Epoch Logs:
+    Episode 10: Reward = 9747034.02, Avg Reward = 8880569.47, Events = 163
+    Episode 20: Reward = 27533695.86, Avg Reward = 4857849.42, Events = 148
+    Episode 30: Reward = 12288639.29, Avg Reward = 5904372.35, Events = 134
+    Episode 40: Reward = 4410147.02, Avg Reward = 6557.32, Events = 159
+    Episode 50: Reward = -8098640.55, Avg Reward = -2560681.76, Events = 170
+    Episode 60: Reward = 7270057.78, Avg Reward = 910279.99, Events = 128
+    Episode 70: Reward = -4460851.01, Avg Reward = 6861322.16, Events = 157
+    Episode 80: Reward = -15685131.60, Avg Reward = 8128786.60, Events = 161
+    Episode 90: Reward = -1544780.34, Avg Reward = 2808017.56, Events = 140
+    Episode 100: Reward = 5560187.99, Avg Reward = 6679054.78, Events = 140
+
+[20250718_114218] Analysis for HINDUNILVR.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for HINDUSTAN UNILEVER LTD. (HINDUNILVR.NS): STRONG SELL
+Current Price: ₹2490.00
+
+Buy Score: -0.813, Sell Score: 0.913
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Stock is in a downtrend (50-day SMA < 200-day SMA).
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0123 (higher values indicate higher risk)
+- Sector: Consumer Defensive
+- Industry: Household & Personal Products
+
+Prediction Days: 30
+Current Price (USD): 28.89
+Predicted Price (USD): 2465.197460916452
+Predicted Change (%): 8433.05
+Confidence Score: 0.5588424681082056
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 19318.67820134464
+  mae:
+    Score: 98.9703430828485
+  r2:
+    Score: 0.5588424681082056
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: HOLD
+  Performance (%): 2.069589458418544
+  Average Reward: 373321.53633309307
+  Average Events/Episode: 145.84
+  Actions Distribution:
+    hold: 0.9271
+    buy: 0.0351
+    sell: 0.0378
+  RL Epoch Logs:
+    Episode 10: Reward = 11510011.80, Avg Reward = 3401688.48, Events = 157
+    Episode 20: Reward = -7188853.49, Avg Reward = 4364848.37, Events = 140
+    Episode 30: Reward = -662753.80, Avg Reward = 5977638.70, Events = 139
+    Episode 40: Reward = -5310804.85, Avg Reward = -1659136.42, Events = 142
+    Episode 50: Reward = 414622.71, Avg Reward = 962929.82, Events = 167
+    Episode 60: Reward = -6192058.85, Avg Reward = 1274238.15, Events = 147
+    Episode 70: Reward = -8855481.57, Avg Reward = -2448703.04, Events = 149
+    Episode 80: Reward = 2642588.99, Avg Reward = -3674357.02, Events = 157
+    Episode 90: Reward = -361343.66, Avg Reward = -1082421.28, Events = 147
+    Episode 100: Reward = 8408508.78, Avg Reward = -3383510.38, Events = 148
+
+[20250718_114452] Analysis for ICICIBANK.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for ICICI BANK LTD. (ICICIBANK.NS): STRONG SELL
+Current Price: ₹1409.50
+
+Buy Score: -0.430, Sell Score: 0.530
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0075 (higher values indicate higher risk)
+- Sector: Financial Services
+- Industry: Banks - Regional
+
+Prediction Days: 30
+Current Price (USD): 16.35
+Predicted Price (USD): 880.3160472303174
+Predicted Change (%): 5284.20
+Confidence Score: -1.3935680128128487
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 26407.20570140439
+  mae:
+    Score: 149.0751093501637
+  r2:
+    Score: -1.3935680128128487
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 67.86468016508283
+  Average Reward: 11996292.88063334
+  Average Events/Episode: 148.85
+  Actions Distribution:
+    hold: 0.9311
+    buy: 0.0405
+    sell: 0.0284
+  RL Epoch Logs:
+    Episode 10: Reward = 20486988.92, Avg Reward = 8439307.50, Events = 130
+    Episode 20: Reward = 4375165.75, Avg Reward = 10603137.75, Events = 151
+    Episode 30: Reward = 11079692.09, Avg Reward = 12250747.72, Events = 152
+    Episode 40: Reward = 10127347.81, Avg Reward = 14863367.72, Events = 143
+    Episode 50: Reward = 13454194.97, Avg Reward = 13747164.70, Events = 137
+    Episode 60: Reward = 210799.19, Avg Reward = 13390927.34, Events = 164
+    Episode 70: Reward = 15838100.33, Avg Reward = 10110154.91, Events = 160
+    Episode 80: Reward = 11455442.29, Avg Reward = 12100124.96, Events = 131
+    Episode 90: Reward = 3755094.85, Avg Reward = 13350156.58, Events = 157
+    Episode 100: Reward = 19314356.22, Avg Reward = 11107839.62, Events = 153
+
+[20250718_114720] Analysis for KOTAKBANK.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for KOTAK MAHINDRA BANK LTD (KOTAKBANK.NS): STRONG SELL
+Current Price: ₹2139.00
+
+Buy Score: -0.344, Sell Score: 0.444
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0128 (higher values indicate higher risk)
+- Sector: Financial Services
+- Industry: Banks - Regional
+
+Prediction Days: 30
+Current Price (USD): 24.81
+Predicted Price (USD): 1792.558227029729
+Predicted Change (%): 7125.14
+Confidence Score: 0.30355174056189227
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 21445.00010930272
+  mae:
+    Score: 112.26658204847972
+  r2:
+    Score: 0.30355174056189227
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: HOLD
+  Performance (%): 7.791314932796929
+  Average Reward: 757929.6363641049
+  Average Events/Episode: 146.8
+  Actions Distribution:
+    hold: 0.9150
+    buy: 0.0405
+    sell: 0.0445
+  RL Epoch Logs:
+    Episode 10: Reward = 2698502.58, Avg Reward = -2650509.57, Events = 157
+    Episode 20: Reward = -9131391.21, Avg Reward = -5037996.52, Events = 152
+    Episode 30: Reward = -502399.52, Avg Reward = -231549.92, Events = 144
+    Episode 40: Reward = -8602155.54, Avg Reward = 3629381.11, Events = 153
+    Episode 50: Reward = -13909716.24, Avg Reward = -1649487.09, Events = 156
+    Episode 60: Reward = 1954471.80, Avg Reward = -91335.68, Events = 141
+    Episode 70: Reward = 4644133.07, Avg Reward = 5065016.89, Events = 148
+    Episode 80: Reward = 12136614.90, Avg Reward = 1025005.89, Events = 146
+    Episode 90: Reward = 11115114.75, Avg Reward = 303278.25, Events = 143
+    Episode 100: Reward = 6338067.95, Avg Reward = 7217493.01, Events = 135
+
+[20250718_114946] Analysis for BHARTIARTL.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for BHARTI AIRTEL LIMITED (BHARTIARTL.NS): STRONG SELL
+Current Price: ₹1895.60
+
+Buy Score: -0.393, Sell Score: 0.493
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0116 (higher values indicate higher risk)
+- Sector: Communication Services
+- Industry: Telecom Services
+
+Prediction Days: 30
+Current Price (USD): 21.99
+Predicted Price (USD): 1008.204947632347
+Predicted Change (%): 4484.83
+Confidence Score: -0.6731860634347018
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 57876.33197595309
+  mae:
+    Score: 205.2607538597569
+  r2:
+    Score: -0.6731860634347018
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 38.6382403244155
+  Average Reward: 18011772.641048077
+  Average Events/Episode: 145.96
+  Actions Distribution:
+    hold: 0.9352
+    buy: 0.0391
+    sell: 0.0256
+  RL Epoch Logs:
+    Episode 10: Reward = 20265234.06, Avg Reward = 17882716.35, Events = 141
+    Episode 20: Reward = 27864012.38, Avg Reward = 17910967.00, Events = 137
+    Episode 30: Reward = 22629924.39, Avg Reward = 16698021.16, Events = 145
+    Episode 40: Reward = 8031773.46, Avg Reward = 17719870.58, Events = 152
+    Episode 50: Reward = 7733737.82, Avg Reward = 14003346.30, Events = 142
+    Episode 60: Reward = 14123211.34, Avg Reward = 20760586.22, Events = 151
+    Episode 70: Reward = 1189298.57, Avg Reward = 18462754.41, Events = 144
+    Episode 80: Reward = 2190173.30, Avg Reward = 15379252.95, Events = 148
+    Episode 90: Reward = 27297361.03, Avg Reward = 18075060.14, Events = 143
+    Episode 100: Reward = 36434858.44, Avg Reward = 23225151.29, Events = 143
+
+[20250718_115222] Analysis for ITC.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for ITC LTD (ITC.NS): STRONG SELL
+Current Price: ₹421.80
+
+Buy Score: -0.747, Sell Score: 0.847
+
+Bearish Factors:
+- Stock is in a downtrend (50-day SMA < 200-day SMA).
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0068 (higher values indicate higher risk)
+- Sector: Consumer Defensive
+- Industry: Tobacco
+
+Prediction Days: 30
+Current Price (USD): 4.89
+Predicted Price (USD): 415.97640373673227
+Predicted Change (%): 8406.67
+Confidence Score: 0.03563889736373782
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 1302.1667753771508
+  mae:
+    Score: 25.46158297093489
+  r2:
+    Score: 0.03563889736373782
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: SELL
+  Performance (%): -7.16721958965795
+  Average Reward: 5027586.34651594
+  Average Events/Episode: 148.49
+  Actions Distribution:
+    hold: 0.9324
+    buy: 0.0365
+    sell: 0.0311
+  RL Epoch Logs:
+    Episode 10: Reward = 8067900.54, Avg Reward = 6335650.82, Events = 146
+    Episode 20: Reward = 9313777.14, Avg Reward = 5781432.77, Events = 138
+    Episode 30: Reward = 117872.34, Avg Reward = 3332473.49, Events = 132
+    Episode 40: Reward = 8448993.21, Avg Reward = 5266389.06, Events = 160
+    Episode 50: Reward = 11004988.05, Avg Reward = 3141458.42, Events = 155
+    Episode 60: Reward = 7282086.70, Avg Reward = 7132279.55, Events = 125
+    Episode 70: Reward = 3271880.44, Avg Reward = 5103525.87, Events = 134
+    Episode 80: Reward = 5186292.78, Avg Reward = 3864592.81, Events = 153
+    Episode 90: Reward = 5637870.10, Avg Reward = 4756443.96, Events = 137
+    Episode 100: Reward = 3119487.02, Avg Reward = 5561616.73, Events = 155
+
+[20250718_115447] Analysis for SBIN.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for STATE BANK OF INDIA (SBIN.NS): STRONG SELL
+Current Price: ₹821.75
+
+Buy Score: -0.312, Sell Score: 0.412
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0087 (higher values indicate higher risk)
+- Sector: Financial Services
+- Industry: Banks - Regional
+
+Prediction Days: 30
+Current Price (USD): 9.53
+Predicted Price (USD): 783.4025163748865
+Predicted Change (%): 8120.38
+Confidence Score: -0.8872886542757585
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 4797.012376742829
+  mae:
+    Score: 56.2811677448877
+  r2:
+    Score: -0.8872886542757585
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 26.86786276725726
+  Average Reward: 6799418.675346273
+  Average Events/Episode: 146.47
+  Actions Distribution:
+    hold: 0.9324
+    buy: 0.0405
+    sell: 0.0270
+  RL Epoch Logs:
+    Episode 10: Reward = 2287167.02, Avg Reward = 4332519.06, Events = 154
+    Episode 20: Reward = 6084396.31, Avg Reward = 2574412.79, Events = 170
+    Episode 30: Reward = 11954707.64, Avg Reward = 9466644.45, Events = 137
+    Episode 40: Reward = 5284849.12, Avg Reward = 5243795.40, Events = 131
+    Episode 50: Reward = 8121158.86, Avg Reward = 9018526.11, Events = 147
+    Episode 60: Reward = 5006837.85, Avg Reward = 6880005.15, Events = 159
+    Episode 70: Reward = 18785568.21, Avg Reward = 7444865.16, Events = 155
+    Episode 80: Reward = 4689549.15, Avg Reward = 7897589.23, Events = 157
+    Episode 90: Reward = 10346271.89, Avg Reward = 8013151.09, Events = 153
+    Episode 100: Reward = 2026533.85, Avg Reward = 7122678.31, Events = 136
+
+[20250718_120404] Analysis for RELIANCE.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for RELIANCE INDUSTRIES LTD (RELIANCE.NS): STRONG SELL
+Current Price: ₹1471.10
+
+Buy Score: -0.421, Sell Score: 0.521
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0095 (higher values indicate higher risk)
+- Sector: Energy
+- Industry: Oil & Gas Refining & Marketing
+
+Prediction Days: 30
+Current Price (USD): 17.07
+Predicted Price (USD): 1357.1297184189677
+Predicted Change (%): 7850.38
+Confidence Score: 0.23616095979587526
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 11130.240631914969
+  mae:
+    Score: 84.83652125544928
+  r2:
+    Score: 0.23616095979587526
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 33.28135972328886
+  Average Reward: 7359918.094424206
+  Average Events/Episode: 147.67
+  Actions Distribution:
+    hold: 0.9338
+    buy: 0.0338
+    sell: 0.0324
+  RL Epoch Logs:
+    Episode 10: Reward = 17432416.05, Avg Reward = 7373261.47, Events = 149
+    Episode 20: Reward = 10228987.31, Avg Reward = 7340557.07, Events = 146
+    Episode 30: Reward = 10178939.97, Avg Reward = 11351780.80, Events = 134
+    Episode 40: Reward = 22817709.00, Avg Reward = 11284768.38, Events = 149
+    Episode 50: Reward = 4919912.57, Avg Reward = 9572318.14, Events = 147
+    Episode 60: Reward = 4487095.88, Avg Reward = 1809924.05, Events = 151
+    Episode 70: Reward = 12329706.64, Avg Reward = 5374991.83, Events = 141
+    Episode 80: Reward = 24976432.27, Avg Reward = 2868429.56, Events = 167
+    Episode 90: Reward = -6527560.66, Avg Reward = 11749886.80, Events = 153
+    Episode 100: Reward = 2373379.87, Avg Reward = 4873262.83, Events = 152
+
+[20250718_121244] Analysis for RELIANCE.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for RELIANCE INDUSTRIES LTD (RELIANCE.NS): STRONG SELL
+Current Price: ₹1471.60
+
+Buy Score: -0.421, Sell Score: 0.521
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0095 (higher values indicate higher risk)
+- Sector: Energy
+- Industry: Oil & Gas Refining & Marketing
+
+Prediction Days: 30
+Current Price (USD): 17.07
+Predicted Price (USD): 1408.3376168949783
+Predicted Change (%): 8150.37
+Confidence Score: 0.22629140078021237
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 10923.642771928191
+  mae:
+    Score: 81.37900889065146
+  r2:
+    Score: 0.22629140078021237
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 39.93825388924236
+  Average Reward: 8157625.804132776
+  Average Events/Episode: 146.6
+  Actions Distribution:
+    hold: 0.9284
+    buy: 0.0405
+    sell: 0.0311
+  RL Epoch Logs:
+    Episode 10: Reward = 13594831.47, Avg Reward = 5715316.24, Events = 147
+    Episode 20: Reward = 1090106.31, Avg Reward = 6993912.18, Events = 143
+    Episode 30: Reward = 744707.60, Avg Reward = 7072254.79, Events = 140
+    Episode 40: Reward = -815684.04, Avg Reward = 4844022.22, Events = 160
+    Episode 50: Reward = -9339537.77, Avg Reward = 11382356.08, Events = 156
+    Episode 60: Reward = 14524963.24, Avg Reward = 3325678.29, Events = 157
+    Episode 70: Reward = 16007732.40, Avg Reward = 10305262.52, Events = 156
+    Episode 80: Reward = 4280805.43, Avg Reward = 8333771.44, Events = 128
+    Episode 90: Reward = 6142379.77, Avg Reward = 8629207.79, Events = 151
+    Episode 100: Reward = 24973825.39, Avg Reward = 14974476.50, Events = 160
+
+[20250718_121520] Analysis for TCS.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for TATA CONSULTANCY SERV LT (TCS.NS): STRONG SELL
+Current Price: ₹3202.10
+
+Buy Score: -0.731, Sell Score: 0.831
+
+Bearish Factors:
+- Stock is in a downtrend (50-day SMA < 200-day SMA).
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0104 (higher values indicate higher risk)
+- Sector: Technology
+- Industry: Information Technology Services
+
+Prediction Days: 30
+Current Price (USD): 37.14
+Predicted Price (USD): 3287.640764786973
+Predicted Change (%): 8752.02
+Confidence Score: 0.5858621785500729
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 64007.57220696397
+  mae:
+    Score: 189.69517671183465
+  r2:
+    Score: 0.5858621785500729
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 14.540802243960702
+  Average Reward: 7162152.211706965
+  Average Events/Episode: 149.72
+  Actions Distribution:
+    hold: 0.9189
+    buy: 0.0351
+    sell: 0.0459
+  RL Epoch Logs:
+    Episode 10: Reward = -550803.93, Avg Reward = 2311470.62, Events = 125
+    Episode 20: Reward = 1680092.79, Avg Reward = 4729605.58, Events = 136
+    Episode 30: Reward = 16952561.55, Avg Reward = 6838373.30, Events = 160
+    Episode 40: Reward = -2727923.10, Avg Reward = 6963586.06, Events = 145
+    Episode 50: Reward = 12653944.04, Avg Reward = 6045377.65, Events = 148
+    Episode 60: Reward = 12117911.74, Avg Reward = 9186804.39, Events = 153
+    Episode 70: Reward = 6710031.33, Avg Reward = 10898953.63, Events = 149
+    Episode 80: Reward = 22636749.85, Avg Reward = 7767374.23, Events = 145
+    Episode 90: Reward = 7054620.70, Avg Reward = 10071438.67, Events = 163
+    Episode 100: Reward = -3078099.75, Avg Reward = 6808537.99, Events = 151
+
+[20250718_142736] Analysis for RELIANCE.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for RELIANCE INDUSTRIES LTD (RELIANCE.NS): STRONG SELL
+Current Price: ₹1474.90
+
+Buy Score: -0.422, Sell Score: 0.522
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0095 (higher values indicate higher risk)
+- Sector: Energy
+- Industry: Oil & Gas Refining & Marketing
+
+Prediction Days: 30
+Current Price (USD): 17.12
+Predicted Price (USD): 1347.2525882278376
+Predicted Change (%): 7769.47
+Confidence Score: -0.17107504970075715
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 18526.82503192346
+  mae:
+    Score: 108.14222940177949
+  r2:
+    Score: -0.17107504970075715
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: SELL
+  Performance (%): -22.039945800655158
+  Average Reward: 4825685.504391818
+  Average Events/Episode: 147.5
+  Actions Distribution:
+    hold: 0.9123
+    buy: 0.0553
+    sell: 0.0324
+  RL Epoch Logs:
+    Episode 10: Reward = 12909568.58, Avg Reward = 9885501.53, Events = 145
+    Episode 20: Reward = 1650846.59, Avg Reward = 2263473.49, Events = 152
+    Episode 30: Reward = 16511470.80, Avg Reward = 4107969.71, Events = 163
+    Episode 40: Reward = -7378060.76, Avg Reward = 1508693.58, Events = 147
+    Episode 50: Reward = 12894828.10, Avg Reward = 3803143.02, Events = 147
+    Episode 60: Reward = -1402834.10, Avg Reward = 4768575.42, Events = 149
+    Episode 70: Reward = 580106.98, Avg Reward = 67174.65, Events = 133
+    Episode 80: Reward = -9459586.42, Avg Reward = 6148458.55, Events = 171
+    Episode 90: Reward = 22433239.11, Avg Reward = 7851531.66, Events = 153
+    Episode 100: Reward = 3964710.26, Avg Reward = 7852333.44, Events = 155
+
+[20250718_143017] Analysis for TCS.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for TATA CONSULTANCY SERV LT (TCS.NS): STRONG SELL
+Current Price: ₹3193.00
+
+Buy Score: -0.731, Sell Score: 0.831
+
+Bearish Factors:
+- Stock is in a downtrend (50-day SMA < 200-day SMA).
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0104 (higher values indicate higher risk)
+- Sector: Technology
+- Industry: Information Technology Services
+
+Prediction Days: 30
+Current Price (USD): 37.06
+Predicted Price (USD): 3175.767114780869
+Predicted Change (%): 8469.26
+Confidence Score: 0.7043351947630128
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 44271.87744907642
+  mae:
+    Score: 162.9854959691735
+  r2:
+    Score: 0.7043351947630128
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: SELL
+  Performance (%): -18.879589723777375
+  Average Reward: 5636998.7169103185
+  Average Events/Episode: 147.66
+  Actions Distribution:
+    hold: 0.9311
+    buy: 0.0405
+    sell: 0.0284
+  RL Epoch Logs:
+    Episode 10: Reward = 10269532.09, Avg Reward = 3190250.11, Events = 140
+    Episode 20: Reward = 12754685.17, Avg Reward = 846506.70, Events = 166
+    Episode 30: Reward = 3172396.98, Avg Reward = 3588449.22, Events = 155
+    Episode 40: Reward = 2495233.08, Avg Reward = 6043402.40, Events = 149
+    Episode 50: Reward = 4179378.42, Avg Reward = 7016173.42, Events = 151
+    Episode 60: Reward = 23607601.93, Avg Reward = 6862631.41, Events = 152
+    Episode 70: Reward = 3955903.58, Avg Reward = 5964467.21, Events = 141
+    Episode 80: Reward = 11115514.81, Avg Reward = 5111897.98, Events = 117
+    Episode 90: Reward = 14994058.88, Avg Reward = 10191348.91, Events = 134
+    Episode 100: Reward = 3350016.95, Avg Reward = 7554859.82, Events = 145
+
+[20250718_143255] Analysis for HDFCBANK.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for HDFC BANK LTD (HDFCBANK.NS): STRONG SELL
+Current Price: ₹1967.80
+
+Buy Score: -0.487, Sell Score: 0.587
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0082 (higher values indicate higher risk)
+- Sector: Financial Services
+- Industry: Banks - Regional
+
+Prediction Days: 30
+Current Price (USD): 22.84
+Predicted Price (USD): 1519.803033301431
+Predicted Change (%): 6554.13
+Confidence Score: -1.61361929673
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 51404.433994646504
+  mae:
+    Score: 179.04058322993234
+  r2:
+    Score: -1.61361929673
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 24.51279793223951
+  Average Reward: 11035421.224377865
+  Average Events/Episode: 149.85
+  Actions Distribution:
+    hold: 0.9270
+    buy: 0.0297
+    sell: 0.0432
+  RL Epoch Logs:
+    Episode 10: Reward = 9348232.90, Avg Reward = 2908290.13, Events = 146
+    Episode 20: Reward = 21787188.09, Avg Reward = 8445814.54, Events = 152
+    Episode 30: Reward = 16705005.54, Avg Reward = 13236268.73, Events = 138
+    Episode 40: Reward = 20749073.25, Avg Reward = 13329033.26, Events = 151
+    Episode 50: Reward = 2878136.93, Avg Reward = 11185821.17, Events = 145
+    Episode 60: Reward = -5255612.80, Avg Reward = 12896388.09, Events = 158
+    Episode 70: Reward = 1685988.85, Avg Reward = 9569564.12, Events = 147
+    Episode 80: Reward = 15703249.87, Avg Reward = 15509440.50, Events = 149
+    Episode 90: Reward = -2595648.82, Avg Reward = 11129479.06, Events = 158
+    Episode 100: Reward = -5213258.05, Avg Reward = 12144112.64, Events = 145
+
+[20250718_143526] Analysis for INFY.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for INFOSYS LIMITED (INFY.NS): STRONG SELL
+Current Price: ₹1587.80
+
+Buy Score: -0.628, Sell Score: 0.728
+
+Bearish Factors:
+- Stock is in a downtrend (50-day SMA < 200-day SMA).
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0114 (higher values indicate higher risk)
+- Sector: Technology
+- Industry: Information Technology Services
+
+Prediction Days: 30
+Current Price (USD): 18.43
+Predicted Price (USD): 1461.4620076439687
+Predicted Change (%): 7829.80
+Confidence Score: -0.09968603308237456
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 36334.14770805757
+  mae:
+    Score: 155.63146393861433
+  r2:
+    Score: -0.09968603308237456
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: HOLD
+  Performance (%): -4.391588652430044
+  Average Reward: 5073614.034266549
+  Average Events/Episode: 146.66
+  Actions Distribution:
+    hold: 0.9203
+    buy: 0.0446
+    sell: 0.0351
+  RL Epoch Logs:
+    Episode 10: Reward = 4712621.52, Avg Reward = 6174972.50, Events = 147
+    Episode 20: Reward = 2515982.04, Avg Reward = 1260431.34, Events = 153
+    Episode 30: Reward = 9944151.23, Avg Reward = 2972678.96, Events = 129
+    Episode 40: Reward = 23586897.26, Avg Reward = 7501677.94, Events = 143
+    Episode 50: Reward = 6462728.74, Avg Reward = 5973820.64, Events = 142
+    Episode 60: Reward = 14944424.05, Avg Reward = 7900464.74, Events = 137
+    Episode 70: Reward = 23332734.16, Avg Reward = 3687434.77, Events = 155
+    Episode 80: Reward = -7471600.00, Avg Reward = 5160671.95, Events = 152
+    Episode 90: Reward = 1416030.10, Avg Reward = 3469382.99, Events = 172
+    Episode 100: Reward = -1273285.99, Avg Reward = 6634604.51, Events = 131
+
+[20250718_143751] Analysis for HINDUNILVR.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for HINDUSTAN UNILEVER LTD. (HINDUNILVR.NS): STRONG SELL
+Current Price: ₹2485.90
+
+Buy Score: -0.813, Sell Score: 0.913
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Stock is in a downtrend (50-day SMA < 200-day SMA).
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0123 (higher values indicate higher risk)
+- Sector: Consumer Defensive
+- Industry: Household & Personal Products
+
+Prediction Days: 30
+Current Price (USD): 28.85
+Predicted Price (USD): 2464.490193302805
+Predicted Change (%): 8442.43
+Confidence Score: 0.45514320789722984
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 22739.037940779985
+  mae:
+    Score: 118.8968085797401
+  r2:
+    Score: 0.45514320789722984
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 26.84152287202459
+  Average Reward: -576832.8394972394
+  Average Events/Episode: 148.5
+  Actions Distribution:
+    hold: 0.9271
+    buy: 0.0405
+    sell: 0.0324
+  RL Epoch Logs:
+    Episode 10: Reward = -9178082.92, Avg Reward = -4140688.56, Events = 148
+    Episode 20: Reward = 1320530.70, Avg Reward = -262262.56, Events = 135
+    Episode 30: Reward = -12839589.36, Avg Reward = -1650526.21, Events = 168
+    Episode 40: Reward = -9545868.47, Avg Reward = -2565890.59, Events = 157
+    Episode 50: Reward = 1435323.44, Avg Reward = 1070363.96, Events = 129
+    Episode 60: Reward = 859016.10, Avg Reward = 487897.86, Events = 160
+    Episode 70: Reward = 23606237.66, Avg Reward = -1289165.70, Events = 159
+    Episode 80: Reward = 3907550.30, Avg Reward = 3016432.50, Events = 149
+    Episode 90: Reward = -2839681.44, Avg Reward = -1826354.10, Events = 158
+    Episode 100: Reward = 12670277.60, Avg Reward = 1391865.00, Events = 153
+
+[20250718_144034] Analysis for ICICIBANK.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for ICICI BANK LTD. (ICICIBANK.NS): STRONG SELL
+Current Price: ₹1425.30
+
+Buy Score: -0.408, Sell Score: 0.508
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0075 (higher values indicate higher risk)
+- Sector: Financial Services
+- Industry: Banks - Regional
+
+Prediction Days: 30
+Current Price (USD): 16.54
+Predicted Price (USD): 849.6192284868356
+Predicted Change (%): 5036.75
+Confidence Score: -1.3901242787819754
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 28644.652385122023
+  mae:
+    Score: 149.95681211475843
+  r2:
+    Score: -1.3901242787819754
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 28.751701666099716
+  Average Reward: 9553895.358566267
+  Average Events/Episode: 145.92
+  Actions Distribution:
+    hold: 0.9230
+    buy: 0.0473
+    sell: 0.0297
+  RL Epoch Logs:
+    Episode 10: Reward = 35550.58, Avg Reward = 10138349.44, Events = 136
+    Episode 20: Reward = 4121506.82, Avg Reward = 8528598.91, Events = 147
+    Episode 30: Reward = 9113952.78, Avg Reward = 4870857.21, Events = 145
+    Episode 40: Reward = 6691150.22, Avg Reward = 11098766.86, Events = 146
+    Episode 50: Reward = 1910794.57, Avg Reward = 8447283.51, Events = 146
+    Episode 60: Reward = 13634153.52, Avg Reward = 11334089.51, Events = 153
+    Episode 70: Reward = 22111472.41, Avg Reward = 13476032.61, Events = 155
+    Episode 80: Reward = 1095273.69, Avg Reward = 9123949.77, Events = 139
+    Episode 90: Reward = 18949375.43, Avg Reward = 8274988.59, Events = 158
+    Episode 100: Reward = 23323345.95, Avg Reward = 10246037.18, Events = 153
+
+[20250718_144317] Analysis for KOTAKBANK.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for KOTAK MAHINDRA BANK LTD (KOTAKBANK.NS): STRONG SELL
+Current Price: ₹2139.60
+
+Buy Score: -0.344, Sell Score: 0.444
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0128 (higher values indicate higher risk)
+- Sector: Financial Services
+- Industry: Banks - Regional
+
+Prediction Days: 30
+Current Price (USD): 24.84
+Predicted Price (USD): 1947.5405744256398
+Predicted Change (%): 7740.34
+Confidence Score: 0.25106398157015797
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 21369.37241370589
+  mae:
+    Score: 113.58355633314787
+  r2:
+    Score: 0.25106398157015797
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 11.455662910346174
+  Average Reward: 3409389.7974170917
+  Average Events/Episode: 149.02
+  Actions Distribution:
+    hold: 0.9190
+    buy: 0.0283
+    sell: 0.0526
+  RL Epoch Logs:
+    Episode 10: Reward = 2722100.16, Avg Reward = 6593520.06, Events = 159
+    Episode 20: Reward = -8196126.42, Avg Reward = -2034100.72, Events = 153
+    Episode 30: Reward = 4087251.74, Avg Reward = 1483551.51, Events = 148
+    Episode 40: Reward = 5334738.25, Avg Reward = 2534955.44, Events = 159
+    Episode 50: Reward = 7225076.68, Avg Reward = 2696488.01, Events = 158
+    Episode 60: Reward = 2280232.46, Avg Reward = 6633778.56, Events = 141
+    Episode 70: Reward = 7296526.17, Avg Reward = 5416016.59, Events = 139
+    Episode 80: Reward = 2129067.95, Avg Reward = 5736451.52, Events = 157
+    Episode 90: Reward = 3446831.40, Avg Reward = 2150676.18, Events = 155
+    Episode 100: Reward = -9690268.64, Avg Reward = 2882560.81, Events = 143
+
+[20250718_144545] Analysis for BHARTIARTL.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for BHARTI AIRTEL LIMITED (BHARTIARTL.NS): STRONG SELL
+Current Price: ₹1901.80
+
+Buy Score: -0.394, Sell Score: 0.494
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0115 (higher values indicate higher risk)
+- Sector: Communication Services
+- Industry: Telecom Services
+
+Prediction Days: 30
+Current Price (USD): 22.08
+Predicted Price (USD): 1441.0488420289194
+Predicted Change (%): 6426.49
+Confidence Score: -1.7003585690694325
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 92246.90816073245
+  mae:
+    Score: 268.6093914338882
+  r2:
+    Score: -1.7003585690694325
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 46.987668958384546
+  Average Reward: 18548709.402755793
+  Average Events/Episode: 148.2
+  Actions Distribution:
+    hold: 0.9366
+    buy: 0.0202
+    sell: 0.0432
+  RL Epoch Logs:
+    Episode 10: Reward = 15058153.71, Avg Reward = 12480750.02, Events = 144
+    Episode 20: Reward = 17247309.55, Avg Reward = 11984534.88, Events = 156
+    Episode 30: Reward = 26099482.57, Avg Reward = 16240802.20, Events = 162
+    Episode 40: Reward = 27371267.73, Avg Reward = 21731943.18, Events = 149
+    Episode 50: Reward = 25980370.18, Avg Reward = 23513427.05, Events = 157
+    Episode 60: Reward = 23349203.28, Avg Reward = 20501608.21, Events = 132
+    Episode 70: Reward = 25829546.21, Avg Reward = 20372555.88, Events = 148
+    Episode 80: Reward = 5673556.48, Avg Reward = 19323859.59, Events = 159
+    Episode 90: Reward = 6136278.41, Avg Reward = 19892791.88, Events = 145
+    Episode 100: Reward = 15510793.86, Avg Reward = 19444821.14, Events = 135
+
+[20250718_144830] Analysis for ITC.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for ITC LTD (ITC.NS): STRONG SELL
+Current Price: ₹421.95
+
+Buy Score: -0.772, Sell Score: 0.872
+
+Bearish Factors:
+- Stock is in a downtrend (50-day SMA < 200-day SMA).
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0067 (higher values indicate higher risk)
+- Sector: Consumer Defensive
+- Industry: Tobacco
+
+Prediction Days: 30
+Current Price (USD): 4.9
+Predicted Price (USD): 426.0898401300763
+Predicted Change (%): 8595.71
+Confidence Score: 0.3109714021401294
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 827.9739074005486
+  mae:
+    Score: 19.43404857213173
+  r2:
+    Score: 0.3109714021401294
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: BUY
+  Performance (%): 18.392821397935347
+  Average Reward: 4718649.509697512
+  Average Events/Episode: 146.97
+  Actions Distribution:
+    hold: 0.9338
+    buy: 0.0351
+    sell: 0.0311
+  RL Epoch Logs:
+    Episode 10: Reward = 6093526.49, Avg Reward = 4871051.90, Events = 156
+    Episode 20: Reward = -2080952.97, Avg Reward = 5667691.47, Events = 136
+    Episode 30: Reward = 381718.28, Avg Reward = 3621096.94, Events = 145
+    Episode 40: Reward = 7380851.54, Avg Reward = 4616632.52, Events = 137
+    Episode 50: Reward = 4521057.48, Avg Reward = 5739043.26, Events = 134
+    Episode 60: Reward = 4795589.62, Avg Reward = 4807097.82, Events = 146
+    Episode 70: Reward = 1754846.83, Avg Reward = 3508703.82, Events = 158
+    Episode 80: Reward = 845555.22, Avg Reward = 4120263.24, Events = 133
+    Episode 90: Reward = 6711701.79, Avg Reward = 6425608.79, Events = 157
+    Episode 100: Reward = -323277.99, Avg Reward = 3809305.34, Events = 152
+
+[20250718_145100] Analysis for SBIN.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for STATE BANK OF INDIA (SBIN.NS): STRONG SELL
+Current Price: ₹823.75
+
+Buy Score: -0.313, Sell Score: 0.413
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0086 (higher values indicate higher risk)
+- Sector: Financial Services
+- Industry: Banks - Regional
+
+Prediction Days: 30
+Current Price (USD): 9.56
+Predicted Price (USD): 775.8266282488634
+Predicted Change (%): 8015.34
+Confidence Score: -0.7530295647115872
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 4309.271572894708
+  mae:
+    Score: 54.8410755295036
+  r2:
+    Score: -0.7530295647115872
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: HOLD
+  Performance (%): 3.1980877137853096
+  Average Reward: 8413311.615206687
+  Average Events/Episode: 146.03
+  Actions Distribution:
+    hold: 0.9459
+    buy: 0.0257
+    sell: 0.0284
+  RL Epoch Logs:
+    Episode 10: Reward = 2451854.98, Avg Reward = 6721229.52, Events = 155
+    Episode 20: Reward = 9312391.97, Avg Reward = 13791849.90, Events = 133
+    Episode 30: Reward = 17916578.38, Avg Reward = 8455298.54, Events = 160
+    Episode 40: Reward = 15930243.40, Avg Reward = 10631764.24, Events = 155
+    Episode 50: Reward = 5287904.87, Avg Reward = 6069405.31, Events = 146
+    Episode 60: Reward = 4119482.33, Avg Reward = 9051958.40, Events = 152
+    Episode 70: Reward = 4413310.36, Avg Reward = 8829154.03, Events = 143
+    Episode 80: Reward = 1897556.13, Avg Reward = 5695758.47, Events = 149
+    Episode 90: Reward = 20713232.70, Avg Reward = 9433430.25, Events = 152
+    Episode 100: Reward = 15931950.81, Avg Reward = 5453267.51, Events = 140
+
+[20250718_145330] Analysis for BAJFINANCE.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for BAJAJ FINANCE LIMITED (BAJFINANCE.NS): STRONG SELL
+Current Price: ₹941.65
+
+Buy Score: -0.471, Sell Score: 0.571
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative market sentiment from news and social media.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0127 (higher values indicate higher risk)
+- Sector: Financial Services
+- Industry: Credit Services
+
+Prediction Days: 30
+Current Price (USD): 10.93
+Predicted Price (USD): 806.25799259027
+Predicted Change (%): 7276.56
+Confidence Score: 0.22760126391082747
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 8257.749149021345
+  mae:
+    Score: 72.25629281651453
+  r2:
+    Score: 0.22760126391082747
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: HOLD
+  Performance (%): 8.227729336716264
+  Average Reward: 5728855.378739219
+  Average Events/Episode: 148.23
+  Actions Distribution:
+    hold: 0.9162
+    buy: 0.0432
+    sell: 0.0405
+  RL Epoch Logs:
+    Episode 10: Reward = -1791294.87, Avg Reward = 4945672.61, Events = 158
+    Episode 20: Reward = 2716649.44, Avg Reward = 3625787.06, Events = 164
+    Episode 30: Reward = 58990.44, Avg Reward = 3902784.61, Events = 149
+    Episode 40: Reward = 11961338.93, Avg Reward = 2977956.83, Events = 139
+    Episode 50: Reward = -1609019.86, Avg Reward = 4819022.26, Events = 148
+    Episode 60: Reward = 160567.00, Avg Reward = 7199002.37, Events = 140
+    Episode 70: Reward = 2332536.93, Avg Reward = 6773361.03, Events = 164
+    Episode 80: Reward = -2202285.90, Avg Reward = 5372258.42, Events = 151
+    Episode 90: Reward = 8150573.06, Avg Reward = 7939583.34, Events = 146
+    Episode 100: Reward = -945777.04, Avg Reward = 9733125.27, Events = 150
+
+[20250718_145604] Analysis for ASIANPAINT.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for ASIAN PAINTS LIMITED (ASIANPAINT.NS): STRONG SELL
+Current Price: ₹2384.50
+
+Buy Score: -0.881, Sell Score: 0.981
+
+Bearish Factors:
+- Stock is in a downtrend (50-day SMA < 200-day SMA).
+- Negative market sentiment from news and social media.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0104 (higher values indicate higher risk)
+- Sector: Basic Materials
+- Industry: Specialty Chemicals
+
+Prediction Days: 30
+Current Price (USD): 27.68
+Predicted Price (USD): 2728.065080696097
+Predicted Change (%): 9755.73
+Confidence Score: 0.04009622792293088
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 139401.14300715638
+  mae:
+    Score: 311.81557278945917
+  r2:
+    Score: 0.04009622792293088
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: SELL
+  Performance (%): -16.58743156502137
+  Average Reward: -1634774.922771275
+  Average Events/Episode: 147.02
+  Actions Distribution:
+    hold: 0.9311
+    buy: 0.0365
+    sell: 0.0324
+  RL Epoch Logs:
+    Episode 10: Reward = -8558365.73, Avg Reward = -2413221.48, Events = 133
+    Episode 20: Reward = -13410670.74, Avg Reward = -1000729.11, Events = 126
+    Episode 30: Reward = -3399274.39, Avg Reward = 1780503.58, Events = 163
+    Episode 40: Reward = 4951751.03, Avg Reward = -1217515.92, Events = 129
+    Episode 50: Reward = -6433665.56, Avg Reward = 3098439.41, Events = 141
+    Episode 60: Reward = -7874501.17, Avg Reward = 251978.35, Events = 154
+    Episode 70: Reward = -12477202.10, Avg Reward = -6654610.64, Events = 150
+    Episode 80: Reward = 1937062.26, Avg Reward = 532073.54, Events = 154
+    Episode 90: Reward = 13198358.75, Avg Reward = -2416451.19, Events = 146
+    Episode 100: Reward = -16819775.22, Avg Reward = -8308215.76, Events = 133

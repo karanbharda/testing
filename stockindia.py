@@ -39,6 +39,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 import logging
 from dotenv import load_dotenv
 from dhanhq import dhanhq
+import argparse
+import sys
+import signal
 
 
 # Setup logging
@@ -87,13 +90,28 @@ class VirtualPortfolio:
         self.cash = self.starting_balance
         self.holdings = {}  # {asset: {qty, avg_price}}
         self.trade_log = []
-        self.api = dhanhq(
-            client_id=config["dhan_client_id"],
-            access_token=config["dhan_access_token"]
-        )
+        self.mode = config.get("mode", "paper")
+
+        # Initialize Dhan API only if we have credentials
+        if config.get("dhan_client_id") and config.get("dhan_access_token"):
+            self.api = dhanhq(
+                client_id=config["dhan_client_id"],
+                access_token=config["dhan_access_token"]
+            )
+        else:
+            self.api = None
+            logger.warning("Dhan API credentials not provided. Running in simulation mode.")
+
         self.config = config
-        self.portfolio_file = "data/portfolio_india.json"
-        self.trade_log_file = "data/trade_log_india.json"
+
+        # Set file paths based on mode
+        if self.mode == "live":
+            self.portfolio_file = "data/portfolio_india_live.json"
+            self.trade_log_file = "data/trade_log_india_live.json"
+        else:
+            self.portfolio_file = "data/portfolio_india_paper.json"
+            self.trade_log_file = "data/trade_log_india_paper.json"
+
         self.initialize_files()
 
     def initialize_files(self):
@@ -106,6 +124,17 @@ class VirtualPortfolio:
             with open(self.trade_log_file, "w") as f:
                 json.dump([], f, indent=4)
 
+        # Initialize paper trading specific logs directory
+        if self.mode == "paper":
+            os.makedirs("logs", exist_ok=True)
+            self.paper_trade_log = f"logs/paper_trade_{datetime.now().strftime('%Y%m%d')}.txt"
+            # Initialize paper trade log file with header
+            if not os.path.exists(self.paper_trade_log):
+                with open(self.paper_trade_log, "w", encoding='utf-8') as f:
+                    f.write(f"=== PAPER TRADING SESSION - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+                    f.write(f"Starting Balance: ₹{self.starting_balance:,.2f}\n")
+                    f.write("="*80 + "\n\n")
+
     def initialize_portfolio(self, balance=None):
         """Reset or initialize portfolio with a given balance."""
         if balance is not None:
@@ -117,21 +146,29 @@ class VirtualPortfolio:
         self.save_trade_log()
 
     def buy(self, asset, qty, price):
-        """Execute a buy order in paper trading mode using Dhan API."""
+        """Execute a buy order in live or paper trading mode."""
         cost = qty * price
         if cost > self.cash:
             logger.warning(f"Insufficient cash for buy order: {asset}, qty: {qty}, price: {price}")
             return False
+
         try:
-            self.api.place_order(
-                security_id=self.get_security_id(asset),
-                exchange_segment="NSE_EQ",
-                transaction_type="BUY",
-                order_type="MARKET",
-                quantity=qty,
-                price=0,  # Market order uses 0 for price
-                validity="DAY"
-            )
+            # Only place actual order in live mode
+            if self.mode == "live" and self.api:
+                order_result = self.api.place_order(
+                    security_id=self.get_security_id(asset),
+                    exchange_segment="NSE_EQ",
+                    transaction_type="BUY",
+                    order_type="MARKET",
+                    quantity=qty,
+                    price=0,  # Market order uses 0 for price
+                    validity="DAY"
+                )
+                logger.info(f"Live order placed: {order_result}")
+            else:
+                logger.info(f"Paper trade executed: BUY {qty} {asset} at ₹{price}")
+
+            # Update portfolio regardless of mode
             self.cash -= cost
             if asset in self.holdings:
                 current_qty = self.holdings[asset]["qty"]
@@ -141,28 +178,45 @@ class VirtualPortfolio:
                 self.holdings[asset] = {"qty": new_qty, "avg_price": new_avg_price}
             else:
                 self.holdings[asset] = {"qty": qty, "avg_price": price}
-            self.log_trade({"asset": asset, "action": "buy", "qty": qty, "price": price, "timestamp": str(datetime.now())})
+
+            self.log_trade({
+                "asset": asset,
+                "action": "buy",
+                "qty": qty,
+                "price": price,
+                "mode": self.mode,
+                "timestamp": str(datetime.now())
+            })
             self.save_portfolio()
             return True
+
         except Exception as e:
             logger.error(f"Error executing buy order for {asset}: {e}")
             return False
 
     def sell(self, asset, qty, price):
-        """Execute a sell order in paper trading mode using Dhan API."""
+        """Execute a sell order in live or paper trading mode."""
         if asset not in self.holdings or self.holdings[asset]["qty"] < qty:
             logger.warning(f"Insufficient holdings for sell order: {asset}, qty: {qty}")
             return False
+
         try:
-            self.api.place_order(
-                security_id=self.get_security_id(asset),
-                exchange_segment="NSE_EQ",
-                transaction_type="SELL",
-                order_type="MARKET",
-                quantity=qty,
-                price=0,  # Market order uses 0 for price
-                validity="DAY"
-            )
+            # Only place actual order in live mode
+            if self.mode == "live" and self.api:
+                order_result = self.api.place_order(
+                    security_id=self.get_security_id(asset),
+                    exchange_segment="NSE_EQ",
+                    transaction_type="SELL",
+                    order_type="MARKET",
+                    quantity=qty,
+                    price=0,  # Market order uses 0 for price
+                    validity="DAY"
+                )
+                logger.info(f"Live order placed: {order_result}")
+            else:
+                logger.info(f"Paper trade executed: SELL {qty} {asset} at ₹{price}")
+
+            # Update portfolio regardless of mode
             revenue = qty * price
             self.cash += revenue
             current_qty = self.holdings[asset]["qty"]
@@ -170,9 +224,18 @@ class VirtualPortfolio:
                 del self.holdings[asset]
             else:
                 self.holdings[asset]["qty"] -= qty
-            self.log_trade({"asset": asset, "action": "sell", "qty": qty, "price": price, "timestamp": str(datetime.now())})
+
+            self.log_trade({
+                "asset": asset,
+                "action": "sell",
+                "qty": qty,
+                "price": price,
+                "mode": self.mode,
+                "timestamp": str(datetime.now())
+            })
             self.save_portfolio()
             return True
+
         except Exception as e:
             logger.error(f"Error executing sell order for {asset}: {e}")
             return False
@@ -231,6 +294,183 @@ class VirtualPortfolio:
         self.trade_log.append(trade)
         self.save_trade_log()
 
+        # Enhanced paper trading logging
+        if self.mode == "paper":
+            self.log_paper_trade_details(trade)
+
+    def log_paper_trade_details(self, trade):
+        """Log detailed paper trade information for Phase 2 objectives."""
+        try:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            action = trade["action"].upper()
+            asset = trade["asset"]
+            qty = trade["qty"]
+            price = trade["price"]
+
+            # Calculate current portfolio metrics
+            metrics = self.get_metrics()
+
+            log_entry = f"\n[{timestamp}] === {action} SIGNAL EXECUTED ===\n"
+            log_entry += f"Asset: {asset}\n"
+            log_entry += f"Action: {action} {qty} shares at ₹{price:.2f}\n"
+            log_entry += f"Trade Value: ₹{qty * price:,.2f}\n"
+
+            if action == "BUY":
+                log_entry += f"Entry Signal: Price ₹{price:.2f} identified as favorable entry point\n"
+                log_entry += f"Position Size: {qty} shares ({(qty * price / metrics['total_value'] * 100):.1f}% of portfolio)\n"
+            else:
+                if asset in self.holdings:
+                    avg_price = self.holdings[asset]["avg_price"]
+                    pnl = (price - avg_price) * qty
+                    pnl_pct = ((price / avg_price) - 1) * 100
+                    log_entry += f"Exit Signal: Price ₹{price:.2f} vs Entry ₹{avg_price:.2f}\n"
+                    log_entry += f"Trade P&L: ₹{pnl:,.2f} ({pnl_pct:+.2f}%)\n"
+
+            log_entry += f"Portfolio Cash: ₹{metrics['cash']:,.2f}\n"
+            log_entry += f"Total Portfolio Value: ₹{metrics['total_value']:,.2f}\n"
+            log_entry += f"Unrealized P&L: ₹{metrics['unrealized_pnl']:,.2f}\n"
+            log_entry += "="*60 + "\n"
+
+            with open(self.paper_trade_log, "a", encoding='utf-8') as f:
+                f.write(log_entry)
+
+        except Exception as e:
+            logger.error(f"Error logging paper trade details: {e}")
+
+    def log_strategy_trigger(self, ticker, analysis, decision_data):
+        """Log strategy trigger explanations for paper trading."""
+        if self.mode != "paper":
+            return
+
+        try:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            log_entry = f"\n[{timestamp}] === STRATEGY ANALYSIS: {ticker} ===\n"
+
+            # Technical Analysis Summary
+            if 'technical_analysis' in analysis:
+                tech = analysis['technical_analysis']
+                log_entry += f"Technical Indicators:\n"
+                log_entry += f"  • RSI: {tech.get('rsi', 'N/A'):.2f} {'(Oversold)' if tech.get('rsi', 50) < 30 else '(Overbought)' if tech.get('rsi', 50) > 70 else '(Neutral)'}\n"
+                log_entry += f"  • MACD: {tech.get('macd', 'N/A'):.4f}\n"
+                log_entry += f"  • SMA 50: ₹{tech.get('sma_50', 'N/A'):.2f}\n"
+                log_entry += f"  • SMA 200: ₹{tech.get('sma_200', 'N/A'):.2f}\n"
+                log_entry += f"  • Trend: {'Bullish' if tech.get('sma_50', 0) > tech.get('sma_200', 0) else 'Bearish'}\n"
+
+            # Sentiment Analysis Summary
+            if 'sentiment_analysis' in analysis:
+                sentiment = analysis['sentiment_analysis']['aggregated']
+                total = sum(sentiment.values())
+                if total > 0:
+                    pos_pct = sentiment['positive'] / total * 100
+                    neg_pct = sentiment['negative'] / total * 100
+                    log_entry += f"Market Sentiment:\n"
+                    log_entry += f"  • Positive: {pos_pct:.1f}% ({sentiment['positive']} articles)\n"
+                    log_entry += f"  • Negative: {neg_pct:.1f}% ({sentiment['negative']} articles)\n"
+                    log_entry += f"  • Overall: {'Bullish' if pos_pct > neg_pct else 'Bearish'}\n"
+
+            # ML/RL Predictions
+            if 'ml_analysis' in analysis:
+                ml = analysis['ml_analysis']
+                current_price = analysis.get('stock_data', {}).get('current_price', {}).get('INR', 0)
+                predicted_price = ml.get('predicted_price', current_price)
+                price_change = ((predicted_price / current_price) - 1) * 100 if current_price > 0 else 0
+
+                log_entry += f"ML/RL Analysis:\n"
+                log_entry += f"  • Current Price: ₹{current_price:.2f}\n"
+                log_entry += f"  • Predicted Price: ₹{predicted_price:.2f}\n"
+                log_entry += f"  • Expected Change: {price_change:+.2f}%\n"
+                log_entry += f"  • RL Recommendation: {ml.get('rl_metrics', {}).get('recommendation', 'HOLD')}\n"
+
+            # Decision Summary
+            log_entry += f"Decision Factors:\n"
+            log_entry += f"  • Buy Score: {decision_data.get('buy_score', 0):.3f}\n"
+            log_entry += f"  • Sell Score: {decision_data.get('sell_score', 0):.3f}\n"
+            log_entry += f"  • Buy Signals: {decision_data.get('buy_signals', 0)}/4\n"
+            log_entry += f"  • Sell Signals: {decision_data.get('sell_signals', 0)}/4\n"
+            log_entry += f"  • Final Decision: {decision_data.get('action', 'HOLD')}\n"
+
+            if decision_data.get('action') in ['BUY', 'SELL']:
+                log_entry += f"  • Quantity: {decision_data.get('quantity', 0)} shares\n"
+                log_entry += f"  • Trade Value: ₹{decision_data.get('trade_value', 0):,.2f}\n"
+
+            log_entry += "="*60 + "\n"
+
+            with open(self.paper_trade_log, "a", encoding='utf-8') as f:
+                f.write(log_entry)
+
+        except Exception as e:
+            logger.error(f"Error logging strategy trigger: {e}")
+
+    def generate_paper_pnl_summary(self):
+        """Generate comprehensive P&L summary for paper trading."""
+        if self.mode != "paper":
+            return
+
+        try:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            metrics = self.get_metrics()
+
+            # Calculate performance metrics
+            total_return = metrics['total_value'] - self.starting_balance
+            total_return_pct = (total_return / self.starting_balance) * 100
+
+            # Trade statistics
+            buy_trades = [t for t in self.trade_log if t['action'] == 'buy']
+            sell_trades = [t for t in self.trade_log if t['action'] == 'sell']
+
+            # Calculate realized P&L from completed trades
+            realized_pnl = 0
+            for sell_trade in sell_trades:
+                asset = sell_trade['asset']
+                # Find corresponding buy trades for this asset
+                asset_buy_trades = [t for t in buy_trades if t['asset'] == asset]
+                if asset_buy_trades:
+                    avg_buy_price = sum(t['price'] * t['qty'] for t in asset_buy_trades) / sum(t['qty'] for t in asset_buy_trades)
+                    realized_pnl += (sell_trade['price'] - avg_buy_price) * sell_trade['qty']
+
+            # Win/Loss ratio
+            profitable_trades = sum(1 for t in sell_trades if t['price'] >
+                                  (sum(bt['price'] * bt['qty'] for bt in buy_trades if bt['asset'] == t['asset']) /
+                                   sum(bt['qty'] for bt in buy_trades if bt['asset'] == t['asset']) if
+                                   any(bt['asset'] == t['asset'] for bt in buy_trades) else t['price']))
+
+            win_rate = (profitable_trades / len(sell_trades) * 100) if sell_trades else 0
+
+            summary = f"\n[{timestamp}] === PAPER TRADING P&L SUMMARY ===\n"
+            summary += f"Session Duration: {(datetime.now() - datetime.strptime(self.trade_log[0]['timestamp'], '%Y-%m-%d %H:%M:%S.%f')).total_seconds() / 3600:.1f} hours\n" if self.trade_log else "Session Duration: 0 hours\n"
+            summary += f"\nPortfolio Performance:\n"
+            summary += f"  • Starting Balance: ₹{self.starting_balance:,.2f}\n"
+            summary += f"  • Current Cash: ₹{metrics['cash']:,.2f}\n"
+            summary += f"  • Holdings Value: ₹{metrics['total_exposure']:,.2f}\n"
+            summary += f"  • Total Portfolio Value: ₹{metrics['total_value']:,.2f}\n"
+            summary += f"  • Total Return: ₹{total_return:,.2f} ({total_return_pct:+.2f}%)\n"
+            summary += f"  • Realized P&L: ₹{realized_pnl:,.2f}\n"
+            summary += f"  • Unrealized P&L: ₹{metrics['unrealized_pnl']:,.2f}\n"
+
+            summary += f"\nTrading Statistics:\n"
+            summary += f"  • Total Trades: {len(self.trade_log)}\n"
+            summary += f"  • Buy Orders: {len(buy_trades)}\n"
+            summary += f"  • Sell Orders: {len(sell_trades)}\n"
+            summary += f"  • Win Rate: {win_rate:.1f}%\n"
+            summary += f"  • Active Positions: {len(self.holdings)}\n"
+
+            if self.holdings:
+                summary += f"\nCurrent Holdings:\n"
+                for asset, data in self.holdings.items():
+                    current_value = data['qty'] * data['avg_price']  # Simplified - would need current price
+                    summary += f"  • {asset}: {data['qty']} shares @ ₹{data['avg_price']:.2f} (₹{current_value:,.2f})\n"
+
+            summary += "="*70 + "\n"
+
+            with open(self.paper_trade_log, "a", encoding='utf-8') as f:
+                f.write(summary)
+
+            logger.info("Paper trading P&L summary generated")
+
+        except Exception as e:
+            logger.error(f"Error generating paper P&L summary: {e}")
+
     def save_portfolio(self):
         """Save portfolio state to JSON file."""
         try:
@@ -260,34 +500,72 @@ class VirtualPortfolio:
         return prices
     
 
-class PaperExecutor:
+class TradingExecutor:
     def __init__(self, portfolio, config):
         self.portfolio = portfolio
-        self.mode = config["mode"]
+        self.mode = config.get("mode", "paper")
         self.dhanhq = portfolio.api  # Use the dhanhq client from VirtualPortfolio
+        self.stop_loss_pct = float(config.get("stop_loss_pct", 0.05))
+        self.max_capital_per_trade = float(config.get("max_capital_per_trade", 0.25))
+        self.max_trade_limit = int(config.get("max_trade_limit", 10))
 
-    def execute_trade(self, action, ticker, qty, price, stop_loss, take_profit):
+    def execute_trade(self, action, ticker, qty, price, stop_loss=None, take_profit=None):
         try:
-            # Fetch security ID
-            security_id = self.get_security_id(ticker)
-            if security_id is None:
-                error_msg = f"Could not find security ID for {ticker}"
-                logger.error(error_msg)
-                return {"success": False, "message": error_msg}
+            # Apply risk management rules
+            portfolio_value = self.portfolio.get_value({ticker: {"price": price}})
+            max_trade_value = portfolio_value * self.max_capital_per_trade
+            trade_value = qty * price
 
-            # Place order using correct Dhan API parameters
-            order = self.dhanhq.place_order(
-                security_id=security_id,
-                exchange_segment=self.dhanhq.NSE,  # Use dhan.NSE constant
-                transaction_type=self.dhanhq.BUY if action.upper() == "BUY" else self.dhanhq.SELL,
-                order_type=self.dhanhq.LIMIT,  # Use dhan.LIMIT constant
-                product_type=self.dhanhq.INTRA,  # Use dhan.INTRA constant
-                quantity=int(qty),
-                price=float(price),
-                validity=self.dhanhq.DAY  # Use dhan.DAY constant
-            )
+            # Check if trade exceeds maximum capital per trade
+            if trade_value > max_trade_value:
+                adjusted_qty = int(max_trade_value / price)
+                if adjusted_qty < qty:
+                    logger.warning(f"Reducing trade size from {qty} to {adjusted_qty} due to capital limits")
+                    qty = adjusted_qty
 
-            logger.info(f"Trade executed: {action} {qty} units of {ticker} at ₹{price}")
+            # Check trade limit
+            if len(self.portfolio.trade_log) >= self.max_trade_limit:
+                logger.warning(f"Maximum trade limit ({self.max_trade_limit}) reached")
+                return {"success": False, "message": "Trade limit exceeded"}
+
+            # Set default stop loss if not provided
+            if stop_loss is None:
+                if action.upper() == "BUY":
+                    stop_loss = price * (1 - self.stop_loss_pct)
+                else:
+                    stop_loss = price * (1 + self.stop_loss_pct)
+
+            # Execute trade based on mode
+            if self.mode == "live" and self.dhanhq:
+                # Fetch security ID for live trading
+                security_id = self.get_security_id(ticker)
+                if security_id is None:
+                    error_msg = f"Could not find security ID for {ticker}"
+                    logger.error(error_msg)
+                    return {"success": False, "message": error_msg}
+
+                # Place live order
+                order = self.dhanhq.place_order(
+                    security_id=security_id,
+                    exchange_segment="NSE_EQ",
+                    transaction_type=action.upper(),
+                    order_type="MARKET",
+                    quantity=int(qty),
+                    price=0,  # Market order
+                    validity="DAY"
+                )
+                logger.info(f"Live trade executed: {action} {qty} units of {ticker} at ₹{price}")
+            else:
+                # Enhanced paper trading logging
+                signal_type = "ENTRY" if action.upper() == "BUY" else "EXIT"
+                logger.info(f"📊 PAPER TRADE - {signal_type} SIGNAL: {action.upper()} {qty} units of {ticker} at ₹{price:.2f}")
+                logger.info(f"   💰 Trade Value: ₹{qty * price:,.2f}")
+                logger.info(f"   🛡️  Stop Loss: ₹{stop_loss:.2f} ({((stop_loss/price - 1) * 100):+.1f}%)")
+                if take_profit:
+                    logger.info(f"   🎯 Take Profit: ₹{take_profit:.2f} ({((take_profit/price - 1) * 100):+.1f}%)")
+                logger.info(f"   📈 Risk/Reward Ratio: {((take_profit - price) / (price - stop_loss)):.2f}" if take_profit and stop_loss < price else "N/A")
+                order = {"order_id": f"PAPER_{datetime.now().strftime('%Y%m%d_%H%M%S')}"}
+
             return {
                 "success": True,
                 "action": action,
@@ -296,6 +574,7 @@ class PaperExecutor:
                 "price": price,
                 "stop_loss": stop_loss,
                 "take_profit": take_profit,
+                "mode": self.mode,
                 "order": order
             }
         except Exception as e:
@@ -1997,7 +2276,7 @@ class StockTradingBot:
         self.timezone = pytz.timezone("Asia/Kolkata")  # Changed to India timezone
         self.data_feed = DataFeed(config["tickers"])
         self.portfolio = VirtualPortfolio(config)
-        self.executor = PaperExecutor(self.portfolio, config)
+        self.executor = TradingExecutor(self.portfolio, config)
         self.tracker = PortfolioTracker(self.portfolio, config)
         self.reporter = PerformanceReport(self.portfolio)
         self.stock_analyzer = Stock(
@@ -2413,6 +2692,19 @@ class StockTradingBot:
                         f"Sell Signals={sell_signals}, Buy Qty={buy_qty:.0f}, Sell Qty={sell_qty:.0f}, "
                         f"Backoff={backoff}, Cash=₹{available_cash:.2f}, ATR=₹{atr:.2f}")
 
+        # Log strategy trigger for paper trading
+        if self.portfolio.mode == "paper":
+            decision_data = {
+                "buy_score": final_buy_score,
+                "sell_score": final_sell_score,
+                "buy_signals": buy_signals,
+                "sell_signals": sell_signals,
+                "action": trade["action"].upper() if trade else "HOLD",
+                "quantity": trade["qty"] if trade else 0,
+                "trade_value": (trade["qty"] * trade["price"]) if trade else 0
+            }
+            self.portfolio.log_strategy_trigger(ticker, analysis, decision_data)
+
         return trade
 
     def run_analysis(self, ticker):
@@ -2458,6 +2750,10 @@ class StockTradingBot:
                 logger.info("Logging portfolio metrics at end of trading cycle...")
                 self.tracker.log_metrics()
 
+                # Generate P&L summary for paper trading every cycle
+                if self.portfolio.mode == "paper":
+                    self.portfolio.generate_paper_pnl_summary()
+
                 time.sleep(self.config.get("sleep_interval", 300))
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
@@ -2480,5 +2776,83 @@ def main():
 
     bot = StockTradingBot(config)
     bot.run()
+def signal_handler(sig, frame):
+    """Handle Ctrl+C gracefully."""
+    logger.info("Bot shutdown signal received. Shutting down gracefully...")
+    print("\n🤖 Bot shut down successfully!")
+    sys.exit(0)
+
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Indian Stock Trading Bot')
+    parser.add_argument('--mode', choices=['live', 'paper'],
+                       default=os.getenv('TRADING_MODE', 'paper'),
+                       help='Trading mode: live or paper (default: paper)')
+    return parser.parse_args()
+
+def main_with_mode():
+    """Main function with mode selection and enhanced configuration."""
+    try:
+        # Register signal handler for graceful shutdown
+        signal.signal(signal.SIGINT, signal_handler)
+
+        # Parse command line arguments
+        args = parse_arguments()
+
+        # Load environment variables
+        load_dotenv()
+
+        # Enhanced configuration with risk management
+        config = {
+            "tickers": [
+                "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "HINDUNILVR.NS",
+                "ICICIBANK.NS", "KOTAKBANK.NS", "BHARTIARTL.NS", "ITC.NS", "SBIN.NS",
+                "BAJFINANCE.NS", "ASIANPAINT.NS", "MARUTI.NS", "AXISBANK.NS", "LT.NS",
+                "HCLTECH.NS", "WIPRO.NS", "ULTRACEMCO.NS", "TITAN.NS", "NESTLEIND.NS"
+            ],
+            "starting_balance": 1000000,  # ₹10 lakh
+            "current_portfolio_value": 1000000,
+            "current_pnl": 0,
+            "mode": args.mode,
+            "dhan_client_id": os.getenv("DHAN_CLIENT_ID"),
+            "dhan_access_token": os.getenv("DHAN_ACCESS_TOKEN"),
+            "period": "3y",
+            "prediction_days": 30,
+            "benchmark_tickers": ["^NSEI"],
+            "sleep_interval": 300,  # 5 minutes
+            # Risk management settings from .env
+            "stop_loss_pct": float(os.getenv("STOP_LOSS_PCT", "0.05")),
+            "max_capital_per_trade": float(os.getenv("MAX_CAPITAL_PER_TRADE", "0.25")),
+            "max_trade_limit": int(os.getenv("MAX_TRADE_LIMIT", "10"))
+        }
+
+        # Display mode information
+        mode_display = " LIVE TRADING" if args.mode == "live" else "📝 PAPER TRADING"
+        logger.info(f"Starting Indian Stock Trading Bot in {mode_display} mode")
+
+        # Display startup banner - REMOVED as requested by user
+
+        if args.mode == "live":
+            if not config["dhan_client_id"] or not config["dhan_access_token"]:
+                logger.error("Dhan API credentials not found in .env file. Cannot run in live mode.")
+                print(" Error: Dhan API credentials required for live trading!")
+                return
+            print("⚠️  WARNING: Live trading mode enabled. Real money will be used!")
+            confirmation = input("Type 'CONFIRM' to proceed with live trading: ")
+            if confirmation != "CONFIRM":
+                print(" Live trading cancelled.")
+                return
+
+        # Initialize and run bot
+        bot = StockTradingBot(config)
+        bot.run()
+
+    except KeyboardInterrupt:
+        logger.info("Bot shutdown requested by user.")
+        print("\n Bot shut down successfully!")
+    except Exception as e:
+        logger.error(f"Critical error in main function: {e}")
+        print(f" Critical error: {e}")
+
 if __name__ == "__main__":
-    main()
+    main_with_mode()

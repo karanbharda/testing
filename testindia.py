@@ -42,6 +42,17 @@ from dhanhq import dhanhq
 import argparse
 import sys
 import signal
+import streamlit as st
+import threading
+import queue
+from langchain.llms.base import LLM
+from langchain.schema import BaseMessage, HumanMessage, AIMessage
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationChain
+from typing import Optional, List, Any
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 
 
 # Setup logging
@@ -57,6 +68,415 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
+
+# Custom Grok LLM Integration
+class GrokLLM(LLM):
+    """Custom LLM wrapper for Grok API integration."""
+
+    # Define Pydantic fields properly
+    api_key: str
+    model_name: str = "grok-beta"
+    base_url: str = "https://api.x.ai/v1"
+
+    def __init__(self, api_key: str, model_name: str = "grok-beta", **kwargs):
+        # Initialize with proper Pydantic field handling
+        super().__init__(
+            api_key=api_key,
+            model_name=model_name,
+            base_url="https://api.x.ai/v1",
+            **kwargs
+        )
+
+    @property
+    def _llm_type(self) -> str:
+        return "grok"
+
+    def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
+        """Call Grok API with the given prompt."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+
+            payload = {
+                "model": self.model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 1000,
+                "temperature": 0.7
+            }
+
+            response = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                return result["choices"][0]["message"]["content"]
+            else:
+                logger.error(f"Grok API error: {response.status_code} - {response.text}")
+                return "Sorry, I'm having trouble connecting to the AI service right now."
+
+        except Exception as e:
+            logger.error(f"Error calling Grok API: {e}")
+            return "Sorry, I encountered an error while processing your request."
+
+# Chat Interaction Logger
+class ChatLogger:
+    """Handles logging of chat interactions to JSON file."""
+
+    def __init__(self):
+        self.log_file = "data/chat_interactions.json"
+        os.makedirs("data", exist_ok=True)
+        self.interactions = self.load_interactions()
+
+    def load_interactions(self):
+        """Load existing chat interactions from file."""
+        try:
+            if os.path.exists(self.log_file):
+                with open(self.log_file, "r", encoding='utf-8') as f:
+                    return json.load(f)
+            return []
+        except Exception as e:
+            logger.error(f"Error loading chat interactions: {e}")
+            return []
+
+    def log_interaction(self, user_input: str, bot_response: str, command_type: str = None):
+        """Log a chat interaction."""
+        interaction = {
+            "timestamp": datetime.now().isoformat(),
+            "user_input": user_input,
+            "bot_response": bot_response,
+            "command_type": command_type,
+            "session_id": getattr(st.session_state, 'session_id', 'unknown')
+        }
+
+        self.interactions.append(interaction)
+        self.save_interactions()
+
+    def save_interactions(self):
+        """Save interactions to JSON file."""
+        try:
+            with open(self.log_file, "w", encoding='utf-8') as f:
+                json.dump(self.interactions, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Error saving chat interactions: {e}")
+
+# Chatbot Command Handler
+class ChatbotCommandHandler:
+    """Handles chatbot commands and integrates with trading bot."""
+
+    def __init__(self, trading_bot):
+        self.trading_bot = trading_bot
+        self.chat_logger = ChatLogger()
+        self.grok_llm = None
+        self.conversation_memory = ConversationBufferMemory()
+        self.trading_paused = False
+        self.pause_until = None
+
+        # Initialize Grok LLM if API key is available
+        grok_api_key = os.getenv("GROK_API_KEY")
+        if grok_api_key:
+            self.grok_llm = GrokLLM(api_key=grok_api_key)
+            self.conversation_chain = ConversationChain(
+                llm=self.grok_llm,
+                memory=self.conversation_memory,
+                verbose=True
+            )
+
+    def process_command(self, user_input: str) -> str:
+        """Process user command and return response."""
+        try:
+            user_input = user_input.strip()
+
+            # Check if it's a command (starts with /)
+            if user_input.startswith('/'):
+                response = self.handle_command(user_input)
+                command_type = user_input.split()[0]
+            else:
+                # Use Grok LLM for general conversation
+                response = self.handle_general_query(user_input)
+                command_type = "general"
+
+            # Log the interaction
+            self.chat_logger.log_interaction(user_input, response, command_type)
+            return response
+
+        except Exception as e:
+            logger.error(f"Error processing command: {e}")
+            return f"Sorry, I encountered an error: {str(e)}"
+
+    def handle_command(self, command: str) -> str:
+        """Handle specific bot commands."""
+        parts = command.split()
+        cmd = parts[0].lower()
+
+        try:
+            if cmd == "/start_bot":
+                return self.start_bot()
+            elif cmd == "/set_risk":
+                risk_level = parts[1].upper() if len(parts) > 1 else "MEDIUM"
+                return self.set_risk(risk_level)
+            elif cmd == "/get_pnl":
+                return self.get_pnl()
+            elif cmd == "/why_trade":
+                ticker = parts[1] if len(parts) > 1 else None
+                return self.why_trade(ticker)
+            elif cmd == "/list_positions":
+                return self.list_positions()
+            elif cmd == "/set_ticker":
+                ticker = parts[1] if len(parts) > 1 else None
+                action = parts[2].upper() if len(parts) > 2 else "ADD"
+                return self.set_ticker(ticker, action)
+            elif cmd == "/get_signals":
+                ticker = parts[1] if len(parts) > 1 else None
+                return self.get_signals(ticker)
+            elif cmd == "/pause_trading":
+                minutes = int(parts[1]) if len(parts) > 1 else 30
+                return self.pause_trading(minutes)
+            elif cmd == "/resume_trading":
+                return self.resume_trading()
+            elif cmd == "/get_performance":
+                period = parts[1] if len(parts) > 1 else "1d"
+                return self.get_performance(period)
+            elif cmd == "/set_allocation":
+                percentage = float(parts[1]) if len(parts) > 1 else 25.0
+                return self.set_allocation(percentage)
+            else:
+                return f"Unknown command: {cmd}. Type /help for available commands."
+
+        except Exception as e:
+            logger.error(f"Error handling command {cmd}: {e}")
+            return f"Error executing command {cmd}: {str(e)}"
+
+    def handle_general_query(self, query: str) -> str:
+        """Handle general queries using Grok LLM."""
+        if not self.grok_llm:
+            return "AI chat is not available. Please configure GROK_API_KEY in your .env file."
+
+        try:
+            # Add context about the trading bot
+            context = f"""
+            You are an AI assistant for an Indian stock trading bot. Current context:
+            - Portfolio Value: ₹{self.trading_bot.portfolio.get_metrics()['total_value']:,.2f}
+            - Active Positions: {len(self.trading_bot.portfolio.holdings)}
+            - Trading Mode: {self.trading_bot.portfolio.mode}
+            - Available Commands: /start_bot, /set_risk, /get_pnl, /why_trade, /list_positions, /set_ticker, /get_signals, /pause_trading, /resume_trading, /get_performance, /set_allocation
+
+            User Query: {query}
+            """
+
+            response = self.conversation_chain.predict(input=context)
+            return response
+
+        except Exception as e:
+            logger.error(f"Error with Grok LLM: {e}")
+            return "Sorry, I'm having trouble with the AI service right now."
+
+    # Command Implementation Methods
+    def start_bot(self) -> str:
+        """Start the trading bot."""
+        try:
+            logger.info("Bot start command received via chat interface")
+            return "✅ Trading bot is active and monitoring markets. Check logs for detailed activity."
+        except Exception as e:
+            return f"❌ Error starting bot: {str(e)}"
+
+    def set_risk(self, risk_level: str) -> str:
+        """Set risk level and update stop-loss."""
+        try:
+            risk_mapping = {
+                "LOW": 0.03,    # 3% stop-loss
+                "MEDIUM": 0.05, # 5% stop-loss
+                "HIGH": 0.08    # 8% stop-loss
+            }
+
+            if risk_level not in risk_mapping:
+                return f"❌ Invalid risk level. Use: LOW, MEDIUM, or HIGH"
+
+            new_stop_loss = risk_mapping[risk_level]
+            self.trading_bot.config["stop_loss_pct"] = new_stop_loss
+            self.trading_bot.executor.stop_loss_pct = new_stop_loss
+
+            return f"✅ Risk level set to {risk_level}. Stop-loss updated to {new_stop_loss*100}%"
+        except Exception as e:
+            return f"❌ Error setting risk level: {str(e)}"
+
+    def get_pnl(self) -> str:
+        """Get current portfolio P&L metrics."""
+        try:
+            metrics = self.trading_bot.portfolio.get_metrics()
+            starting_balance = self.trading_bot.portfolio.starting_balance
+            total_return = metrics['total_value'] - starting_balance
+            return_pct = (total_return / starting_balance) * 100
+
+            pnl_report = f"""
+📊 **Portfolio Metrics**
+💰 Total Value: ₹{metrics['total_value']:,.2f}
+💵 Cash: ₹{metrics['cash']:,.2f}
+📈 Holdings Value: ₹{metrics['total_exposure']:,.2f}
+🎯 Total Return: ₹{total_return:,.2f} ({return_pct:+.2f}%)
+✅ Realized P&L: ₹{metrics['realized_pnl']:,.2f}
+📊 Unrealized P&L: ₹{metrics['unrealized_pnl']:,.2f}
+🏢 Active Positions: {len(self.trading_bot.portfolio.holdings)}
+            """
+            return pnl_report.strip()
+        except Exception as e:
+            return f"❌ Error getting P&L: {str(e)}"
+
+    def list_positions(self) -> str:
+        """List all open positions."""
+        try:
+            holdings = self.trading_bot.portfolio.holdings
+            if not holdings:
+                return "📭 No open positions currently."
+
+            positions_text = "📊 **Current Positions:**\n"
+            for ticker, data in holdings.items():
+                current_value = data['qty'] * data['avg_price']
+                positions_text += f"• {ticker}: {data['qty']} shares @ ₹{data['avg_price']:.2f} (₹{current_value:,.2f})\n"
+
+            return positions_text.strip()
+        except Exception as e:
+            return f"❌ Error listing positions: {str(e)}"
+
+    def set_ticker(self, ticker: str, action: str) -> str:
+        """Add or remove ticker from watchlist."""
+        try:
+            if not ticker:
+                return "❌ Please specify a ticker. Example: /set_ticker RELIANCE.NS ADD"
+
+            current_tickers = self.trading_bot.config["tickers"]
+
+            if action == "ADD":
+                if ticker not in current_tickers:
+                    current_tickers.append(ticker)
+                    return f"✅ Added {ticker} to watchlist. Total tickers: {len(current_tickers)}"
+                else:
+                    return f"ℹ️ {ticker} is already in watchlist."
+
+            elif action == "REMOVE":
+                if ticker in current_tickers:
+                    current_tickers.remove(ticker)
+                    return f"✅ Removed {ticker} from watchlist. Total tickers: {len(current_tickers)}"
+                else:
+                    return f"ℹ️ {ticker} is not in watchlist."
+
+            else:
+                return "❌ Invalid action. Use ADD or REMOVE."
+
+        except Exception as e:
+            return f"❌ Error managing ticker: {str(e)}"
+
+    def get_signals(self, ticker: str) -> str:
+        """Get current trading signals for a ticker."""
+        try:
+            if not ticker:
+                return "❌ Please specify a ticker. Example: /get_signals TCS.NS"
+
+            analysis = self.trading_bot.run_analysis(ticker)
+            if not analysis.get("success"):
+                return f"❌ Could not get signals for {ticker}: {analysis.get('message', 'Unknown error')}"
+
+            technical = analysis["technical_indicators"]
+            current_price = analysis["stock_data"]["current_price"]["INR"]
+
+            signals_text = f"""
+🎯 **Trading Signals for {ticker}**
+💰 Current Price: ₹{current_price:.2f}
+
+📊 **Technical Signals:**
+• RSI: {technical['rsi']:.2f} {'🔴 Overbought' if technical['rsi'] > 70 else '🟢 Oversold' if technical['rsi'] < 30 else '🟡 Neutral'}
+• MACD: {technical['macd']:.4f} {'🟢 Bullish' if technical['macd'] > 0 else '🔴 Bearish'}
+• SMA Trend: {'🟢 Bullish' if technical['sma_50'] > technical['sma_200'] else '🔴 Bearish'}
+• Bollinger Bands: {'🔴 Overbought' if current_price > technical['bb_upper'] else '🟢 Oversold' if current_price < technical['bb_lower'] else '🟡 Normal'}
+
+📈 **Overall Signal:** {analysis['recommendation']}
+            """
+            return signals_text.strip()
+        except Exception as e:
+            return f"❌ Error getting signals: {str(e)}"
+
+    def pause_trading(self, minutes: int) -> str:
+        """Pause trading for specified minutes."""
+        try:
+            self.trading_paused = True
+            self.pause_until = datetime.now() + timedelta(minutes=minutes)
+            return f"⏸️ Trading paused for {minutes} minutes until {self.pause_until.strftime('%H:%M:%S')}"
+        except Exception as e:
+            return f"❌ Error pausing trading: {str(e)}"
+
+    def resume_trading(self) -> str:
+        """Resume trading."""
+        try:
+            self.trading_paused = False
+            self.pause_until = None
+            return "▶️ Trading resumed successfully."
+        except Exception as e:
+            return f"❌ Error resuming trading: {str(e)}"
+
+    def get_performance(self, period: str) -> str:
+        """Get performance report for specified period."""
+        try:
+            metrics = self.trading_bot.portfolio.get_metrics()
+            starting_balance = self.trading_bot.portfolio.starting_balance
+
+            # Calculate performance metrics
+            total_return = metrics['total_value'] - starting_balance
+            return_pct = (total_return / starting_balance) * 100
+
+            # Get trade statistics
+            trades = self.trading_bot.portfolio.trade_log
+            recent_trades = []
+
+            # Filter trades based on period
+            now = datetime.now()
+            if period == "1d":
+                cutoff = now - timedelta(days=1)
+            elif period == "1w":
+                cutoff = now - timedelta(weeks=1)
+            elif period == "1m":
+                cutoff = now - timedelta(days=30)
+            else:
+                cutoff = now - timedelta(days=1)
+
+            for trade in trades:
+                try:
+                    trade_time = datetime.strptime(trade["timestamp"], "%Y-%m-%d %H:%M:%S.%f")
+                    if trade_time >= cutoff:
+                        recent_trades.append(trade)
+                except:
+                    continue
+
+            performance_text = f"""
+📈 **Performance Report ({period})**
+💰 Current Value: ₹{metrics['total_value']:,.2f}
+🎯 Total Return: ₹{total_return:,.2f} ({return_pct:+.2f}%)
+📊 Realized P&L: ₹{metrics['realized_pnl']:,.2f}
+📈 Unrealized P&L: ₹{metrics['unrealized_pnl']:,.2f}
+🔄 Recent Trades: {len(recent_trades)}
+🏢 Active Positions: {len(self.trading_bot.portfolio.holdings)}
+            """
+            return performance_text.strip()
+        except Exception as e:
+            return f"❌ Error getting performance: {str(e)}"
+
+    def set_allocation(self, percentage: float) -> str:
+        """Set maximum capital allocation per trade."""
+        try:
+            if percentage <= 0 or percentage > 100:
+                return "❌ Allocation must be between 0 and 100%"
+
+            allocation_decimal = percentage / 100
+            self.trading_bot.config["max_capital_per_trade"] = allocation_decimal
+            self.trading_bot.executor.max_capital_per_trade = allocation_decimal
+
+            return f"✅ Maximum allocation per trade set to {percentage}%"
+        except Exception as e:
+            return f"❌ Error setting allocation: {str(e)}"
 
 class DataFeed:
     def __init__(self, tickers):
@@ -123,6 +543,17 @@ class VirtualPortfolio:
         if not os.path.exists(self.trade_log_file):
             with open(self.trade_log_file, "w") as f:
                 json.dump([], f, indent=4)
+
+        # Initialize paper trading specific logs directory
+        if self.mode == "paper":
+            os.makedirs("logs", exist_ok=True)
+            self.paper_trade_log = f"logs/paper_trade_{datetime.now().strftime('%Y%m%d')}.txt"
+            # Initialize paper trade log file with header
+            if not os.path.exists(self.paper_trade_log):
+                with open(self.paper_trade_log, "w", encoding='utf-8') as f:
+                    f.write(f"=== PAPER TRADING SESSION - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+                    f.write(f"Starting Balance: ₹{self.starting_balance:,.2f}\n")
+                    f.write("="*80 + "\n\n")
 
     def initialize_portfolio(self, balance=None):
         """Reset or initialize portfolio with a given balance."""
@@ -283,6 +714,183 @@ class VirtualPortfolio:
         self.trade_log.append(trade)
         self.save_trade_log()
 
+        # Enhanced paper trading logging
+        if self.mode == "paper":
+            self.log_paper_trade_details(trade)
+
+    def log_paper_trade_details(self, trade):
+        """Log detailed paper trade information for Phase 2 objectives."""
+        try:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            action = trade["action"].upper()
+            asset = trade["asset"]
+            qty = trade["qty"]
+            price = trade["price"]
+
+            # Calculate current portfolio metrics
+            metrics = self.get_metrics()
+
+            log_entry = f"\n[{timestamp}] === {action} SIGNAL EXECUTED ===\n"
+            log_entry += f"Asset: {asset}\n"
+            log_entry += f"Action: {action} {qty} shares at ₹{price:.2f}\n"
+            log_entry += f"Trade Value: ₹{qty * price:,.2f}\n"
+
+            if action == "BUY":
+                log_entry += f"Entry Signal: Price ₹{price:.2f} identified as favorable entry point\n"
+                log_entry += f"Position Size: {qty} shares ({(qty * price / metrics['total_value'] * 100):.1f}% of portfolio)\n"
+            else:
+                if asset in self.holdings:
+                    avg_price = self.holdings[asset]["avg_price"]
+                    pnl = (price - avg_price) * qty
+                    pnl_pct = ((price / avg_price) - 1) * 100
+                    log_entry += f"Exit Signal: Price ₹{price:.2f} vs Entry ₹{avg_price:.2f}\n"
+                    log_entry += f"Trade P&L: ₹{pnl:,.2f} ({pnl_pct:+.2f}%)\n"
+
+            log_entry += f"Portfolio Cash: ₹{metrics['cash']:,.2f}\n"
+            log_entry += f"Total Portfolio Value: ₹{metrics['total_value']:,.2f}\n"
+            log_entry += f"Unrealized P&L: ₹{metrics['unrealized_pnl']:,.2f}\n"
+            log_entry += "="*60 + "\n"
+
+            with open(self.paper_trade_log, "a", encoding='utf-8') as f:
+                f.write(log_entry)
+
+        except Exception as e:
+            logger.error(f"Error logging paper trade details: {e}")
+
+    def log_strategy_trigger(self, ticker, analysis, decision_data):
+        """Log strategy trigger explanations for paper trading."""
+        if self.mode != "paper":
+            return
+
+        try:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            log_entry = f"\n[{timestamp}] === STRATEGY ANALYSIS: {ticker} ===\n"
+
+            # Technical Analysis Summary
+            if 'technical_analysis' in analysis:
+                tech = analysis['technical_analysis']
+                log_entry += f"Technical Indicators:\n"
+                log_entry += f"  • RSI: {tech.get('rsi', 'N/A'):.2f} {'(Oversold)' if tech.get('rsi', 50) < 30 else '(Overbought)' if tech.get('rsi', 50) > 70 else '(Neutral)'}\n"
+                log_entry += f"  • MACD: {tech.get('macd', 'N/A'):.4f}\n"
+                log_entry += f"  • SMA 50: ₹{tech.get('sma_50', 'N/A'):.2f}\n"
+                log_entry += f"  • SMA 200: ₹{tech.get('sma_200', 'N/A'):.2f}\n"
+                log_entry += f"  • Trend: {'Bullish' if tech.get('sma_50', 0) > tech.get('sma_200', 0) else 'Bearish'}\n"
+
+            # Sentiment Analysis Summary
+            if 'sentiment_analysis' in analysis:
+                sentiment = analysis['sentiment_analysis']['aggregated']
+                total = sum(sentiment.values())
+                if total > 0:
+                    pos_pct = sentiment['positive'] / total * 100
+                    neg_pct = sentiment['negative'] / total * 100
+                    log_entry += f"Market Sentiment:\n"
+                    log_entry += f"  • Positive: {pos_pct:.1f}% ({sentiment['positive']} articles)\n"
+                    log_entry += f"  • Negative: {neg_pct:.1f}% ({sentiment['negative']} articles)\n"
+                    log_entry += f"  • Overall: {'Bullish' if pos_pct > neg_pct else 'Bearish'}\n"
+
+            # ML/RL Predictions
+            if 'ml_analysis' in analysis:
+                ml = analysis['ml_analysis']
+                current_price = analysis.get('stock_data', {}).get('current_price', {}).get('INR', 0)
+                predicted_price = ml.get('predicted_price', current_price)
+                price_change = ((predicted_price / current_price) - 1) * 100 if current_price > 0 else 0
+
+                log_entry += f"ML/RL Analysis:\n"
+                log_entry += f"  • Current Price: ₹{current_price:.2f}\n"
+                log_entry += f"  • Predicted Price: ₹{predicted_price:.2f}\n"
+                log_entry += f"  • Expected Change: {price_change:+.2f}%\n"
+                log_entry += f"  • RL Recommendation: {ml.get('rl_metrics', {}).get('recommendation', 'HOLD')}\n"
+
+            # Decision Summary
+            log_entry += f"Decision Factors:\n"
+            log_entry += f"  • Buy Score: {decision_data.get('buy_score', 0):.3f}\n"
+            log_entry += f"  • Sell Score: {decision_data.get('sell_score', 0):.3f}\n"
+            log_entry += f"  • Buy Signals: {decision_data.get('buy_signals', 0)}/4\n"
+            log_entry += f"  • Sell Signals: {decision_data.get('sell_signals', 0)}/4\n"
+            log_entry += f"  • Final Decision: {decision_data.get('action', 'HOLD')}\n"
+
+            if decision_data.get('action') in ['BUY', 'SELL']:
+                log_entry += f"  • Quantity: {decision_data.get('quantity', 0)} shares\n"
+                log_entry += f"  • Trade Value: ₹{decision_data.get('trade_value', 0):,.2f}\n"
+
+            log_entry += "="*60 + "\n"
+
+            with open(self.paper_trade_log, "a", encoding='utf-8') as f:
+                f.write(log_entry)
+
+        except Exception as e:
+            logger.error(f"Error logging strategy trigger: {e}")
+
+    def generate_paper_pnl_summary(self):
+        """Generate comprehensive P&L summary for paper trading."""
+        if self.mode != "paper":
+            return
+
+        try:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            metrics = self.get_metrics()
+
+            # Calculate performance metrics
+            total_return = metrics['total_value'] - self.starting_balance
+            total_return_pct = (total_return / self.starting_balance) * 100
+
+            # Trade statistics
+            buy_trades = [t for t in self.trade_log if t['action'] == 'buy']
+            sell_trades = [t for t in self.trade_log if t['action'] == 'sell']
+
+            # Calculate realized P&L from completed trades
+            realized_pnl = 0
+            for sell_trade in sell_trades:
+                asset = sell_trade['asset']
+                # Find corresponding buy trades for this asset
+                asset_buy_trades = [t for t in buy_trades if t['asset'] == asset]
+                if asset_buy_trades:
+                    avg_buy_price = sum(t['price'] * t['qty'] for t in asset_buy_trades) / sum(t['qty'] for t in asset_buy_trades)
+                    realized_pnl += (sell_trade['price'] - avg_buy_price) * sell_trade['qty']
+
+            # Win/Loss ratio
+            profitable_trades = sum(1 for t in sell_trades if t['price'] >
+                                  (sum(bt['price'] * bt['qty'] for bt in buy_trades if bt['asset'] == t['asset']) /
+                                   sum(bt['qty'] for bt in buy_trades if bt['asset'] == t['asset']) if
+                                   any(bt['asset'] == t['asset'] for bt in buy_trades) else t['price']))
+
+            win_rate = (profitable_trades / len(sell_trades) * 100) if sell_trades else 0
+
+            summary = f"\n[{timestamp}] === PAPER TRADING P&L SUMMARY ===\n"
+            summary += f"Session Duration: {(datetime.now() - datetime.strptime(self.trade_log[0]['timestamp'], '%Y-%m-%d %H:%M:%S.%f')).total_seconds() / 3600:.1f} hours\n" if self.trade_log else "Session Duration: 0 hours\n"
+            summary += f"\nPortfolio Performance:\n"
+            summary += f"  • Starting Balance: ₹{self.starting_balance:,.2f}\n"
+            summary += f"  • Current Cash: ₹{metrics['cash']:,.2f}\n"
+            summary += f"  • Holdings Value: ₹{metrics['total_exposure']:,.2f}\n"
+            summary += f"  • Total Portfolio Value: ₹{metrics['total_value']:,.2f}\n"
+            summary += f"  • Total Return: ₹{total_return:,.2f} ({total_return_pct:+.2f}%)\n"
+            summary += f"  • Realized P&L: ₹{realized_pnl:,.2f}\n"
+            summary += f"  • Unrealized P&L: ₹{metrics['unrealized_pnl']:,.2f}\n"
+
+            summary += f"\nTrading Statistics:\n"
+            summary += f"  • Total Trades: {len(self.trade_log)}\n"
+            summary += f"  • Buy Orders: {len(buy_trades)}\n"
+            summary += f"  • Sell Orders: {len(sell_trades)}\n"
+            summary += f"  • Win Rate: {win_rate:.1f}%\n"
+            summary += f"  • Active Positions: {len(self.holdings)}\n"
+
+            if self.holdings:
+                summary += f"\nCurrent Holdings:\n"
+                for asset, data in self.holdings.items():
+                    current_value = data['qty'] * data['avg_price']  # Simplified - would need current price
+                    summary += f"  • {asset}: {data['qty']} shares @ ₹{data['avg_price']:.2f} (₹{current_value:,.2f})\n"
+
+            summary += "="*70 + "\n"
+
+            with open(self.paper_trade_log, "a", encoding='utf-8') as f:
+                f.write(summary)
+
+            logger.info("Paper trading P&L summary generated")
+
+        except Exception as e:
+            logger.error(f"Error generating paper P&L summary: {e}")
+
     def save_portfolio(self):
         """Save portfolio state to JSON file."""
         try:
@@ -368,8 +976,14 @@ class TradingExecutor:
                 )
                 logger.info(f"Live trade executed: {action} {qty} units of {ticker} at ₹{price}")
             else:
-                # Paper trading
-                logger.info(f"Paper trade executed: {action} {qty} units of {ticker} at ₹{price}")
+                # Enhanced paper trading logging
+                signal_type = "ENTRY" if action.upper() == "BUY" else "EXIT"
+                logger.info(f"📊 PAPER TRADE - {signal_type} SIGNAL: {action.upper()} {qty} units of {ticker} at ₹{price:.2f}")
+                logger.info(f"   💰 Trade Value: ₹{qty * price:,.2f}")
+                logger.info(f"   🛡️  Stop Loss: ₹{stop_loss:.2f} ({((stop_loss/price - 1) * 100):+.1f}%)")
+                if take_profit:
+                    logger.info(f"   🎯 Take Profit: ₹{take_profit:.2f} ({((take_profit/price - 1) * 100):+.1f}%)")
+                logger.info(f"   📈 Risk/Reward Ratio: {((take_profit - price) / (price - stop_loss)):.2f}" if take_profit and stop_loss < price else "N/A")
                 order = {"order_id": f"PAPER_{datetime.now().strftime('%Y%m%d_%H%M%S')}"}
 
             return {
@@ -2090,6 +2704,11 @@ class StockTradingBot:
             reddit_client_secret=config.get("reddit_client_secret"),
             reddit_user_agent=config.get("reddit_user_agent")
         )
+
+        # Initialize chatbot command handler
+        self.chatbot = ChatbotCommandHandler(self)
+        self.bot_running = False
+        self.command_queue = queue.Queue()
         self.initialize()
 
     def initialize(self):
@@ -2498,6 +3117,19 @@ class StockTradingBot:
                         f"Sell Signals={sell_signals}, Buy Qty={buy_qty:.0f}, Sell Qty={sell_qty:.0f}, "
                         f"Backoff={backoff}, Cash=₹{available_cash:.2f}, ATR=₹{atr:.2f}")
 
+        # Log strategy trigger for paper trading
+        if self.portfolio.mode == "paper":
+            decision_data = {
+                "buy_score": final_buy_score,
+                "sell_score": final_sell_score,
+                "buy_signals": buy_signals,
+                "sell_signals": sell_signals,
+                "action": trade["action"].upper() if trade else "HOLD",
+                "quantity": trade["qty"] if trade else 0,
+                "trade_value": (trade["qty"] * trade["price"]) if trade else 0
+            }
+            self.portfolio.log_strategy_trigger(ticker, analysis, decision_data)
+
         return trade
 
     def run_analysis(self, ticker):
@@ -2512,8 +3144,21 @@ class StockTradingBot:
     def run(self):
         """Main bot loop to run analysis, make trades, and generate reports."""
         logger.info("Starting Stock Trading Bot for Indian market...")
+        self.bot_running = True
+
         while True:
             try:
+                # Check if trading is paused
+                if self.chatbot.trading_paused:
+                    if self.chatbot.pause_until and datetime.now() >= self.chatbot.pause_until:
+                        self.chatbot.trading_paused = False
+                        self.chatbot.pause_until = None
+                        logger.info("Trading pause expired, resuming trading...")
+                    else:
+                        logger.info("Trading is paused, waiting...")
+                        time.sleep(60)  # Wait 1 minute
+                        continue
+
                 # if not self.is_market_open():
                 #     logger.info("NSE market is closed, waiting...")
                 #     time.sleep(300)  # Wait 5 minutes
@@ -2542,6 +3187,10 @@ class StockTradingBot:
 
                 logger.info("Logging portfolio metrics at end of trading cycle...")
                 self.tracker.log_metrics()
+
+                # Generate P&L summary for paper trading every cycle
+                if self.portfolio.mode == "paper":
+                    self.portfolio.generate_paper_pnl_summary()
 
                 time.sleep(self.config.get("sleep_interval", 300))
             except Exception as e:
@@ -2616,31 +3265,20 @@ def main_with_mode():
         }
 
         # Display mode information
-        mode_display = "🔴 LIVE TRADING" if args.mode == "live" else "📝 PAPER TRADING"
+        mode_display = " LIVE TRADING" if args.mode == "live" else "📝 PAPER TRADING"
         logger.info(f"Starting Indian Stock Trading Bot in {mode_display} mode")
 
-        # Display startup banner
-        print("\n" + "="*60)
-        print("🚀 INDIAN STOCK TRADING BOT")
-        print("="*60)
-        print(f"📊 Mode: {mode_display}")
-        print(f"💰 Starting Balance: ₹{config['starting_balance']:,}")
-        print(f"🛡️  Stop Loss: {config['stop_loss_pct']*100}%")
-        print(f"💼 Max Capital per Trade: {config['max_capital_per_trade']*100}%")
-        print(f"📈 Max Trade Limit: {config['max_trade_limit']}")
-        print(f"⏰ Check Interval: {config['sleep_interval']} seconds")
-        print(f"📁 Portfolio File: {config['mode']}_mode")
-        print("="*60)
+        # Display startup banner - REMOVED as requested by user
 
         if args.mode == "live":
             if not config["dhan_client_id"] or not config["dhan_access_token"]:
                 logger.error("Dhan API credentials not found in .env file. Cannot run in live mode.")
-                print("❌ Error: Dhan API credentials required for live trading!")
+                print(" Error: Dhan API credentials required for live trading!")
                 return
             print("⚠️  WARNING: Live trading mode enabled. Real money will be used!")
             confirmation = input("Type 'CONFIRM' to proceed with live trading: ")
             if confirmation != "CONFIRM":
-                print("❌ Live trading cancelled.")
+                print(" Live trading cancelled.")
                 return
 
         # Initialize and run bot
@@ -2654,5 +3292,226 @@ def main_with_mode():
         logger.error(f"Critical error in main function: {e}")
         print(f" Critical error: {e}")
 
+def run_streamlit_app():
+    """Run the Streamlit web interface for the trading bot."""
+    st.set_page_config(
+        page_title="Indian Stock Trading Bot",
+        page_icon="📈",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+
+    # Initialize session state
+    if 'bot' not in st.session_state:
+        # Parse command line arguments
+        args = parse_arguments()
+
+        # Load environment variables
+        load_dotenv()
+
+        # Generate a unique session ID
+        st.session_state.session_id = f"session_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+        # Enhanced configuration with risk management
+        config = {
+            "tickers": [
+                "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "HINDUNILVR.NS",
+                "ICICIBANK.NS", "KOTAKBANK.NS", "BHARTIARTL.NS", "ITC.NS", "SBIN.NS",
+                "BAJFINANCE.NS", "ASIANPAINT.NS", "MARUTI.NS", "AXISBANK.NS", "LT.NS",
+                "HCLTECH.NS", "WIPRO.NS", "ULTRACEMCO.NS", "TITAN.NS", "NESTLEIND.NS"
+            ],
+            "starting_balance": 1000000,  # ₹10 lakh
+            "current_portfolio_value": 1000000,
+            "current_pnl": 0,
+            "mode": "paper",  # Default to paper mode for web interface
+            "dhan_client_id": os.getenv("DHAN_CLIENT_ID"),
+            "dhan_access_token": os.getenv("DHAN_ACCESS_TOKEN"),
+            "period": "3y",
+            "prediction_days": 30,
+            "benchmark_tickers": ["^NSEI"],
+            "sleep_interval": 300,  # 5 minutes
+            # Risk management settings from .env
+            "stop_loss_pct": float(os.getenv("STOP_LOSS_PCT", "0.05")),
+            "max_capital_per_trade": float(os.getenv("MAX_CAPITAL_PER_TRADE", "0.25")),
+            "max_trade_limit": int(os.getenv("MAX_TRADE_LIMIT", "10"))
+        }
+
+        # Initialize bot
+        st.session_state.bot = StockTradingBot(config)
+
+        # Initialize chat messages
+        st.session_state.messages = []
+
+        # Start bot in a separate thread
+        if not hasattr(st.session_state, 'bot_thread_started'):
+            bot_thread = threading.Thread(target=st.session_state.bot.run)
+            bot_thread.daemon = True
+            bot_thread.start()
+            st.session_state.bot_thread_started = True
+
+    # Sidebar
+    with st.sidebar:
+        st.title("📈 Trading Dashboard")
+
+        # Mode indicator
+        mode = st.session_state.bot.config["mode"]
+        if mode == "live":
+            st.warning("🔴 LIVE TRADING MODE")
+        else:
+            st.success("📝 PAPER TRADING MODE")
+
+        # Portfolio metrics
+        st.subheader("Portfolio Metrics")
+        metrics = st.session_state.bot.portfolio.get_metrics()
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Total Value", f"₹{metrics['total_value']:,.2f}")
+            st.metric("Cash", f"₹{metrics['cash']:,.2f}")
+        with col2:
+            starting_balance = st.session_state.bot.portfolio.starting_balance
+            total_return = metrics['total_value'] - starting_balance
+            return_pct = (total_return / starting_balance) * 100
+            st.metric("Total Return", f"₹{total_return:,.2f}", f"{return_pct:+.2f}%")
+            st.metric("Positions", len(st.session_state.bot.portfolio.holdings))
+
+    # Main content
+    st.title("🚀 Indian Stock Trading Bot")
+
+    # Create tabs
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "💼 Portfolio", "🤖 Chat Assistant"])
+
+    # Dashboard tab
+    with tab1:
+        # Performance metrics
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Portfolio Value", f"₹{metrics['total_value']:,.2f}")
+        with col2:
+            st.metric("Unrealized P&L", f"₹{metrics['unrealized_pnl']:,.2f}")
+        with col3:
+            st.metric("Active Positions", len(st.session_state.bot.portfolio.holdings))
+        with col4:
+            trades_today = len([t for t in st.session_state.bot.portfolio.trade_log
+                              if t['timestamp'].startswith(datetime.now().strftime('%Y-%m-%d'))])
+            st.metric("Trades Today", trades_today)
+
+        # Recent activity
+        st.subheader("Recent Trading Activity")
+        trades = st.session_state.bot.portfolio.trade_log[-10:] if st.session_state.bot.portfolio.trade_log else []
+
+        if trades:
+            for trade in reversed(trades):
+                with st.expander(f"{trade['action'].upper()} {trade['asset']} - {trade['timestamp'][:19]}"):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.write(f"**Quantity:** {trade['qty']} shares")
+                    with col2:
+                        st.write(f"**Price:** ₹{trade['price']:.2f}")
+                    with col3:
+                        st.write(f"**Value:** ₹{trade['qty'] * trade['price']:,.2f}")
+        else:
+            st.info("No recent trades")
+
+    # Portfolio tab
+    with tab2:
+        st.subheader("Current Holdings")
+
+        holdings = st.session_state.bot.portfolio.holdings
+
+        if holdings:
+            # Create holdings table
+            holdings_data = []
+            for ticker, data in holdings.items():
+                current_value = data['qty'] * data['avg_price']
+                holdings_data.append({
+                    "Ticker": ticker,
+                    "Quantity": data["qty"],
+                    "Avg Price": f"₹{data['avg_price']:.2f}",
+                    "Current Value": f"₹{current_value:,.2f}",
+                    "% of Portfolio": f"{(current_value / metrics['total_value'] * 100):.1f}%"
+                })
+
+            st.dataframe(pd.DataFrame(holdings_data), use_container_width=True)
+        else:
+            st.info("No current holdings")
+
+        # Watchlist management
+        st.subheader("Watchlist Management")
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            new_ticker = st.text_input("Add Ticker (e.g., INFY.NS)", key="new_ticker_input")
+        with col2:
+            if st.button("Add Ticker") and new_ticker:
+                response = st.session_state.bot.chatbot.set_ticker(new_ticker, "ADD")
+                st.success(response)
+                st.rerun()
+
+        # Display current watchlist
+        st.write("**Current Watchlist:**")
+        tickers = st.session_state.bot.config["tickers"]
+
+        # Display in columns
+        cols = st.columns(4)
+        for i, ticker in enumerate(tickers):
+            with cols[i % 4]:
+                st.write(f"• {ticker}")
+
+    # Chat tab
+    with tab3:
+        st.subheader("🤖 Trading Assistant")
+
+        # Command help
+        with st.expander("Available Commands"):
+            st.markdown("""
+            **Trading Commands:**
+            - `/start_bot` - Verify bot status
+            - `/set_risk HIGH` - Set risk level (LOW/MEDIUM/HIGH)
+            - `/get_pnl` - Get portfolio metrics
+            - `/why_trade SBIN.NS` - Get trade analysis
+            - `/list_positions` - List open positions
+            - `/set_ticker RELIANCE.NS ADD` - Add/remove tickers
+            - `/get_signals TCS.NS` - Get trading signals
+            - `/pause_trading 30` - Pause trading for 30 minutes
+            - `/resume_trading` - Resume trading
+            - `/get_performance 1w` - Get performance report
+            - `/set_allocation 20` - Set max allocation per trade
+
+            **General Chat:**
+            You can also ask general questions about trading, markets, or your portfolio!
+            """)
+
+        # Display chat messages
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        # Chat input
+        if prompt := st.chat_input("Ask a question or enter a command..."):
+            # Add user message to chat history
+            st.session_state.messages.append({"role": "user", "content": prompt})
+
+            # Display user message
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            # Get bot response
+            with st.chat_message("assistant"):
+                with st.spinner("Processing..."):
+                    response = st.session_state.bot.chatbot.process_command(prompt)
+                st.markdown(response)
+
+            # Add assistant response to chat history
+            st.session_state.messages.append({"role": "assistant", "content": response})
+
 if __name__ == "__main__":
-    main_with_mode()
+    # Check if running in Streamlit
+    try:
+        # This will only work if running in Streamlit
+        st.title("Test")
+        run_streamlit_app()
+    except:
+        # Running normally
+        main_with_mode()
