@@ -5,7 +5,9 @@ import { formatCurrency } from '../services/apiService';
 const PortfolioContainer = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: 20px;
+  height: 100%;
+  overflow: hidden;
 `;
 
 const Section = styled.div`
@@ -237,7 +239,7 @@ const Portfolio = ({ botData, onAddTicker, onRemoveTicker }) => {
               {Object.entries(holdings).map(([ticker, data]) => {
                 const currentValue = data.qty * data.avgPrice;
                 const portfolioPercentage = calculatePortfolioPercentage(currentValue, totalValue);
-                
+
                 return (
                   <HoldingsRow key={ticker}>
                     <TickerName>{ticker}</TickerName>
@@ -258,7 +260,7 @@ const Portfolio = ({ botData, onAddTicker, onRemoveTicker }) => {
       {/* Watchlist Management */}
       <Section>
         <h3>Watchlist Management</h3>
-        
+
         <WatchlistControls>
           <TickerInput
             type="text"
@@ -268,7 +270,7 @@ const Portfolio = ({ botData, onAddTicker, onRemoveTicker }) => {
             onKeyPress={handleKeyPress}
             disabled={loading}
           />
-          <AddButton 
+          <AddButton
             onClick={handleAddTicker}
             disabled={loading || !newTicker.trim()}
           >
@@ -282,7 +284,7 @@ const Portfolio = ({ botData, onAddTicker, onRemoveTicker }) => {
             {botData.config.tickers.map(ticker => (
               <WatchlistItem key={ticker}>
                 {ticker}
-                <RemoveButton 
+                <RemoveButton
                   onClick={() => handleRemoveTicker(ticker)}
                   disabled={loading}
                   title={`Remove ${ticker}`}

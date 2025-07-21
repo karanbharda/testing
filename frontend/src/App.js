@@ -28,7 +28,10 @@ const AppContainer = styled.div`
 const MainContent = styled.div`
   flex: 1;
   padding: 20px;
-  overflow-y: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
 `;
 
 const TabContent = styled.div`
@@ -36,7 +39,10 @@ const TabContent = styled.div`
   border-radius: 12px;
   padding: 25px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  min-height: 600px;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 `;
 
 function App() {
@@ -79,7 +85,7 @@ function App() {
     try {
       setLoading(true);
       await loadDataFromBackend();
-      
+
       // Add welcome message if no messages exist
       if (botData.chatMessages.length === 0) {
         setBotData(prev => ({
@@ -103,16 +109,16 @@ function App() {
     try {
       // Load portfolio data
       const portfolio = await apiService.getPortfolio();
-      
+
       // Load recent trades
       const trades = await apiService.getTrades(50);
-      
+
       // Load watchlist
       const tickers = await apiService.getWatchlist();
-      
+
       // Load bot status
       const status = await apiService.getStatus();
-      
+
       setBotData(prev => ({
         ...prev,
         portfolio: {
@@ -129,7 +135,7 @@ function App() {
         },
         isRunning: status.is_running
       }));
-      
+
     } catch (error) {
       console.error('Error loading data from backend:', error);
       // Fall back to localStorage if available
@@ -168,16 +174,16 @@ function App() {
     }
   };
 
-  const pauseBot = async () => {
+  const stopBot = async () => {
     try {
       setLoading(true);
       await apiService.stopBot();
       setBotData(prev => ({ ...prev, isRunning: false }));
-      toast.success('Trading bot paused');
+      toast.success('Trading bot stopped');
       await refreshData();
     } catch (error) {
-      console.error('Error pausing bot:', error);
-      toast.error('Failed to pause bot');
+      console.error('Error stopping bot:', error);
+      toast.error('Failed to stop bot');
     } finally {
       setLoading(false);
     }
@@ -231,7 +237,7 @@ function App() {
 
       setLoading(true);
       const response = await apiService.sendChatMessage(message);
-      
+
       // Add bot response
       setBotData(prev => ({
         ...prev,
@@ -290,15 +296,15 @@ function App() {
         return <Dashboard botData={botData} />;
       case 'portfolio':
         return (
-          <Portfolio 
-            botData={botData} 
+          <Portfolio
+            botData={botData}
             onAddTicker={addTicker}
             onRemoveTicker={removeTicker}
           />
         );
       case 'chat':
         return (
-          <ChatAssistant 
+          <ChatAssistant
             messages={botData.chatMessages}
             onSendMessage={sendChatMessage}
           />
@@ -311,34 +317,34 @@ function App() {
   return (
     <Router>
       <AppContainer>
-        <Sidebar 
+        <Sidebar
           botData={botData}
           onStartBot={startBot}
-          onPauseBot={pauseBot}
+          onStopBot={stopBot}
           onRefresh={refreshData}
         />
-        
+
         <MainContent>
-          <Header 
+          <Header
             botData={botData}
             activeTab={activeTab}
             onTabChange={setActiveTab}
             onOpenSettings={() => setShowSettings(true)}
           />
-          
+
           <TabContent>
             <Routes>
               <Route path="/" element={renderTabContent()} />
               <Route path="/dashboard" element={<Dashboard botData={botData} />} />
               <Route path="/portfolio" element={
-                <Portfolio 
-                  botData={botData} 
+                <Portfolio
+                  botData={botData}
                   onAddTicker={addTicker}
                   onRemoveTicker={removeTicker}
                 />
               } />
               <Route path="/chat" element={
-                <ChatAssistant 
+                <ChatAssistant
                   messages={botData.chatMessages}
                   onSendMessage={sendChatMessage}
                 />
@@ -348,7 +354,7 @@ function App() {
         </MainContent>
 
         {loading && <LoadingOverlay />}
-        
+
         {showSettings && (
           <SettingsModal
             settings={botData.config}

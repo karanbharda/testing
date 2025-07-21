@@ -7,7 +7,10 @@ const SidebarContainer = styled.div`
   background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%);
   color: white;
   padding: 20px;
-  overflow-y: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
 `;
 
 const SidebarHeader = styled.div`
@@ -35,53 +38,98 @@ const ModeBadge = styled.div`
 `;
 
 const SidebarSection = styled.div`
-  margin-bottom: 25px;
-  
+  margin-bottom: 30px;
+
   h3 {
-    margin-bottom: 15px;
+    margin-bottom: 18px;
     color: #3498db;
     font-size: 1.1rem;
-    border-left: 3px solid #3498db;
-    padding-left: 10px;
+    font-weight: 600;
+    border-left: 4px solid #3498db;
+    padding-left: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
 `;
 
 const MetricsGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
+  margin-bottom: 10px;
+
+  @media (max-width: 1200px) {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
 `;
 
 const MetricCard = styled.div`
   background: rgba(255, 255, 255, 0.1);
-  padding: 12px;
-  border-radius: 8px;
+  padding: 15px 12px;
+  border-radius: 10px;
   text-align: center;
   border: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 85px;
+  transition: all 0.3s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
 `;
 
 const MetricLabel = styled.div`
-  font-size: 0.8rem;
-  opacity: 0.8;
-  margin-bottom: 5px;
+  font-size: 0.75rem;
+  opacity: 0.9;
+  margin-bottom: 6px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #bdc3c7;
 `;
 
 const MetricValue = styled.div`
-  font-size: 1.2rem;
-  font-weight: bold;
-  color: #3498db;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 2px;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-all;
 `;
 
 const MetricChange = styled.div`
-  font-size: 0.9rem;
-  margin-top: 5px;
-  color: ${props => props.positive ? '#27ae60' : '#e74c3c'};
+  font-size: 0.8rem;
+  margin-top: 3px;
+  font-weight: 600;
+  color: ${props => props.positive ? '#2ecc71' : '#e74c3c'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+
+  &::before {
+    content: '${props => props.positive ? '↗' : '↘'}';
+    font-size: 0.9rem;
+  }
 `;
 
 const QuickActions = styled.div`
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-top: auto;
 `;
 
 const ActionButton = styled.button`
@@ -113,14 +161,38 @@ const ActionButton = styled.button`
   }
 `;
 
-const Sidebar = ({ botData, onStartBot, onPauseBot, onRefresh }) => {
+const StartButton = styled(ActionButton)`
+  background: #27ae60;
+
+  &:hover:not(:disabled) {
+    background: #229954;
+  }
+`;
+
+const StopButton = styled(ActionButton)`
+  background: #e74c3c;
+
+  &:hover:not(:disabled) {
+    background: #c0392b;
+  }
+`;
+
+const RefreshButton = styled(ActionButton)`
+  background: #f39c12;
+
+  &:hover:not(:disabled) {
+    background: #e67e22;
+  }
+`;
+
+const Sidebar = ({ botData, onStartBot, onStopBot, onRefresh }) => {
   const calculateMetrics = () => {
     const totalValue = botData.portfolio.totalValue;
     const cash = botData.portfolio.cash;
     const startingBalance = botData.portfolio.startingBalance;
     const totalReturn = totalValue - startingBalance;
     const returnPercentage = (totalReturn / startingBalance) * 100;
-    
+
     return {
       totalValue,
       cash,
@@ -151,12 +223,12 @@ const Sidebar = ({ botData, onStartBot, onPauseBot, onRefresh }) => {
             <MetricLabel>Total Value</MetricLabel>
             <MetricValue>{formatCurrency(metrics.totalValue)}</MetricValue>
           </MetricCard>
-          
+
           <MetricCard>
             <MetricLabel>Cash</MetricLabel>
             <MetricValue>{formatCurrency(metrics.cash)}</MetricValue>
           </MetricCard>
-          
+
           <MetricCard>
             <MetricLabel>Total Return</MetricLabel>
             <MetricValue>{formatCurrency(metrics.totalReturn)}</MetricValue>
@@ -164,7 +236,7 @@ const Sidebar = ({ botData, onStartBot, onPauseBot, onRefresh }) => {
               {formatPercentage(metrics.returnPercentage)}
             </MetricChange>
           </MetricCard>
-          
+
           <MetricCard>
             <MetricLabel>Positions</MetricLabel>
             <MetricValue>{positionsCount}</MetricValue>
@@ -175,22 +247,20 @@ const Sidebar = ({ botData, onStartBot, onPauseBot, onRefresh }) => {
       <SidebarSection>
         <h3>Quick Actions</h3>
         <QuickActions>
-          {botData.isRunning ? (
-            <ActionButton onClick={onPauseBot}>
-              <i className="fas fa-pause"></i>
-              Pause Bot
-            </ActionButton>
-          ) : (
-            <ActionButton onClick={onStartBot}>
-              <i className="fas fa-play"></i>
-              Start Bot
-            </ActionButton>
-          )}
-          
-          <ActionButton onClick={onRefresh}>
+          <StartButton onClick={onStartBot} disabled={botData.isRunning}>
+            <i className="fas fa-play"></i>
+            Start Bot
+          </StartButton>
+
+          <StopButton onClick={onStopBot} disabled={!botData.isRunning}>
+            <i className="fas fa-stop"></i>
+            Stop Bot
+          </StopButton>
+
+          <RefreshButton onClick={onRefresh}>
             <i className="fas fa-refresh"></i>
-            Refresh
-          </ActionButton>
+            Refresh Data
+          </RefreshButton>
         </QuickActions>
       </SidebarSection>
     </SidebarContainer>

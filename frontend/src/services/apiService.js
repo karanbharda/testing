@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 // API Base URL - will use proxy in development
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'http://127.0.0.1:5000/api' 
+const API_BASE_URL = process.env.NODE_ENV === 'production'
+  ? 'http://127.0.0.1:5000/api'
   : '/api';
 
 // Create axios instance with default config
@@ -34,7 +34,7 @@ api.interceptors.response.use(
   },
   (error) => {
     console.error('API Response Error:', error.response?.data || error.message);
-    
+
     // Handle specific error cases
     if (error.response?.status === 404) {
       throw new Error('API endpoint not found');
@@ -45,7 +45,7 @@ api.interceptors.response.use(
     } else if (!error.response) {
       throw new Error('Network error - please check if the backend server is running');
     }
-    
+
     throw error;
   }
 );
@@ -177,11 +177,27 @@ export const apiService = {
 
 // Utility functions
 export const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 2
-  }).format(amount);
+  // For sidebar metrics, use compact notation for large numbers
+  if (Math.abs(amount) >= 10000000) { // 1 crore
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      notation: 'compact',
+      maximumFractionDigits: 2
+    }).format(amount);
+  } else if (Math.abs(amount) >= 100000) { // 1 lakh
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0
+    }).format(amount);
+  } else {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2
+    }).format(amount);
+  }
 };
 
 export const formatPercentage = (value) => {

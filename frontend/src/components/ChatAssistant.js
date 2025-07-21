@@ -4,7 +4,8 @@ import styled from 'styled-components';
 const ChatContainer = styled.div`
   display: flex;
   flex-direction: column;
-  height: 600px;
+  height: 100%;
+  overflow: hidden;
 `;
 
 const ChatHeader = styled.div`
@@ -217,9 +218,9 @@ const ChatAssistant = ({ messages, onSendMessage }) => {
   };
 
   const formatTimestamp = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -291,7 +292,7 @@ const ChatAssistant = ({ messages, onSendMessage }) => {
           onKeyPress={handleKeyPress}
           disabled={loading}
         />
-        <SendButton 
+        <SendButton
           onClick={handleSendMessage}
           disabled={loading || !inputMessage.trim()}
         >

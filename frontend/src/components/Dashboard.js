@@ -9,7 +9,9 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 const DashboardContainer = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: 20px;
+  height: 100%;
+  overflow: hidden;
 `;
 
 const MetricsRow = styled.div`
@@ -67,6 +69,10 @@ const ActivitySection = styled.div`
   padding: 20px;
   border-radius: 10px;
   border: 1px solid #e9ecef;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 
   h3 {
     margin-bottom: 15px;
@@ -75,8 +81,8 @@ const ActivitySection = styled.div`
 `;
 
 const ActivityList = styled.div`
-  max-height: 300px;
-  overflow-y: auto;
+  flex: 1;
+  overflow: hidden;
 `;
 
 const ActivityItem = styled.div`
@@ -130,17 +136,17 @@ const Dashboard = ({ botData }) => {
     const cash = botData.portfolio.cash;
     const startingBalance = botData.portfolio.startingBalance;
     const totalReturn = totalValue - startingBalance;
-    
+
     // Calculate unrealized P&L (simplified)
     let unrealizedPnL = 0;
     Object.values(botData.portfolio.holdings).forEach(holding => {
       unrealizedPnL += (holding.currentPrice || holding.avgPrice) * holding.qty - holding.avgPrice * holding.qty;
     });
-    
-    const tradesToday = botData.portfolio.tradeLog.filter(trade => 
+
+    const tradesToday = botData.portfolio.tradeLog.filter(trade =>
       trade.timestamp.startsWith(new Date().toISOString().split('T')[0])
     ).length;
-    
+
     return {
       totalValue,
       unrealizedPnL,
@@ -154,18 +160,18 @@ const Dashboard = ({ botData }) => {
     const labels = [];
     const data = [];
     const baseValue = botData.portfolio.startingBalance;
-    
+
     for (let i = 29; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
       labels.push(date.toLocaleDateString());
-      
+
       // Simulate portfolio value changes
       const variation = (Math.random() - 0.5) * 0.02; // ±1% daily variation
       const value = baseValue * (1 + variation * (30 - i) / 30);
       data.push(value);
     }
-    
+
     return {
       labels,
       datasets: [{
@@ -183,10 +189,10 @@ const Dashboard = ({ botData }) => {
   const generateAllocationChartData = () => {
     const holdings = botData.portfolio.holdings;
     const labels = Object.keys(holdings).length > 0 ? Object.keys(holdings) : ['Cash'];
-    const data = Object.keys(holdings).length > 0 
+    const data = Object.keys(holdings).length > 0
       ? Object.values(holdings).map(h => h.qty * h.avgPrice)
       : [botData.portfolio.cash];
-    
+
     return {
       labels,
       datasets: [{
@@ -206,7 +212,7 @@ const Dashboard = ({ botData }) => {
       y: {
         beginAtZero: false,
         ticks: {
-          callback: function(value) {
+          callback: function (value) {
             return '₹' + (value / 100000).toFixed(1) + 'L';
           }
         }
@@ -242,17 +248,17 @@ const Dashboard = ({ botData }) => {
           <MetricLabel>Portfolio Value</MetricLabel>
           <MetricValue>{formatCurrency(metrics.totalValue)}</MetricValue>
         </MetricCard>
-        
+
         <MetricCard>
           <MetricLabel>Unrealized P&L</MetricLabel>
           <MetricValue>{formatCurrency(metrics.unrealizedPnL)}</MetricValue>
         </MetricCard>
-        
+
         <MetricCard>
           <MetricLabel>Active Positions</MetricLabel>
           <MetricValue>{metrics.activePositions}</MetricValue>
         </MetricCard>
-        
+
         <MetricCard>
           <MetricLabel>Trades Today</MetricLabel>
           <MetricValue>{metrics.tradesToday}</MetricValue>
@@ -267,7 +273,7 @@ const Dashboard = ({ botData }) => {
             <Line data={portfolioChartData} options={chartOptions} />
           </div>
         </ChartContainer>
-        
+
         <ChartContainer>
           <h3>Asset Allocation</h3>
           <div style={{ height: '300px' }}>
