@@ -293,3 +293,27 @@
 2025-07-22 14:47:13,635 - ERROR - $HINDUNILVR.NS: possibly delisted; no price data found  (period=1d)
 2025-07-22 14:48:13,320 - ERROR - $HDFCBANK.NS: possibly delisted; no price data found  (period=1d)
 2025-07-22 14:48:13,325 - ERROR - $HINDUNILVR.NS: possibly delisted; no price data found  (period=1d)
+2025-07-22 15:34:05,644 - INFO - Loaded portfolio: Cash=Rs.10000.00, Holdings=0 positions
+2025-07-22 15:34:05,645 - INFO - Loaded 0 trades from trade log
+2025-07-22 15:34:05,663 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-22 15:34:05,664 - INFO - Trading bot initialized successfully
+2025-07-22 15:34:05,665 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-22 15:34:05,665 - INFO - Web interface will be available at the above URL
+2025-07-22 15:34:05,665 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-22 15:34:05,713 - INFO - Loaded portfolio: Cash=Rs.10000.00, Holdings=0 positions
+2025-07-22 15:34:05,713 - INFO - Loaded 0 trades from trade log
+2025-07-22 15:34:05,727 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-22 15:34:05,729 - INFO - Trading bot initialized successfully
+2025-07-22 15:34:05,729 - INFO - Trading bot initialized on startup
+2025-07-22 15:41:32,113 - INFO - Loaded portfolio: Cash=Rs.10000.00, Holdings=0 positions
+2025-07-22 15:41:32,114 - INFO - Loaded 0 trades from trade log
+2025-07-22 15:41:32,130 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-22 15:41:32,132 - INFO - Trading bot initialized successfully
+2025-07-22 15:41:32,132 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-22 15:41:32,132 - INFO - Web interface will be available at the above URL
+2025-07-22 15:41:32,132 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-22 15:41:32,188 - INFO - Loaded portfolio: Cash=Rs.10000.00, Holdings=0 positions
+2025-07-22 15:41:32,189 - INFO - Loaded 0 trades from trade log
+2025-07-22 15:41:32,203 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-22 15:41:32,205 - INFO - Trading bot initialized successfully
+2025-07-22 15:41:32,205 - INFO - Trading bot initialized on startup

@@ -216,8 +216,14 @@ class WebTradingBot:
                 current_market_value = sum(data['qty'] * current_prices.get(ticker, data['avg_price'])
                                          for ticker, data in holdings.items())
                 total_value = cash + current_market_value
-                total_return = total_value - starting_balance
-                return_pct = (total_return / starting_balance) * 100 if starting_balance > 0 else 0
+
+                # Calculate cash invested (starting balance minus current cash)
+                cash_invested = starting_balance - cash
+
+                # Calculate total return based on cash invested, not total portfolio value
+                # Total return = (current holdings value - cash invested)
+                total_return = current_market_value - cash_invested
+                return_pct = (total_return / cash_invested) * 100 if cash_invested > 0 else 0
 
                 # Add current prices to holdings for frontend
                 enriched_holdings = {}

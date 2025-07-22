@@ -412,10 +412,13 @@ class ChatbotCommandHandler:
         try:
             metrics = self.trading_bot.portfolio.get_metrics()
             starting_balance = self.trading_bot.portfolio.starting_balance
+            current_cash = metrics['cash']
 
-            # Calculate performance metrics
-            total_return = metrics['total_value'] - starting_balance
-            return_pct = (total_return / starting_balance) * 100
+            # Calculate performance metrics based on cash invested
+            cash_invested = starting_balance - current_cash
+            holdings_value = metrics['total_value'] - current_cash
+            total_return = holdings_value - cash_invested
+            return_pct = (total_return / cash_invested) * 100 if cash_invested > 0 else 0
 
             # Get trade statistics
             trades = self.trading_bot.portfolio.trade_log

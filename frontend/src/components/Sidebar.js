@@ -190,14 +190,24 @@ const Sidebar = ({ botData, onStartBot, onStopBot, onRefresh }) => {
     const totalValue = botData.portfolio.totalValue;
     const cash = botData.portfolio.cash;
     const startingBalance = botData.portfolio.startingBalance;
-    const totalReturn = totalValue - startingBalance;
-    const returnPercentage = (totalReturn / startingBalance) * 100;
+
+    // Calculate cash invested (starting balance minus current cash)
+    const cashInvested = startingBalance - cash;
+
+    // Calculate total return based on cash invested, not total portfolio value
+    // Total return = (current holdings value - cash invested)
+    const holdingsValue = totalValue - cash;
+    const totalReturn = holdingsValue - cashInvested;
+
+    // Calculate return percentage based on cash invested (avoid division by zero)
+    const returnPercentage = cashInvested > 0 ? (totalReturn / cashInvested) * 100 : 0;
 
     return {
       totalValue,
       cash,
       totalReturn,
-      returnPercentage
+      returnPercentage,
+      cashInvested
     };
   };
 
