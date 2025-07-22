@@ -1,0 +1,40 @@
+# FastAPI and Web Server Dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.4.0
+python-dotenv>=1.0.0
+
+# Data Processing and Analysis
+pandas>=2.1.0
+numpy>=1.24.0
+requests>=2.31.0
+
+# Financial Data and Trading
+yfinance>=0.2.18
+dhanhq>=1.3.0
+
+# Machine Learning and AI
+scikit-learn>=1.3.0
+xgboost>=1.7.0
+torch>=2.0.0
+gymnasium>=0.29.0
+
+# Sentiment Analysis and News
+vaderSentiment>=3.3.2
+praw>=7.7.0
+gnews>=0.3.7
+
+# Market Data and Calendars
+pandas-market-calendars>=4.3.0
+
+# Utilities and Helpers
+tenacity>=8.2.0
+pytz>=2023.3
+
+# LangChain for AI Chat
+langchain>=0.0.300
+
+# Optional: Additional ML libraries (install if needed)
+# tensorflow>=2.13.0
+# transformers>=4.30.0
+# optuna>=3.3.0

@@ -1,0 +1,72 @@
+2025-07-22 11:00:05,448 - INFO - Loaded portfolio: Cash=Rs.10000.00, Holdings=0 positions
+2025-07-22 11:00:05,449 - INFO - Loaded 0 trades from trade log
+2025-07-22 11:00:05,458 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-22 11:00:05,460 - INFO - Trading bot initialized successfully
+2025-07-22 11:00:05,460 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-22 11:00:05,461 - INFO - Web interface will be available at the above URL
+2025-07-22 11:00:05,461 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-22 11:00:05,511 - INFO - Loaded portfolio: Cash=Rs.10000.00, Holdings=0 positions
+2025-07-22 11:00:05,513 - INFO - Loaded 0 trades from trade log
+2025-07-22 11:00:05,528 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-22 11:00:05,530 - INFO - Trading bot initialized successfully
+2025-07-22 11:00:05,530 - INFO - Trading bot initialized on startup
+2025-07-22 11:09:17,654 - INFO - Loaded portfolio: Cash=Rs.10000.00, Holdings=0 positions
+2025-07-22 11:09:17,654 - INFO - Loaded 0 trades from trade log
+2025-07-22 11:09:17,684 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-22 11:09:17,686 - INFO - Trading bot initialized successfully
+2025-07-22 11:09:17,686 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-22 11:09:17,686 - INFO - Web interface will be available at the above URL
+2025-07-22 11:09:17,686 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-22 11:09:17,737 - INFO - Loaded portfolio: Cash=Rs.10000.00, Holdings=0 positions
+2025-07-22 11:09:17,738 - INFO - Loaded 0 trades from trade log
+2025-07-22 11:09:17,748 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-22 11:09:17,749 - INFO - Trading bot initialized successfully
+2025-07-22 11:09:17,750 - INFO - Trading bot initialized on startup
+2025-07-22 11:10:13,310 - INFO - Looking for portfolio file at: C:\Users\Admin\Desktop\project\backend\data\portfolio_india_paper.json
+2025-07-22 11:10:13,310 - INFO - Portfolio file found, reading data...
+2025-07-22 11:10:13,311 - INFO - Portfolio data loaded: {'cash': 10000, 'holdings': {}}
+2025-07-22 11:11:13,622 - INFO - Looking for portfolio file at: C:\Users\Admin\Desktop\project\backend\data\portfolio_india_paper.json
+2025-07-22 11:11:13,622 - INFO - Portfolio file found, reading data...
+2025-07-22 11:11:13,623 - INFO - Portfolio data loaded: {'cash': 10000, 'holdings': {}}
+2025-07-22 11:11:25,915 - INFO - Looking for portfolio file at: C:\Users\Admin\Desktop\project\backend\data\portfolio_india_paper.json
+2025-07-22 11:11:25,915 - INFO - Portfolio file found, reading data...
+2025-07-22 11:11:25,915 - INFO - Portfolio data loaded: {'cash': 10000, 'holdings': {}}
+2025-07-22 11:11:47,621 - INFO - Looking for portfolio file at: C:\Users\Admin\Desktop\project\backend\data\portfolio_india_paper.json
+2025-07-22 11:11:47,621 - INFO - Portfolio file found, reading data...
+2025-07-22 11:11:47,622 - INFO - Portfolio data loaded: {'cash': 10000, 'holdings': {}}
+2025-07-22 11:12:17,313 - INFO - Looking for portfolio file at: C:\Users\Admin\Desktop\project\backend\data\portfolio_india_paper.json
+2025-07-22 11:12:17,314 - INFO - Portfolio file found, reading data...
+2025-07-22 11:12:17,314 - INFO - Portfolio data loaded: {'cash': 10000, 'holdings': {}}
+2025-07-22 11:12:47,190 - INFO - Looking for portfolio file at: C:\Users\Admin\Desktop\project\backend\data\portfolio_india_paper.json
+2025-07-22 11:12:47,190 - INFO - Portfolio file found, reading data...
+2025-07-22 11:12:47,191 - INFO - Portfolio data loaded: {'cash': 10000, 'holdings': {}}
+2025-07-22 11:12:47,624 - INFO - Looking for portfolio file at: C:\Users\Admin\Desktop\project\backend\data\portfolio_india_paper.json
+2025-07-22 11:12:47,624 - INFO - Portfolio file found, reading data...
+2025-07-22 11:12:47,625 - INFO - Portfolio data loaded: {'cash': 10000, 'holdings': {}}
+2025-07-22 11:13:17,308 - INFO - Looking for portfolio file at: C:\Users\Admin\Desktop\project\backend\data\portfolio_india_paper.json
+2025-07-22 11:13:17,309 - INFO - Portfolio file found, reading data...
+2025-07-22 11:13:17,309 - INFO - Portfolio data loaded: {'cash': 10000, 'holdings': {}}
+2025-07-22 11:13:29,615 - INFO - Looking for portfolio file at: C:\Users\Admin\Desktop\project\backend\data\portfolio_india_paper.json
+2025-07-22 11:13:29,616 - INFO - Portfolio file found, reading data...
+2025-07-22 11:13:29,616 - INFO - Portfolio data loaded: {'cash': 10000, 'holdings': {}}
+2025-07-22 11:14:13,627 - INFO - Looking for portfolio file at: C:\Users\Admin\Desktop\project\backend\data\portfolio_india_paper.json
+2025-07-22 11:14:13,627 - INFO - Portfolio file found, reading data...
+2025-07-22 11:14:13,627 - INFO - Portfolio data loaded: {'cash': 10000, 'holdings': {}}
+2025-07-22 11:15:13,313 - INFO - Looking for portfolio file at: C:\Users\Admin\Desktop\project\backend\data\portfolio_india_paper.json
+2025-07-22 11:15:13,313 - INFO - Portfolio file found, reading data...
+2025-07-22 11:15:13,313 - INFO - Portfolio data loaded: {'cash': 10000, 'holdings': {}}
+2025-07-22 11:16:13,620 - INFO - Looking for portfolio file at: C:\Users\Admin\Desktop\project\backend\data\portfolio_india_paper.json
+2025-07-22 11:16:13,620 - INFO - Portfolio file found, reading data...
+2025-07-22 11:16:13,620 - INFO - Portfolio data loaded: {'cash': 10000, 'holdings': {}}
+2025-07-22 11:16:34,204 - INFO - Loaded portfolio: Cash=Rs.10000.00, Holdings=0 positions
+2025-07-22 11:16:34,204 - INFO - Loaded 0 trades from trade log
+2025-07-22 11:16:34,220 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-22 11:16:34,222 - INFO - Trading bot initialized successfully
+2025-07-22 11:16:34,222 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-22 11:16:34,222 - INFO - Web interface will be available at the above URL
+2025-07-22 11:16:34,222 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-22 11:16:34,265 - INFO - Loaded portfolio: Cash=Rs.10000.00, Holdings=0 positions
+2025-07-22 11:16:34,265 - INFO - Loaded 0 trades from trade log
+2025-07-22 11:16:34,279 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-22 11:16:34,281 - INFO - Trading bot initialized successfully
+2025-07-22 11:16:34,281 - INFO - Trading bot initialized on startup

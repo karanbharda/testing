@@ -9,6 +9,8 @@ import sys
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import logging
+import threading
+import time
 
 # Import FastAPI components with fallback handling
 try:
@@ -24,11 +26,27 @@ except ImportError as e:
     print("pip install fastapi uvicorn pydantic")
     sys.exit(1)
 
+# Configure logging for detailed output
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('web_trading_bot.log'),
+        logging.StreamHandler(sys.stdout)  # Ensure logs go to stdout
+    ]
+)
+logger = logging.getLogger(__name__)
+
 # Import the trading bot components
 try:
-    from backend.testindia import (
+    # Add the backend directory to the Python path
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    if backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
+
+    from testindia import (
         ChatbotCommandHandler, VirtualPortfolio,
-        TradingExecutor, DataFeed, Stock
+        TradingExecutor, DataFeed, Stock, StockTradingBot
     )
 except ImportError as e:
     print(f"Error importing trading bot components: {e}")
@@ -76,16 +94,7 @@ class BotStatus(BaseModel):
 class MessageResponse(BaseModel):
     message: str
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('web_backend.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+# Logger already configured above
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -111,28 +120,48 @@ bot_thread = None
 bot_running = False
 
 class WebTradingBot:
-    """Wrapper class for the trading bot to work with web interface"""
-    
+    """Wrapper class for the actual trading bot to work with web interface"""
+
     def __init__(self, config):
         self.config = config
-        self.portfolio = VirtualPortfolio(config)
-        self.chatbot = ChatbotCommandHandler(self)
-        self.executor = TradingExecutor(self.portfolio, config)
-        self.data_feed = DataFeed(config["tickers"])
-        self.stock_analyzer = Stock()
+        # Initialize the actual StockTradingBot from testindia.py
+        self.trading_bot = StockTradingBot(config)
         self.is_running = False
         self.last_update = datetime.now()
-        
+        self.trading_thread = None
+
     def start(self):
         """Start the trading bot"""
-        self.is_running = True
-        logger.info("Web Trading Bot started")
-        
+        if not self.is_running:
+            self.is_running = True
+            logger.info("Starting Indian Stock Trading Bot...")
+            logger.info(f"Trading Mode: {self.config.get('mode', 'paper').upper()}")
+            logger.info(f"Starting Balance: Rs.{self.config.get('starting_balance', 1000000):,.2f}")
+            logger.info(f"Watchlist: {', '.join(self.config['tickers'])}")
+            logger.info("=" * 60)
+
+            # Start the actual trading bot in a separate thread
+            self.trading_thread = threading.Thread(target=self.trading_bot.run, daemon=True)
+            self.trading_thread.start()
+            logger.info("Web Trading Bot started successfully")
+        else:
+            logger.info("Trading bot is already running")
+
     def stop(self):
         """Stop the trading bot"""
-        self.is_running = False
-        logger.info("Web Trading Bot stopped")
-        
+        if self.is_running:
+            self.is_running = False
+            # Stop the actual trading bot
+            self.trading_bot.bot_running = False
+            logger.info("Stopping Trading Bot...")
+            if self.trading_thread and self.trading_thread.is_alive():
+                logger.info("Waiting for trading thread to finish...")
+            logger.info("Web Trading Bot stopped successfully")
+        else:
+            logger.info("Trading bot is already stopped")
+
+
+
     def get_status(self):
         """Get current bot status"""
         return {
@@ -140,31 +169,95 @@ class WebTradingBot:
             "last_update": self.last_update.isoformat(),
             "mode": self.config.get("mode", "paper")
         }
-        
+
     def get_portfolio_metrics(self):
-        """Get portfolio metrics"""
+        """Get portfolio metrics from saved portfolio file"""
+        import json
+        import os
+        import yfinance as yf
+
         try:
-            metrics = self.portfolio.get_metrics()
-            starting_balance = self.portfolio.starting_balance
-            total_return = metrics['total_value'] - starting_balance
-            return_pct = (total_return / starting_balance) * 100 if starting_balance > 0 else 0
-            
-            return {
-                "total_value": metrics['total_value'],
-                "cash": metrics['cash'],
-                "holdings": metrics['holdings'],
-                "total_return": total_return,
-                "return_percentage": return_pct,
-                "realized_pnl": metrics.get('realized_pnl', 0),
-                "unrealized_pnl": metrics.get('unrealized_pnl', 0),
-                "total_exposure": metrics.get('total_exposure', 0),
-                "active_positions": len(metrics['holdings'])
-            }
+            # Try to read from the actual portfolio file created by the trading bot
+            portfolio_file = "../data/portfolio_india_paper.json"
+            if os.path.exists(portfolio_file):
+                with open(portfolio_file, 'r') as f:
+                    portfolio_data = json.load(f)
+
+                starting_balance = portfolio_data.get('starting_balance', 10000)
+                cash = portfolio_data.get('cash', starting_balance)
+                holdings = portfolio_data.get('holdings', {})
+
+                # Get current prices for unrealized P&L calculation
+                current_prices = {}
+                unrealized_pnl = 0
+
+                if holdings:
+                    try:
+                        for ticker in holdings.keys():
+                            stock = yf.Ticker(ticker)
+                            hist = stock.history(period="1d")
+                            if not hist.empty:
+                                current_prices[ticker] = hist['Close'].iloc[-1]
+                            else:
+                                current_prices[ticker] = holdings[ticker]['avg_price']  # Fallback to avg price
+                    except Exception as e:
+                        logger.warning(f"Error fetching current prices: {e}")
+                        # Fallback: use average prices
+                        for ticker, data in holdings.items():
+                            current_prices[ticker] = data['avg_price']
+
+                # Calculate unrealized P&L with current prices
+                for ticker, data in holdings.items():
+                    current_price = current_prices.get(ticker, data['avg_price'])
+                    unrealized_pnl += (current_price - data['avg_price']) * data['qty']
+
+                # Calculate total exposure and total value with current prices
+                total_exposure = sum(data['qty'] * data['avg_price'] for data in holdings.values())
+                current_market_value = sum(data['qty'] * current_prices.get(ticker, data['avg_price'])
+                                         for ticker, data in holdings.items())
+                total_value = cash + current_market_value
+                total_return = total_value - starting_balance
+                return_pct = (total_return / starting_balance) * 100 if starting_balance > 0 else 0
+
+                # Add current prices to holdings for frontend
+                enriched_holdings = {}
+                for ticker, data in holdings.items():
+                    enriched_holdings[ticker] = {
+                        **data,
+                        'currentPrice': current_prices.get(ticker, data['avg_price'])
+                    }
+
+                return {
+                    "total_value": total_value,
+                    "cash": cash,
+                    "holdings": enriched_holdings,
+                    "total_return": total_return,
+                    "return_percentage": return_pct,
+                    "realized_pnl": portfolio_data.get('realized_pnl', 0),
+                    "unrealized_pnl": unrealized_pnl,
+                    "total_exposure": total_exposure,
+                    "active_positions": len(holdings)
+                }
+            else:
+                # Fallback to default values if no portfolio file exists
+                starting_balance = self.config.get('starting_balance', 10000)
+                return {
+                    "total_value": starting_balance,
+                    "cash": starting_balance,
+                    "holdings": {},
+                    "total_return": 0,
+                    "return_percentage": 0,
+                    "realized_pnl": 0,
+                    "unrealized_pnl": 0,
+                    "total_exposure": 0,
+                    "active_positions": 0
+                }
         except Exception as e:
             logger.error(f"Error getting portfolio metrics: {e}")
+            starting_balance = self.config.get('starting_balance', 10000)
             return {
-                "total_value": self.portfolio.starting_balance,
-                "cash": self.portfolio.starting_balance,
+                "total_value": starting_balance,
+                "cash": starting_balance,
                 "holdings": {},
                 "total_return": 0,
                 "return_percentage": 0,
@@ -173,23 +266,84 @@ class WebTradingBot:
                 "total_exposure": 0,
                 "active_positions": 0
             }
-    
+
     def get_recent_trades(self, limit=10):
-        """Get recent trades"""
+        """Get recent trades from saved trade log file"""
+        import json
+        import os
+
         try:
-            trades = self.portfolio.trade_log[-limit:] if self.portfolio.trade_log else []
-            return list(reversed(trades))
+            # Try to read from the actual trade log file created by the trading bot
+            trade_log_file = "data/trade_log_india_paper.json"
+            if os.path.exists(trade_log_file):
+                with open(trade_log_file, 'r') as f:
+                    trades = json.load(f)
+
+                # Return the most recent trades (reversed order)
+                recent_trades = trades[-limit:] if trades else []
+                return list(reversed(recent_trades))
+            else:
+                logger.warning("Trade log file not found")
+                return []
         except Exception as e:
             logger.error(f"Error getting recent trades: {e}")
             return []
-    
+
     def process_chat_command(self, message):
         """Process chat command"""
         try:
-            return self.chatbot.process_command(message)
+            return self.trading_bot.chatbot.process_command(message)
         except Exception as e:
             logger.error(f"Error processing chat command: {e}")
             return f"Error processing command: {str(e)}"
+
+    def get_complete_bot_data(self):
+        """Get complete bot data for React frontend"""
+        try:
+            portfolio_metrics = self.get_portfolio_metrics()
+
+            return {
+                "isRunning": self.is_running,
+                "config": {
+                    "mode": self.config.get("mode", "paper"),
+                    "tickers": self.config.get("tickers", []),
+                    "stopLossPct": self.config.get("stop_loss_pct", 0.05),
+                    "maxAllocation": self.config.get("max_capital_per_trade", 0.25),
+                    "maxTradeLimit": self.config.get("max_trade_limit", 10)
+                },
+                "portfolio": {
+                    "totalValue": portfolio_metrics["total_value"],
+                    "cash": portfolio_metrics["cash"],
+                    "holdings": portfolio_metrics["holdings"],
+                    "startingBalance": self.trading_bot.portfolio.starting_balance,
+                    "unrealizedPnL": portfolio_metrics["unrealized_pnl"],
+                    "realizedPnL": portfolio_metrics["realized_pnl"],
+                    "tradeLog": self.get_recent_trades(50)
+                },
+                "lastUpdate": self.last_update.isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error getting complete bot data: {e}")
+            return {
+                "isRunning": False,
+                "config": {
+                    "mode": "paper",
+                    "tickers": [],
+                    "stopLossPct": 0.05,
+                    "maxAllocation": 0.25,
+                    "maxTradeLimit": 10
+                },
+                "portfolio": {
+                    "totalValue": 10000,
+                    "cash": 10000,
+                    "holdings": {},
+                    "startingBalance": 10000,
+                    "unrealizedPnL": 0,
+                    "realizedPnL": 0,
+                    "tradeLog": []
+                },
+                "lastUpdate": datetime.now().isoformat()
+            }
 
 def initialize_bot():
     """Initialize the trading bot with default configuration"""
@@ -208,8 +362,8 @@ def initialize_bot():
                 "BAJFINANCE.NS", "ASIANPAINT.NS", "MARUTI.NS", "AXISBANK.NS", "LT.NS",
                 "HCLTECH.NS", "WIPRO.NS", "ULTRACEMCO.NS", "TITAN.NS", "NESTLEIND.NS"
             ],
-            "starting_balance": 1000000,  # ₹10 lakh
-            "current_portfolio_value": 1000000,
+            "starting_balance": 10000,  # ₹10 thousand
+            "current_portfolio_value": 10000,
             "current_pnl": 0,
             "mode": "paper",  # Default to paper mode for web interface
             "dhan_client_id": os.getenv("DHAN_CLIENT_ID"),
@@ -272,6 +426,18 @@ async def get_status():
             raise HTTPException(status_code=500, detail="Bot not initialized")
     except Exception as e:
         logger.error(f"Error getting status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/bot-data")
+async def get_bot_data():
+    """Get complete bot data for React frontend"""
+    try:
+        if trading_bot:
+            return trading_bot.get_complete_bot_data()
+        else:
+            raise HTTPException(status_code=500, detail="Bot not initialized")
+    except Exception as e:
+        logger.error(f"Error getting bot data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/portfolio", response_model=PortfolioMetrics)

@@ -23,8 +23,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import traceback
 import warnings
 import logging
@@ -522,6 +522,27 @@ class VirtualPortfolio:
             self.trade_log_file = "data/trade_log_india_paper.json"
 
         self.initialize_files()
+        self.load_portfolio_data()
+
+    def load_portfolio_data(self):
+        """Load existing portfolio data from files."""
+        try:
+            # Load portfolio data
+            if os.path.exists(self.portfolio_file):
+                with open(self.portfolio_file, 'r') as f:
+                    portfolio_data = json.load(f)
+                    self.cash = portfolio_data.get('cash', self.starting_balance)
+                    self.holdings = portfolio_data.get('holdings', {})
+                    logger.info(f"Loaded portfolio: Cash=Rs.{self.cash:.2f}, Holdings={len(self.holdings)} positions")
+
+            # Load trade log data
+            if os.path.exists(self.trade_log_file):
+                with open(self.trade_log_file, 'r') as f:
+                    self.trade_log = json.load(f)
+                    logger.info(f"Loaded {len(self.trade_log)} trades from trade log")
+        except Exception as e:
+            logger.error(f"Error loading portfolio data: {e}")
+            # Keep default values if loading fails
 
     def initialize_files(self):
         """Initialize portfolio and trade log JSON files if they don't exist."""
@@ -541,7 +562,7 @@ class VirtualPortfolio:
             if not os.path.exists(self.paper_trade_log):
                 with open(self.paper_trade_log, "w", encoding='utf-8') as f:
                     f.write(f"=== PAPER TRADING SESSION - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
-                    f.write(f"Starting Balance: ₹{self.starting_balance:,.2f}\n")
+                    f.write(f"Starting Balance: Rs.{self.starting_balance:,.2f}\n")
                     f.write("="*80 + "\n\n")
 
     def initialize_portfolio(self, balance=None):
@@ -575,7 +596,7 @@ class VirtualPortfolio:
                 )
                 logger.info(f"Live order placed: {order_result}")
             else:
-                logger.info(f"Paper trade executed: BUY {qty} {asset} at ₹{price}")
+                logger.info(f"Paper trade executed: BUY {qty} {asset} at Rs.{price}")
 
             # Update portfolio regardless of mode
             self.cash -= cost
@@ -623,7 +644,7 @@ class VirtualPortfolio:
                 )
                 logger.info(f"Live order placed: {order_result}")
             else:
-                logger.info(f"Paper trade executed: SELL {qty} {asset} at ₹{price}")
+                logger.info(f"Paper trade executed: SELL {qty} {asset} at Rs.{price}")
 
             # Update portfolio regardless of mode
             revenue = qty * price
@@ -963,29 +984,38 @@ class TradingExecutor:
                     price=0,  # Market order
                     validity="DAY"
                 )
-                logger.info(f"Live trade executed: {action} {qty} units of {ticker} at ₹{price}")
+                logger.info(f"Live trade executed: {action} {qty} units of {ticker} at Rs.{price}")
             else:
                 # Enhanced paper trading logging
                 signal_type = "ENTRY" if action.upper() == "BUY" else "EXIT"
-                logger.info(f"📊 PAPER TRADE - {signal_type} SIGNAL: {action.upper()} {qty} units of {ticker} at ₹{price:.2f}")
-                logger.info(f"   💰 Trade Value: ₹{qty * price:,.2f}")
-                logger.info(f"   🛡️  Stop Loss: ₹{stop_loss:.2f} ({((stop_loss/price - 1) * 100):+.1f}%)")
+                logger.info(f"PAPER TRADE - {signal_type} SIGNAL: {action.upper()} {qty} units of {ticker} at Rs.{price:.2f}")
+                logger.info(f"   Trade Value: Rs.{qty * price:,.2f}")
+                logger.info(f"   Stop Loss: Rs.{stop_loss:.2f} ({((stop_loss/price - 1) * 100):+.1f}%)")
                 if take_profit:
-                    logger.info(f"   🎯 Take Profit: ₹{take_profit:.2f} ({((take_profit/price - 1) * 100):+.1f}%)")
-                logger.info(f"   📈 Risk/Reward Ratio: {((take_profit - price) / (price - stop_loss)):.2f}" if take_profit and stop_loss < price else "N/A")
+                    logger.info(f"   Take Profit: Rs.{take_profit:.2f} ({((take_profit/price - 1) * 100):+.1f}%)")
+                logger.info(f"   Risk/Reward Ratio: {((take_profit - price) / (price - stop_loss)):.2f}" if take_profit and stop_loss < price else "N/A")
                 order = {"order_id": f"PAPER_{datetime.now().strftime('%Y%m%d_%H%M%S')}"}
 
-            return {
-                "success": True,
-                "action": action,
-                "ticker": ticker,
-                "qty": qty,
-                "price": price,
-                "stop_loss": stop_loss,
-                "take_profit": take_profit,
-                "mode": self.mode,
-                "order": order
-            }
+            # Actually update the portfolio
+            if action.upper() == "BUY":
+                success = self.portfolio.buy(ticker, qty, price)
+            else:  # SELL
+                success = self.portfolio.sell(ticker, qty, price)
+
+            if success:
+                return {
+                    "success": True,
+                    "action": action,
+                    "ticker": ticker,
+                    "qty": qty,
+                    "price": price,
+                    "stop_loss": stop_loss,
+                    "take_profit": take_profit,
+                    "mode": self.mode,
+                    "order": order
+                }
+            else:
+                return {"success": False, "message": f"Failed to update portfolio for {action} {ticker}"}
         except Exception as e:
             logger.error(f"Error executing {action} order for {ticker}: {str(e)}")
             return {"success": False, "message": str(e)}
@@ -1073,14 +1103,14 @@ class PortfolioTracker:
         try:
             metrics = self.portfolio.get_metrics()
             logger.info(f"Portfolio Metrics:")
-            logger.info(f"Cash: ₹{metrics['cash']:.2f}")
+            logger.info(f"Cash: Rs.{metrics['cash']:.2f}")
             logger.info(f"Holdings: {metrics['holdings']}")
-            logger.info(f"Total Value: ₹{metrics['total_value']:.2f}")
-            logger.info(f"Current Portfolio Value (Dhan): ₹{self.config.get('current_portfolio_value', 0):.2f}")
-            logger.info(f"Current PnL (Dhan): ₹{self.config.get('current_pnl', 0):.2f}")
-            logger.info(f"Realized PnL: ₹{metrics['realized_pnl']:.2f}")
-            logger.info(f"Unrealized PnL: ₹{metrics['unrealized_pnl']:.2f}")
-            logger.info(f"Total Exposure: ₹{metrics['total_exposure']:.2f}")
+            logger.info(f"Total Value: Rs.{metrics['total_value']:.2f}")
+            logger.info(f"Current Portfolio Value (Dhan): Rs.{self.config.get('current_portfolio_value', 0):.2f}")
+            logger.info(f"Current PnL (Dhan): Rs.{self.config.get('current_pnl', 0):.2f}")
+            logger.info(f"Realized PnL: Rs.{metrics['realized_pnl']:.2f}")
+            logger.info(f"Unrealized PnL: Rs.{metrics['unrealized_pnl']:.2f}")
+            logger.info(f"Total Exposure: Rs.{metrics['total_exposure']:.2f}")
         except Exception as e:
             logger.error(f"Error logging portfolio metrics: {e}")
 
@@ -2892,7 +2922,7 @@ class StockTradingBot:
             highest_price = max(history["Close"].iloc[-30:]) if not history.empty else current_ticker_price
             trailing_stop = highest_price * (1 - trailing_stop_pct)
             if current_ticker_price < trailing_stop:
-                logger.info(f"Trailing Stop-Loss triggered for {ticker}: Price ₹{current_ticker_price:.2f} < Trailing Stop ₹{trailing_stop:.2f}")
+                logger.info(f"Trailing Stop-Loss triggered for {ticker}: Price Rs.{current_ticker_price:.2f} < Trailing Stop Rs.{trailing_stop:.2f}")
                 holding_qty = self.portfolio.holdings[ticker]["qty"]
                 success = self.executor.execute_trade(ticker, "sell", holding_qty, current_ticker_price)
                 return {
@@ -2911,7 +2941,7 @@ class StockTradingBot:
         # Stop-Loss and Take-Profit
         if ticker in self.portfolio.holdings:
             if current_ticker_price < stop_loss:
-                logger.info(f"Stop-Loss triggered for {ticker}: Price ₹{current_ticker_price:.2f} < Stop-Loss ₹{stop_loss:.2f}")
+                logger.info(f"Stop-Loss triggered for {ticker}: Price Rs.{current_ticker_price:.2f} < Stop-Loss Rs.{stop_loss:.2f}")
                 holding_qty = self.portfolio.holdings[ticker]["qty"]
                 success = self.executor.execute_trade(ticker, "sell", holding_qty, current_ticker_price)
                 return {
@@ -2927,7 +2957,7 @@ class StockTradingBot:
                     "reason": "stop_loss"
                 }
             elif current_ticker_price > take_profit:
-                logger.info(f"Take-Profit triggered for {ticker}: Price ₹{current_ticker_price:.2f} > Take-Profit ₹{take_profit:.2f}")
+                logger.info(f"Take-Profit triggered for {ticker}: Price Rs.{current_ticker_price:.2f} > Take-Profit Rs.{take_profit:.2f}")
                 holding_qty = self.portfolio.holdings[ticker]["qty"]
                 success = self.executor.execute_trade(ticker, "sell", holding_qty, current_ticker_price)
                 return {
@@ -2952,7 +2982,7 @@ class StockTradingBot:
             )
             holding_days = (datetime.now() - first_trade).days
             if holding_days > max_holding_days and unrealized_pnl < 0:
-                logger.info(f"Max holding period exceeded for {ticker}: {holding_days} days, Unrealized PnL: ₹{unrealized_pnl:.2f}")
+                logger.info(f"Max holding period exceeded for {ticker}: {holding_days} days, Unrealized PnL: Rs.{unrealized_pnl:.2f}")
                 holding_qty = self.portfolio.holdings[ticker]["qty"]
                 success = self.executor.execute_trade(ticker, "sell", holding_qty, current_ticker_price)
                 return {
@@ -2972,7 +3002,7 @@ class StockTradingBot:
         buy_qty = 0
         if final_buy_score > confidence_threshold and buy_signals >= 2:
             if available_cash < 5000:  # Minimum trade value in INR
-                logger.info(f"Skipping BUY for {ticker}: Insufficient cash (₹{available_cash:.2f} < ₹5000)")
+                logger.info(f"Skipping BUY for {ticker}: Insufficient cash (Rs.{available_cash:.2f} < Rs.5000)")
             else:
                 position_size_pct = kelly_fraction * 0.6
                 target_position_value = total_value * position_size_pct
@@ -3034,9 +3064,9 @@ class StockTradingBot:
             and not backoff
         ):
             logger.info(
-                f"Executing BUY for {ticker}: {buy_qty:.0f} units at ₹{current_ticker_price:.2f}, "
-                f"Position Value: ₹{buy_qty * current_price:.2f} ({(buy_qty * current_price / total_value * 100):.2f}% of portfolio), "
-                f"Stop-Loss: ₹{stop_loss:.2f}, Take-Profit: ₹{take_profit:.2f}, ATR: ₹{atr:.2f}, Kelly Fraction: {kelly_fraction:.2f}"
+                f"Executing BUY for {ticker}: {buy_qty:.0f} units at Rs.{current_ticker_price:.2f}, "
+                f"Position Value: Rs.{buy_qty * current_price:.2f} ({(buy_qty * current_price / total_value * 100):.2f}% of portfolio), "
+                f"Stop-Loss: Rs.{stop_loss:.2f}, Take-Profit: Rs.{take_profit:.2f}, ATR: Rs.{atr:.2f}, Kelly Fraction: {kelly_fraction:.2f}"
             )
             success = self.executor.execute_trade("buy", ticker, buy_qty, current_ticker_price, stop_loss, take_profit)
             trade = {
@@ -3059,9 +3089,9 @@ class StockTradingBot:
             and not backoff
         ):
             logger.info(
-                f"Executing SELL for {ticker}: {sell_qty:.0f} units at ₹{current_ticker_price:.2f}, "
-                f"Position Value: ₹{sell_qty * current_price:.2f} ({(sell_qty * current_price / total_value * 100):.2f}% of portfolio), "
-                f"Stop-Loss: ₹{stop_loss:.2f}, Take-Profit: ₹{take_profit:.2f}, ATR: ₹{atr:.2f}"
+                f"Executing SELL for {ticker}: {sell_qty:.0f} units at Rs.{current_ticker_price:.2f}, "
+                f"Position Value: Rs.{sell_qty * current_price:.2f} ({(sell_qty * current_price / total_value * 100):.2f}% of portfolio), "
+                f"Stop-Loss: Rs.{stop_loss:.2f}, Take-Profit: Rs.{take_profit:.2f}, ATR: Rs.{atr:.2f}"
             )
             success = self.executor.execute_trade("sell", ticker, sell_qty, current_ticker_price, stop_loss, take_profit)
             trade = {
@@ -3084,8 +3114,8 @@ class StockTradingBot:
             )
             if hold_conditions:
                 logger.info(f"HOLD {ticker}: Neutral market conditions, "
-                            f"Price ₹{current_ticker_price:.2f} within Support ₹{support_level:.2f} "
-                            f"and Resistance ₹{resistance_level:.2f}, "
+                            f"Price Rs.{current_ticker_price:.2f} within Support Rs.{support_level:.2f} "
+                            f"and Resistance Rs.{resistance_level:.2f}, "
                             f"Buy Score={final_buy_score:.2f}, Sell Score={final_sell_score:.2f}")
                 trade = {
                     "action": "hold",
@@ -3104,7 +3134,7 @@ class StockTradingBot:
             logger.info(f"No trade executed for {ticker}: Buy Score={final_buy_score:.2f}, "
                         f"Sell Score={final_sell_score:.2f}, Buy Signals={buy_signals}, "
                         f"Sell Signals={sell_signals}, Buy Qty={buy_qty:.0f}, Sell Qty={sell_qty:.0f}, "
-                        f"Backoff={backoff}, Cash=₹{available_cash:.2f}, ATR=₹{atr:.2f}")
+                        f"Backoff={backoff}, Cash=Rs.{available_cash:.2f}, ATR=Rs.{atr:.2f}")
 
         # Log strategy trigger for paper trading
         if self.portfolio.mode == "paper":
@@ -3189,8 +3219,8 @@ class StockTradingBot:
 def main():
     config = {
         "tickers": ["SBIN.NS","TCS.NS","TATAMOTORS.NS","ETERNAL.NS","POWERGRID.NS","WIPRO.NS"],
-        "starting_balance": 1000000,  # Default starting balance in INR
-        "current_portfolio_value": 1000000,  # Initial portfolio value
+        "starting_balance": 10000,  # Default starting balance in INR
+        "current_portfolio_value": 10000,  # Initial portfolio value
         "current_pnl": 0,  # Initial PnL
         "mode": "paper",
         "dhan_client_id": os.getenv("DHAN_CLIENT_ID"),
@@ -3238,8 +3268,8 @@ def main_with_mode():
                 "BAJFINANCE.NS", "ASIANPAINT.NS", "MARUTI.NS", "AXISBANK.NS", "LT.NS",
                 "HCLTECH.NS", "WIPRO.NS", "ULTRACEMCO.NS", "TITAN.NS", "NESTLEIND.NS"
             ],
-            "starting_balance": 1000000,  # ₹10 lakh
-            "current_portfolio_value": 1000000,
+            "starting_balance": 10000,  # ₹10 thousand
+            "current_portfolio_value": 10000,
             "current_pnl": 0,
             "mode": args.mode,
             "dhan_client_id": os.getenv("DHAN_CLIENT_ID"),
@@ -3282,10 +3312,7 @@ def main_with_mode():
         logger.error(f"Critical error in main function: {e}")
         print(f" Critical error: {e}")
 
-# Streamlit function removed - using FastAPI web interface instead
-# See web_backend.py and web_interface.html for the new implementation
 
 if __name__ == "__main__":
-    # Run the trading bot normally (command line mode)
-    # For web interface, use web_backend.py instead
+    
     main_with_mode()
