@@ -1,0 +1,16 @@
+{
+    "cash": 5534.6,
+    "holdings": {
+        "HDFCBANK.NS": {
+            "qty": 1,
+            "avg_price": 2000.5
+        },
+        "HINDUNILVR.NS": {
+            "qty": 1,
+            "avg_price": 2464.9
+        }
+    },
+    "starting_balance": 10000,
+    "realized_pnl": 0,
+    "unrealized_pnl": 0
+}

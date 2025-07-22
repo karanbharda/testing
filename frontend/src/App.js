@@ -28,10 +28,34 @@ const AppContainer = styled.div`
 const MainContent = styled.div`
   flex: 1;
   padding: 20px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
+
+  /* Custom scrollbar for main content */
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+  }
+
+  /* Firefox scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.2) rgba(0, 0, 0, 0.05);
 `;
 
 const TabContent = styled.div`
@@ -40,9 +64,10 @@ const TabContent = styled.div`
   padding: 25px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   flex: 1;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
+  margin-bottom: 20px;
 `;
 
 function App() {
@@ -107,33 +132,13 @@ function App() {
 
   const loadDataFromBackend = async () => {
     try {
-      // Load portfolio data
-      const portfolio = await apiService.getPortfolio();
-
-      // Load recent trades
-      const trades = await apiService.getTrades(50);
-
-      // Load watchlist
-      const tickers = await apiService.getWatchlist();
-
-      // Load bot status
-      const status = await apiService.getStatus();
+      // Get complete bot data from new endpoint
+      const botData = await apiService.getBotData();
 
       setBotData(prev => ({
         ...prev,
-        portfolio: {
-          totalValue: portfolio.total_value,
-          cash: portfolio.cash,
-          holdings: portfolio.holdings,
-          tradeLog: trades,
-          startingBalance: 1000000
-        },
-        config: {
-          ...prev.config,
-          tickers: tickers,
-          mode: status.mode
-        },
-        isRunning: status.is_running
+        ...botData,
+        chatMessages: prev.chatMessages // Preserve chat messages
       }));
 
     } catch (error) {

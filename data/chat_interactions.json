@@ -1,0 +1,37 @@
+[
+  {
+    "timestamp": "2025-07-21T12:44:04.136928",
+    "user_input": "hello",
+    "bot_response": "Sorry, I'm having trouble with the AI service right now.",
+    "command_type": "general",
+    "session_id": "session_20250721124404"
+  },
+  {
+    "timestamp": "2025-07-21T12:50:00.034343",
+    "user_input": "/start_bot",
+    "bot_response": "✅ Trading bot is active and monitoring markets. Check logs for detailed activity.",
+    "command_type": "/start_bot",
+    "session_id": "session_20250721125000"
+  },
+  {
+    "timestamp": "2025-07-21T14:48:01.310437",
+    "user_input": "hello",
+    "bot_response": "Sorry, I'm having trouble with the AI service right now.",
+    "command_type": "general",
+    "session_id": "session_20250721144801"
+  },
+  {
+    "timestamp": "2025-07-21T14:48:07.027478",
+    "user_input": "why",
+    "bot_response": "Sorry, I'm having trouble with the AI service right now.",
+    "command_type": "general",
+    "session_id": "session_20250721144807"
+  },
+  {
+    "timestamp": "2025-07-21T16:24:03.217903",
+    "user_input": "vinayak yadav \\",
+    "bot_response": "Sorry, I'm having trouble with the AI service right now.",
+    "command_type": "general",
+    "session_id": "session_20250721162403"
+  }
+]

@@ -113,14 +113,14 @@ const MetricChange = styled.div`
   font-size: 0.8rem;
   margin-top: 3px;
   font-weight: 600;
-  color: ${props => props.positive ? '#2ecc71' : '#e74c3c'};
+  color: ${props => props.$positive ? '#2ecc71' : '#e74c3c'};
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 2px;
 
   &::before {
-    content: '${props => props.positive ? '↗' : '↘'}';
+    content: '${props => props.$positive ? '↗' : '↘'}';
     font-size: 0.9rem;
   }
 `;

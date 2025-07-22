@@ -227,6 +227,9 @@ class WebTradingBot:
                         'currentPrice': current_prices.get(ticker, data['avg_price'])
                     }
 
+                # Get trade log
+                trade_log = self.get_recent_trades(limit=100)  # Get all trades for portfolio
+
                 return {
                     "total_value": total_value,
                     "cash": cash,
@@ -236,7 +239,8 @@ class WebTradingBot:
                     "realized_pnl": portfolio_data.get('realized_pnl', 0),
                     "unrealized_pnl": unrealized_pnl,
                     "total_exposure": total_exposure,
-                    "active_positions": len(holdings)
+                    "active_positions": len(holdings),
+                    "trade_log": trade_log
                 }
             else:
                 # Fallback to default values if no portfolio file exists
@@ -250,7 +254,8 @@ class WebTradingBot:
                     "realized_pnl": 0,
                     "unrealized_pnl": 0,
                     "total_exposure": 0,
-                    "active_positions": 0
+                    "active_positions": 0,
+                    "trade_log": []
                 }
         except Exception as e:
             logger.error(f"Error getting portfolio metrics: {e}")
@@ -264,7 +269,8 @@ class WebTradingBot:
                 "realized_pnl": 0,
                 "unrealized_pnl": 0,
                 "total_exposure": 0,
-                "active_positions": 0
+                "active_positions": 0,
+                "trade_log": []
             }
 
     def get_recent_trades(self, limit=10):
@@ -274,7 +280,7 @@ class WebTradingBot:
 
         try:
             # Try to read from the actual trade log file created by the trading bot
-            trade_log_file = "data/trade_log_india_paper.json"
+            trade_log_file = "../data/trade_log_india_paper.json"
             if os.path.exists(trade_log_file):
                 with open(trade_log_file, 'r') as f:
                     trades = json.load(f)

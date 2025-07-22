@@ -62,6 +62,17 @@ export const apiService = {
     }
   },
 
+  // Complete Bot Data (for React frontend)
+  async getBotData() {
+    try {
+      const response = await api.get('/bot-data');
+      return response.data;
+    } catch (error) {
+      console.error('Error getting bot data:', error);
+      throw error;
+    }
+  },
+
   // Portfolio Management
   async getPortfolio() {
     try {
@@ -177,31 +188,57 @@ export const apiService = {
 
 // Utility functions
 export const formatCurrency = (amount) => {
+  // Handle NaN, undefined, null values
+  if (amount === null || amount === undefined || isNaN(amount)) {
+    return '₹0.00';
+  }
+
+  // Convert to number if it's a string
+  const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+
+  // Handle invalid numbers
+  if (isNaN(numAmount)) {
+    return '₹0.00';
+  }
+
   // For sidebar metrics, use compact notation for large numbers
-  if (Math.abs(amount) >= 10000000) { // 1 crore
+  if (Math.abs(numAmount) >= 10000000) { // 1 crore
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       notation: 'compact',
       maximumFractionDigits: 2
-    }).format(amount);
-  } else if (Math.abs(amount) >= 100000) { // 1 lakh
+    }).format(numAmount);
+  } else if (Math.abs(numAmount) >= 100000) { // 1 lakh
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       maximumFractionDigits: 0
-    }).format(amount);
+    }).format(numAmount);
   } else {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 2
-    }).format(amount);
+    }).format(numAmount);
   }
 };
 
 export const formatPercentage = (value) => {
-  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+  // Handle NaN, undefined, null values
+  if (value === null || value === undefined || isNaN(value)) {
+    return '0.00%';
+  }
+
+  // Convert to number if it's a string
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+
+  // Handle invalid numbers
+  if (isNaN(numValue)) {
+    return '0.00%';
+  }
+
+  return `${numValue >= 0 ? '+' : ''}${numValue.toFixed(2)}%`;
 };
 
 export const formatNumber = (value) => {
