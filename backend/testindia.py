@@ -503,6 +503,8 @@ class VirtualPortfolio:
         self.holdings = {}  # {asset: {qty, avg_price}}
         self.trade_log = []
         self.mode = config.get("mode", "paper")
+        self.realized_pnl = 0  # P&L from completed trades
+        self.unrealized_pnl = 0  # P&L from current holdings
 
         # Initialize Dhan API only if we have credentials
         if config.get("dhan_client_id") and config.get("dhan_access_token"):
@@ -516,13 +518,19 @@ class VirtualPortfolio:
 
         self.config = config
 
-        # Set file paths based on mode - use parent directory data folder
+        # Set file paths based on mode - use absolute path to data folder
+        import os
+        # Get the project root directory (parent of backend folder)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        data_dir = os.path.join(project_root, "data")
+
         if self.mode == "live":
-            self.portfolio_file = "../data/portfolio_india_live.json"
-            self.trade_log_file = "../data/trade_log_india_live.json"
+            self.portfolio_file = os.path.join(data_dir, "portfolio_india_live.json")
+            self.trade_log_file = os.path.join(data_dir, "trade_log_india_live.json")
         else:
-            self.portfolio_file = "../data/portfolio_india_paper.json"
-            self.trade_log_file = "../data/trade_log_india_paper.json"
+            self.portfolio_file = os.path.join(data_dir, "portfolio_india_paper.json")
+            self.trade_log_file = os.path.join(data_dir, "trade_log_india_paper.json")
 
         self.initialize_files()
         self.load_portfolio_data()
@@ -536,6 +544,11 @@ class VirtualPortfolio:
                     portfolio_data = json.load(f)
                     self.cash = portfolio_data.get('cash', self.starting_balance)
                     self.holdings = portfolio_data.get('holdings', {})
+                    self.realized_pnl = portfolio_data.get('realized_pnl', 0)
+                    self.unrealized_pnl = portfolio_data.get('unrealized_pnl', 0)
+                    # Update starting_balance if it exists in file
+                    if 'starting_balance' in portfolio_data:
+                        self.starting_balance = portfolio_data['starting_balance']
                     logger.info(f"Loaded portfolio: Cash=Rs.{self.cash:.2f}, Holdings={len(self.holdings)} positions")
 
             # Load trade log data
@@ -632,6 +645,9 @@ class VirtualPortfolio:
                 "mode": self.mode,
                 "timestamp": str(datetime.now())
             })
+
+            # Update unrealized P&L for all holdings
+            self.update_unrealized_pnl()
             self.save_portfolio()
             return True
 
@@ -664,6 +680,12 @@ class VirtualPortfolio:
             # Update portfolio regardless of mode
             revenue = qty * price
             self.cash += revenue
+
+            # Calculate realized P&L for this trade
+            avg_price = self.holdings[asset]["avg_price"]
+            realized_pnl_for_trade = (price - avg_price) * qty
+            self.realized_pnl += realized_pnl_for_trade
+
             current_qty = self.holdings[asset]["qty"]
             if current_qty == qty:
                 del self.holdings[asset]
@@ -678,6 +700,9 @@ class VirtualPortfolio:
                 "mode": self.mode,
                 "timestamp": str(datetime.now())
             })
+
+            # Update unrealized P&L for remaining holdings
+            self.update_unrealized_pnl()
             self.save_portfolio()
             return True
 
@@ -919,8 +944,15 @@ class VirtualPortfolio:
     def save_portfolio(self):
         """Save portfolio state to JSON file."""
         try:
+            portfolio_data = {
+                "cash": self.cash,
+                "holdings": self.holdings,
+                "starting_balance": self.starting_balance,
+                "realized_pnl": getattr(self, 'realized_pnl', 0),
+                "unrealized_pnl": getattr(self, 'unrealized_pnl', 0)
+            }
             with open(self.portfolio_file, "w") as f:
-                json.dump({"cash": self.cash, "holdings": self.holdings}, f, indent=4)
+                json.dump(portfolio_data, f, indent=4)
         except Exception as e:
             logger.error(f"Error saving portfolio: {e}")
 
@@ -931,6 +963,35 @@ class VirtualPortfolio:
                 json.dump(self.trade_log, f, indent=4)
         except Exception as e:
             logger.error(f"Error saving trade log: {e}")
+
+    def update_unrealized_pnl(self):
+        """Update unrealized P&L based on current market prices."""
+        try:
+            if not self.holdings:
+                self.unrealized_pnl = 0
+                return
+
+            import yfinance as yf
+            total_unrealized = 0
+
+            for ticker, data in self.holdings.items():
+                try:
+                    stock = yf.Ticker(ticker)
+                    hist = stock.history(period="1d")
+                    if not hist.empty:
+                        current_price = hist['Close'].iloc[-1]
+                        unrealized_for_stock = (current_price - data['avg_price']) * data['qty']
+                        total_unrealized += unrealized_for_stock
+                    else:
+                        logger.warning(f"No price data available for {ticker}")
+                except Exception as e:
+                    logger.warning(f"Error fetching price for {ticker}: {e}")
+
+            self.unrealized_pnl = total_unrealized
+            logger.info(f"Updated unrealized P&L: Rs.{self.unrealized_pnl:.2f}")
+
+        except Exception as e:
+            logger.error(f"Error updating unrealized P&L: {e}")
 
     def get_current_prices(self):
         """Fetch current prices from Dhan API."""

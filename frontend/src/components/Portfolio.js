@@ -28,8 +28,8 @@ const HoldingsTable = styled.div`
 
 const HoldingsHeader = styled.div`
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
-  gap: 15px;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 1fr;
+  gap: 10px;
   padding: 15px;
   background: #3498db;
   color: white;
@@ -37,14 +37,15 @@ const HoldingsHeader = styled.div`
 
   @media (max-width: 768px) {
     grid-template-columns: 1fr 1fr 1fr;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
+    gap: 5px;
   }
 `;
 
 const HoldingsRow = styled.div`
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
-  gap: 15px;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 1fr;
+  gap: 10px;
   padding: 15px;
   align-items: center;
   border-bottom: 1px solid #e9ecef;
@@ -60,12 +61,22 @@ const HoldingsRow = styled.div`
 
   @media (max-width: 768px) {
     grid-template-columns: 1fr 1fr 1fr;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
+    gap: 5px;
   }
 `;
 
 const TickerName = styled.div`
   font-weight: bold;
+`;
+
+const ProfitLoss = styled.div`
+  font-weight: bold;
+  color: ${props => {
+    if (props.value > 0) return '#27ae60'; // Green for profit
+    if (props.value < 0) return '#e74c3c'; // Red for loss
+    return '#7f8c8d'; // Gray for neutral
+  }};
 `;
 
 const WatchlistControls = styled.div`
@@ -236,16 +247,19 @@ const Portfolio = ({ botData, onAddTicker, onRemoveTicker }) => {
               <HoldingsHeader>
                 <div>Ticker</div>
                 <div>Quantity</div>
-                <div>Avg Price</div>
-                <div>Current Value</div>
+                <div>Buy Price</div>
+                <div>Current Price</div>
+                <div>Profit/Loss</div>
                 <div>% of Portfolio</div>
               </HoldingsHeader>
               {Object.entries(holdings).map(([ticker, data]) => {
-                // Use currentPrice if available, otherwise fall back to avgPrice
-                const currentPrice = data.currentPrice || data.avgPrice || 0;
-                const avgPrice = data.avgPrice || 0;
+                // Use currentPrice if available, otherwise fall back to avg_price
+                const currentPrice = data.currentPrice || data.avg_price || 0;
+                const avgPrice = data.avg_price || 0;  // Fixed: use avg_price instead of avgPrice
                 const qty = data.qty || 0;
                 const currentValue = qty * currentPrice;
+                const costBasis = qty * avgPrice;
+                const profitLoss = currentValue - costBasis;  // Actual profit/loss calculation
                 const portfolioPercentage = calculatePortfolioPercentage(currentValue, totalValue);
 
                 return (
@@ -253,7 +267,10 @@ const Portfolio = ({ botData, onAddTicker, onRemoveTicker }) => {
                     <TickerName>{ticker}</TickerName>
                     <div>{qty}</div>
                     <div>{formatCurrency(avgPrice)}</div>
-                    <div>{formatCurrency(currentValue)}</div>
+                    <div>{formatCurrency(currentPrice)}</div>
+                    <ProfitLoss value={profitLoss}>
+                      {profitLoss >= 0 ? '+' : ''}{formatCurrency(profitLoss)}
+                    </ProfitLoss>
                     <div>{portfolioPercentage}%</div>
                   </HoldingsRow>
                 );

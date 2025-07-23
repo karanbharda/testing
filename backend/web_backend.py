@@ -178,7 +178,10 @@ class WebTradingBot:
 
         try:
             # Try to read from the actual portfolio file created by the trading bot
-            portfolio_file = "../data/portfolio_india_paper.json"
+            # Use absolute path to data folder
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(current_dir)
+            portfolio_file = os.path.join(project_root, "data", "portfolio_india_paper.json")
             if os.path.exists(portfolio_file):
                 with open(portfolio_file, 'r') as f:
                     portfolio_data = json.load(f)
@@ -189,7 +192,8 @@ class WebTradingBot:
 
                 # Get current prices for unrealized P&L calculation
                 current_prices = {}
-                unrealized_pnl = 0
+                unrealized_pnl = portfolio_data.get('unrealized_pnl', 0)  # Use saved value as fallback
+                price_fetch_success = False
 
                 if holdings:
                     try:
@@ -198,6 +202,7 @@ class WebTradingBot:
                             hist = stock.history(period="1d")
                             if not hist.empty:
                                 current_prices[ticker] = hist['Close'].iloc[-1]
+                                price_fetch_success = True
                             else:
                                 current_prices[ticker] = holdings[ticker]['avg_price']  # Fallback to avg price
                     except Exception as e:
@@ -206,23 +211,33 @@ class WebTradingBot:
                         for ticker, data in holdings.items():
                             current_prices[ticker] = data['avg_price']
 
-                # Calculate unrealized P&L with current prices
-                for ticker, data in holdings.items():
-                    current_price = current_prices.get(ticker, data['avg_price'])
-                    unrealized_pnl += (current_price - data['avg_price']) * data['qty']
+                # Calculate unrealized P&L with current prices only if we successfully fetched prices
+                if price_fetch_success:
+                    unrealized_pnl = 0
+                    for ticker, data in holdings.items():
+                        current_price = current_prices.get(ticker, data['avg_price'])
+                        unrealized_pnl += (current_price - data['avg_price']) * data['qty']
 
                 # Calculate total exposure and total value with current prices
                 total_exposure = sum(data['qty'] * data['avg_price'] for data in holdings.values())
-                current_market_value = sum(data['qty'] * current_prices.get(ticker, data['avg_price'])
-                                         for ticker, data in holdings.items())
+
+                # If we successfully fetched current prices, use them
+                if price_fetch_success:
+                    current_market_value = sum(data['qty'] * current_prices.get(ticker, data['avg_price'])
+                                             for ticker, data in holdings.items())
+                else:
+                    # If we couldn't fetch current prices, calculate market value using unrealized P&L
+                    current_market_value = total_exposure + unrealized_pnl
+
                 total_value = cash + current_market_value
 
                 # Calculate cash invested (starting balance minus current cash)
                 cash_invested = starting_balance - cash
 
-                # Calculate total return based on cash invested, not total portfolio value
-                # Total return = (current holdings value - cash invested)
-                total_return = current_market_value - cash_invested
+                # Calculate total return based on unrealized P&L (more accurate)
+                # Total return = unrealized P&L + realized P&L
+                realized_pnl = portfolio_data.get('realized_pnl', 0)
+                total_return = unrealized_pnl + realized_pnl
                 return_pct = (total_return / cash_invested) * 100 if cash_invested > 0 else 0
 
                 # Add current prices to holdings for frontend
@@ -286,7 +301,10 @@ class WebTradingBot:
 
         try:
             # Try to read from the actual trade log file created by the trading bot
-            trade_log_file = "../data/trade_log_india_paper.json"
+            # Use absolute path to data folder
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(current_dir)
+            trade_log_file = os.path.join(project_root, "data", "trade_log_india_paper.json")
             if os.path.exists(trade_log_file):
                 with open(trade_log_file, 'r') as f:
                     trades = json.load(f)

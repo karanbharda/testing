@@ -356,3 +356,186 @@
 2025-07-23 16:24:34,306 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
 2025-07-23 16:24:36,063 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
 2025-07-23 16:24:38,450 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:27:05,346 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:27:05,347 - INFO - Loaded 2 trades from trade log
+2025-07-23 16:27:05,364 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:27:05,365 - INFO - Trading bot initialized successfully
+2025-07-23 16:27:05,365 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-23 16:27:05,365 - INFO - Web interface will be available at the above URL
+2025-07-23 16:27:05,365 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-23 16:27:05,415 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:27:05,416 - INFO - Loaded 2 trades from trade log
+2025-07-23 16:27:05,431 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:27:05,432 - INFO - Trading bot initialized successfully
+2025-07-23 16:27:05,432 - INFO - Trading bot initialized on startup
+2025-07-23 16:27:15,142 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:27:16,662 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:27:32,351 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:27:33,998 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:28:00,796 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:28:30,831 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:29:01,684 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:29:31,180 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:30:00,782 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:30:31,560 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:31:01,998 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:31:31,199 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:32:01,255 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:32:31,216 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:33:01,214 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:33:17,604 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:33:17,605 - INFO - Loaded 2 trades from trade log
+2025-07-23 16:33:17,620 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:33:17,620 - INFO - Trading bot initialized successfully
+2025-07-23 16:33:17,620 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-23 16:33:17,620 - INFO - Web interface will be available at the above URL
+2025-07-23 16:33:17,621 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-23 16:33:17,666 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:33:17,666 - INFO - Loaded 2 trades from trade log
+2025-07-23 16:33:17,680 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:33:17,680 - INFO - Trading bot initialized successfully
+2025-07-23 16:33:17,680 - INFO - Trading bot initialized on startup
+2025-07-23 16:33:31,886 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:34:38,953 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:34:38,954 - INFO - Loaded 2 trades from trade log
+2025-07-23 16:34:38,969 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:34:38,970 - INFO - Trading bot initialized successfully
+2025-07-23 16:34:38,970 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-23 16:34:38,970 - INFO - Web interface will be available at the above URL
+2025-07-23 16:34:38,970 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-23 16:34:39,020 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:34:39,021 - INFO - Loaded 2 trades from trade log
+2025-07-23 16:34:39,034 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:34:39,034 - INFO - Trading bot initialized successfully
+2025-07-23 16:34:39,034 - INFO - Trading bot initialized on startup
+2025-07-23 16:34:52,462 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:34:53,933 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:35:24,082 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:35:52,930 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:36:23,736 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:36:25,071 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:36:52,907 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:37:17,483 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:37:22,676 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:37:38,669 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:37:38,669 - INFO - Loaded 2 trades from trade log
+2025-07-23 16:37:38,686 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:37:38,686 - INFO - Trading bot initialized successfully
+2025-07-23 16:37:38,686 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-23 16:37:38,686 - INFO - Web interface will be available at the above URL
+2025-07-23 16:37:38,686 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-23 16:37:38,735 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:37:38,736 - INFO - Loaded 2 trades from trade log
+2025-07-23 16:37:38,748 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:37:38,748 - INFO - Trading bot initialized successfully
+2025-07-23 16:37:38,748 - INFO - Trading bot initialized on startup
+2025-07-23 16:37:52,831 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:38:00,050 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:38:22,521 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:38:24,233 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:38:25,638 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:38:38,418 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:38:54,063 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:39:00,130 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:39:23,765 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:39:34,586 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:40:08,001 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:40:08,002 - INFO - Loaded 2 trades from trade log
+2025-07-23 16:40:08,014 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:40:08,014 - INFO - Trading bot initialized successfully
+2025-07-23 16:40:08,014 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-23 16:40:08,014 - INFO - Web interface will be available at the above URL
+2025-07-23 16:40:08,015 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-23 16:40:08,066 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:40:08,067 - INFO - Loaded 2 trades from trade log
+2025-07-23 16:40:08,081 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:40:08,081 - INFO - Trading bot initialized successfully
+2025-07-23 16:40:08,081 - INFO - Trading bot initialized on startup
+2025-07-23 16:40:24,153 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:40:53,877 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:41:22,884 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:41:39,171 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:41:50,276 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:41:51,555 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:41:53,941 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:42:21,206 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:42:24,200 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:42:52,522 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:43:20,991 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:43:42,689 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:43:50,778 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:44:20,647 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:44:42,819 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:44:50,786 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:45:21,204 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:45:42,714 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:45:50,615 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:46:21,269 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:46:42,581 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:46:50,947 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:47:42,828 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:47:44,339 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:48:00,047 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:48:01,547 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:48:08,194 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:48:09,426 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:48:11,777 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:48:13,738 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:48:38,069 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:49:09,248 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:49:38,768 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:50:08,573 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:50:38,722 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:50:58,631 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:51:09,678 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:51:31,438 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:51:32,379 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:52:01,619 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:52:32,684 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:53:03,209 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:53:31,691 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:54:01,295 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:54:32,362 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:55:02,623 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:55:32,211 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:56:02,420 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:56:32,075 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:57:44,588 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:58:43,501 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:59:43,173 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:00:23,499 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:00:26,008 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:00:27,806 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:00:56,620 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:01:27,788 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:01:56,332 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:02:26,905 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:02:56,446 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:03:26,998 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:04:43,712 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:05:43,482 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:06:42,462 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:07:43,571 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:08:42,395 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:09:42,752 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:10:42,468 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:11:43,656 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:12:42,615 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 17:12:42,721 - INFO - Trading bot is already stopped
+2025-07-23 17:12:42,721 - INFO - Trading bot stopped on shutdown
+2025-07-23 17:12:42,722 - INFO - Web server stopped by user
+2025-07-23 17:20:18,244 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 17:20:18,245 - INFO - Loaded 2 trades from trade log
+2025-07-23 17:20:18,261 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 17:20:18,261 - INFO - Trading bot initialized successfully
+2025-07-23 17:20:18,261 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-23 17:20:18,262 - INFO - Web interface will be available at the above URL
+2025-07-23 17:20:18,262 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-23 17:20:18,295 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 17:20:18,296 - INFO - Loaded 2 trades from trade log
+2025-07-23 17:20:18,311 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 17:20:18,311 - INFO - Trading bot initialized successfully
+2025-07-23 17:20:18,311 - INFO - Trading bot initialized on startup
+2025-07-23 17:21:16,967 - INFO - Trading bot is already stopped
+2025-07-23 17:21:16,967 - INFO - Trading bot stopped on shutdown
+2025-07-23 17:21:16,968 - INFO - Web server stopped by user
