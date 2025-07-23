@@ -317,3 +317,42 @@
 2025-07-22 15:41:32,203 - INFO - Initializing Stock Trading Bot for Indian market...
 2025-07-22 15:41:32,205 - INFO - Trading bot initialized successfully
 2025-07-22 15:41:32,205 - INFO - Trading bot initialized on startup
+2025-07-23 16:09:59,597 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:09:59,598 - INFO - Loaded 2 trades from trade log
+2025-07-23 16:09:59,613 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:09:59,614 - INFO - Trading bot initialized successfully
+2025-07-23 16:09:59,614 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-23 16:09:59,615 - INFO - Web interface will be available at the above URL
+2025-07-23 16:09:59,615 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-23 16:09:59,667 - INFO - Loaded portfolio: Cash=Rs.10000.00, Holdings=0 positions
+2025-07-23 16:09:59,668 - INFO - Loaded 0 trades from trade log
+2025-07-23 16:09:59,680 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:09:59,681 - INFO - Trading bot initialized successfully
+2025-07-23 16:09:59,681 - INFO - Trading bot initialized on startup
+2025-07-23 16:21:40,643 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:21:40,643 - INFO - Loaded 2 trades from trade log
+2025-07-23 16:21:40,659 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:21:40,660 - INFO - Trading bot initialized successfully
+2025-07-23 16:21:40,660 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-23 16:21:40,660 - INFO - Web interface will be available at the above URL
+2025-07-23 16:21:40,660 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-23 16:21:40,707 - INFO - Loaded portfolio: Cash=Rs.10000.00, Holdings=0 positions
+2025-07-23 16:21:40,708 - INFO - Loaded 0 trades from trade log
+2025-07-23 16:21:40,722 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:21:40,723 - INFO - Trading bot initialized successfully
+2025-07-23 16:21:40,723 - INFO - Trading bot initialized on startup
+2025-07-23 16:24:14,861 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:24:14,861 - INFO - Loaded 0 trades from trade log
+2025-07-23 16:24:14,878 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:24:14,878 - INFO - Trading bot initialized successfully
+2025-07-23 16:24:14,878 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-23 16:24:14,878 - INFO - Web interface will be available at the above URL
+2025-07-23 16:24:14,879 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-23 16:24:14,928 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-23 16:24:14,928 - INFO - Loaded 0 trades from trade log
+2025-07-23 16:24:14,942 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-23 16:24:14,942 - INFO - Trading bot initialized successfully
+2025-07-23 16:24:14,942 - INFO - Trading bot initialized on startup
+2025-07-23 16:24:34,306 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:24:36,063 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-23 16:24:38,450 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.

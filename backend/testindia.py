@@ -118,8 +118,8 @@ class ChatLogger:
     """Handles logging of chat interactions to JSON file."""
 
     def __init__(self):
-        self.log_file = "data/chat_interactions.json"
-        os.makedirs("data", exist_ok=True)
+        self.log_file = "../data/chat_interactions.json"
+        os.makedirs("../data", exist_ok=True)
         self.interactions = self.load_interactions()
 
     def load_interactions(self):
@@ -516,13 +516,13 @@ class VirtualPortfolio:
 
         self.config = config
 
-        # Set file paths based on mode
+        # Set file paths based on mode - use parent directory data folder
         if self.mode == "live":
-            self.portfolio_file = "data/portfolio_india_live.json"
-            self.trade_log_file = "data/trade_log_india_live.json"
+            self.portfolio_file = "../data/portfolio_india_live.json"
+            self.trade_log_file = "../data/trade_log_india_live.json"
         else:
-            self.portfolio_file = "data/portfolio_india_paper.json"
-            self.trade_log_file = "data/trade_log_india_paper.json"
+            self.portfolio_file = "../data/portfolio_india_paper.json"
+            self.trade_log_file = "../data/trade_log_india_paper.json"
 
         self.initialize_files()
         self.load_portfolio_data()
@@ -549,18 +549,30 @@ class VirtualPortfolio:
 
     def initialize_files(self):
         """Initialize portfolio and trade log JSON files if they don't exist."""
-        os.makedirs("data", exist_ok=True)
+        # Ensure parent data directory exists (don't create local data folder)
+        os.makedirs("../data", exist_ok=True)
+
+        # Only create portfolio file if it doesn't exist - preserve existing data
         if not os.path.exists(self.portfolio_file):
+            initial_portfolio = {
+                "cash": self.starting_balance,
+                "holdings": {},
+                "starting_balance": self.starting_balance,
+                "realized_pnl": 0,
+                "unrealized_pnl": 0
+            }
             with open(self.portfolio_file, "w") as f:
-                json.dump({"cash": self.cash, "holdings": self.holdings}, f, indent=4)
+                json.dump(initial_portfolio, f, indent=4)
+
+        # Only create trade log file if it doesn't exist - preserve existing data
         if not os.path.exists(self.trade_log_file):
             with open(self.trade_log_file, "w") as f:
                 json.dump([], f, indent=4)
 
-        # Initialize paper trading specific logs directory
+        # Initialize paper trading specific logs directory in parent folder
         if self.mode == "paper":
-            os.makedirs("logs", exist_ok=True)
-            self.paper_trade_log = f"logs/paper_trade_{datetime.now().strftime('%Y%m%d')}.txt"
+            os.makedirs("../logs", exist_ok=True)
+            self.paper_trade_log = f"../logs/paper_trade_{datetime.now().strftime('%Y%m%d')}.txt"
             # Initialize paper trade log file with header
             if not os.path.exists(self.paper_trade_log):
                 with open(self.paper_trade_log, "w", encoding='utf-8') as f:
@@ -2736,7 +2748,8 @@ class StockTradingBot:
     def initialize(self):
         """Initialize the bot and its components."""
         logger.info("Initializing Stock Trading Bot for Indian market...")
-        self.portfolio.initialize_portfolio()
+        # Portfolio is already initialized in VirtualPortfolio.__init__()
+        # Don't call initialize_portfolio() as it resets the data
 
     def is_market_open(self):
         """Check if the NSE is open."""
