@@ -530,6 +530,11 @@ class TradingExecutor:
                     logger.warning(f"Reducing trade size from {qty} to {adjusted_qty} due to capital limits")
                     qty = adjusted_qty
 
+            # If quantity becomes 0 or negative, don't execute the trade
+            if qty <= 0:
+                logger.warning(f"Trade cancelled: Quantity reduced to {qty} due to capital limits")
+                return {"success": False, "message": f"Trade cancelled: Insufficient capital for minimum trade size"}
+
             # Check trade limit
             if len(self.portfolio.trade_log) >= self.max_trade_limit:
                 logger.warning(f"Maximum trade limit ({self.max_trade_limit}) reached")

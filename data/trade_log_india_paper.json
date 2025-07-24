@@ -16,11 +16,12 @@
         "timestamp": "2025-07-21 16:37:45.946"
     },
     {
-        "asset": "HINDUNILVR.NS",
+        "asset": "HDFCBANK.NS",
         "action": "sell",
-        "qty": 0,
-        "price": 2451.89990234375,
+        "qty": 1,
+        "price": 2040.51,
         "mode": "paper",
-        "timestamp": "2025-07-24 11:22:50.678729"
+        "timestamp": "2025-07-24 12:30:32.189477",
+        "realized_pnl": 20.004999999999995
     }
 ]

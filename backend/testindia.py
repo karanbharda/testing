@@ -505,6 +505,7 @@ class VirtualPortfolio:
         self.mode = config.get("mode", "paper")
         self.realized_pnl = 0  # P&L from completed trades
         self.unrealized_pnl = 0  # P&L from current holdings
+        self.trade_callbacks = []  # Callbacks to notify when trades are executed
 
         # Initialize Dhan API only if we have credentials
         if config.get("dhan_client_id") and config.get("dhan_access_token"):
@@ -603,8 +604,24 @@ class VirtualPortfolio:
         self.save_portfolio()
         self.save_trade_log()
 
+    def add_trade_callback(self, callback):
+        """Add a callback function to be called when trades are executed"""
+        self.trade_callbacks.append(callback)
+
+    def notify_trade_callbacks(self, trade_data):
+        """Notify all registered callbacks about a trade execution"""
+        for callback in self.trade_callbacks:
+            try:
+                callback(trade_data)
+            except Exception as e:
+                logger.error(f"Error in trade callback: {e}")
+
     def buy(self, asset, qty, price):
         """Execute a buy order in live or paper trading mode."""
+        if qty <= 0:
+            logger.warning(f"Invalid buy quantity: {qty} for {asset}")
+            return False
+
         cost = qty * price
         if cost > self.cash:
             logger.warning(f"Insufficient cash for buy order: {asset}, qty: {qty}, price: {price}")
@@ -637,18 +654,24 @@ class VirtualPortfolio:
             else:
                 self.holdings[asset] = {"qty": qty, "avg_price": price}
 
-            self.log_trade({
+            trade_data = {
                 "asset": asset,
                 "action": "buy",
                 "qty": qty,
                 "price": price,
                 "mode": self.mode,
                 "timestamp": str(datetime.now())
-            })
+            }
+
+            self.log_trade(trade_data)
 
             # Update unrealized P&L for all holdings
             self.update_unrealized_pnl()
             self.save_portfolio()
+
+            # Notify callbacks about the trade
+            self.notify_trade_callbacks(trade_data)
+
             return True
 
         except Exception as e:
@@ -657,6 +680,10 @@ class VirtualPortfolio:
 
     def sell(self, asset, qty, price):
         """Execute a sell order in live or paper trading mode."""
+        if qty <= 0:
+            logger.warning(f"Invalid sell quantity: {qty} for {asset}")
+            return False
+
         if asset not in self.holdings or self.holdings[asset]["qty"] < qty:
             logger.warning(f"Insufficient holdings for sell order: {asset}, qty: {qty}")
             return False
@@ -692,18 +719,25 @@ class VirtualPortfolio:
             else:
                 self.holdings[asset]["qty"] -= qty
 
-            self.log_trade({
+            trade_data = {
                 "asset": asset,
                 "action": "sell",
                 "qty": qty,
                 "price": price,
                 "mode": self.mode,
-                "timestamp": str(datetime.now())
-            })
+                "timestamp": str(datetime.now()),
+                "realized_pnl": realized_pnl_for_trade
+            }
+
+            self.log_trade(trade_data)
 
             # Update unrealized P&L for remaining holdings
             self.update_unrealized_pnl()
             self.save_portfolio()
+
+            # Notify callbacks about the trade
+            self.notify_trade_callbacks(trade_data)
+
             return True
 
         except Exception as e:
@@ -761,6 +795,11 @@ class VirtualPortfolio:
 
     def log_trade(self, trade):
         """Log a trade to the trade log file."""
+        # Don't log trades with 0 quantity
+        if trade.get("qty", 0) <= 0:
+            logger.warning(f"Skipping trade log for {trade.get('asset')} with quantity {trade.get('qty')}")
+            return
+
         self.trade_log.append(trade)
         self.save_trade_log()
 
@@ -1035,6 +1074,11 @@ class TradingExecutor:
                 if adjusted_qty < qty:
                     logger.warning(f"Reducing trade size from {qty} to {adjusted_qty} due to capital limits")
                     qty = adjusted_qty
+
+            # If quantity becomes 0 or negative, don't execute the trade
+            if qty <= 0:
+                logger.warning(f"Trade cancelled: Quantity reduced to {qty} due to capital limits")
+                return {"success": False, "message": f"Trade cancelled: Insufficient capital for minimum trade size"}
 
             # Check trade limit
             if len(self.portfolio.trade_log) >= self.max_trade_limit:
@@ -3152,15 +3196,24 @@ class StockTradingBot:
                 f"Position Value: Rs.{buy_qty * current_price:.2f} ({(buy_qty * current_price / total_value * 100):.2f}% of portfolio), "
                 f"Stop-Loss: Rs.{stop_loss:.2f}, Take-Profit: Rs.{take_profit:.2f}, ATR: Rs.{atr:.2f}, Kelly Fraction: {kelly_fraction:.2f}"
             )
-            success = self.executor.execute_trade("buy", ticker, buy_qty, current_ticker_price, stop_loss, take_profit)
+            success_result = self.executor.execute_trade("buy", ticker, buy_qty, current_ticker_price, stop_loss, take_profit)
+
+            # Handle the case where trade execution returns detailed result
+            if isinstance(success_result, dict):
+                success = success_result.get("success", False)
+                actual_qty = success_result.get("qty", buy_qty)
+            else:
+                success = success_result
+                actual_qty = buy_qty if success else 0
+
             trade = {
                 "action": "buy",
                 "ticker": ticker,
-                "qty": buy_qty,
+                "qty": actual_qty,
                 "price": current_ticker_price,
                 "stop_loss": stop_loss,
                 "take_profit": take_profit,
-                "success": success,
+                "success": success_result,
                 "confidence_score": final_buy_score,
                 "signals": buy_signals,
                 "reason": "signal_based"
@@ -3177,15 +3230,24 @@ class StockTradingBot:
                 f"Position Value: Rs.{sell_qty * current_price:.2f} ({(sell_qty * current_price / total_value * 100):.2f}% of portfolio), "
                 f"Stop-Loss: Rs.{stop_loss:.2f}, Take-Profit: Rs.{take_profit:.2f}, ATR: Rs.{atr:.2f}"
             )
-            success = self.executor.execute_trade("sell", ticker, sell_qty, current_ticker_price, stop_loss, take_profit)
+            success_result = self.executor.execute_trade("sell", ticker, sell_qty, current_ticker_price, stop_loss, take_profit)
+
+            # Handle the case where trade execution returns detailed result
+            if isinstance(success_result, dict):
+                success = success_result.get("success", False)
+                actual_qty = success_result.get("qty", sell_qty)
+            else:
+                success = success_result
+                actual_qty = sell_qty if success else 0
+
             trade = {
                 "action": "sell",
                 "ticker": ticker,
-                "qty": sell_qty,
+                "qty": actual_qty,
                 "price": current_ticker_price,
                 "stop_loss": stop_loss,
                 "take_profit": take_profit,
-                "success": success,
+                "success": success_result,
                 "confidence_score": final_sell_score,
                 "signals": sell_signals,
                 "reason": "signal_based"

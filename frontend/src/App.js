@@ -102,6 +102,7 @@ function App() {
     initializeApp();
     const interval = setInterval(refreshData, 30000); // Auto-refresh every 30 seconds
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const initializeApp = async () => {

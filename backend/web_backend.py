@@ -15,11 +15,13 @@ import time
 # Import FastAPI components with fallback handling
 try:
     import uvicorn
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.staticfiles import StaticFiles
     from fastapi.responses import HTMLResponse, FileResponse
     from pydantic import BaseModel
+    import asyncio
+    import json
 except ImportError as e:
     print(f"Error importing FastAPI components: {e}")
     print("Please install FastAPI dependencies:")
@@ -119,6 +121,48 @@ trading_bot = None
 bot_thread = None
 bot_running = False
 
+# WebSocket Connection Manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info(f"WebSocket client connected. Total connections: {len(self.active_connections)}")
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+        logger.info(f"WebSocket client disconnected. Total connections: {len(self.active_connections)}")
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        try:
+            await websocket.send_text(message)
+        except Exception as e:
+            logger.error(f"Error sending personal message: {e}")
+            self.disconnect(websocket)
+
+    async def broadcast(self, message: dict):
+        if not self.active_connections:
+            return
+
+        message_str = json.dumps(message)
+        disconnected = []
+
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message_str)
+            except Exception as e:
+                logger.error(f"Error broadcasting to client: {e}")
+                disconnected.append(connection)
+
+        # Remove disconnected clients
+        for connection in disconnected:
+            self.disconnect(connection)
+
+manager = ConnectionManager()
+
 class WebTradingBot:
     """Wrapper class for the actual trading bot to work with web interface"""
 
@@ -129,6 +173,9 @@ class WebTradingBot:
         self.is_running = False
         self.last_update = datetime.now()
         self.trading_thread = None
+
+        # Register WebSocket callback for real-time updates
+        self.trading_bot.portfolio.add_trade_callback(self._on_trade_executed)
 
     def start(self):
         """Start the trading bot"""
@@ -374,6 +421,64 @@ class WebTradingBot:
                 },
                 "lastUpdate": datetime.now().isoformat()
             }
+
+    async def broadcast_portfolio_update(self):
+        """Broadcast portfolio update to all connected WebSocket clients"""
+        try:
+            portfolio_metrics = self.get_portfolio_metrics()
+            update_data = {
+                "type": "portfolio_update",
+                "data": {
+                    "totalValue": portfolio_metrics["total_value"],
+                    "cash": portfolio_metrics["cash"],
+                    "holdings": portfolio_metrics["holdings"],
+                    "unrealizedPnL": portfolio_metrics["unrealized_pnl"],
+                    "realizedPnL": portfolio_metrics["realized_pnl"],
+                    "tradeLog": self.get_recent_trades(10)
+                },
+                "timestamp": datetime.now().isoformat()
+            }
+            await manager.broadcast(update_data)
+            logger.info("Portfolio update broadcasted to WebSocket clients")
+        except Exception as e:
+            logger.error(f"Error broadcasting portfolio update: {e}")
+
+    async def broadcast_trade_update(self, trade_data):
+        """Broadcast trade update to all connected WebSocket clients"""
+        try:
+            update_data = {
+                "type": "trade_update",
+                "data": trade_data,
+                "timestamp": datetime.now().isoformat()
+            }
+            await manager.broadcast(update_data)
+            logger.info(f"Trade update broadcasted: {trade_data}")
+        except Exception as e:
+            logger.error(f"Error broadcasting trade update: {e}")
+
+    def _on_trade_executed(self, trade_data):
+        """Callback method called when a trade is executed"""
+        try:
+            # Schedule the broadcast in the main event loop
+            import asyncio
+            import threading
+
+            def run_broadcast():
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.broadcast_trade_update(trade_data))
+                    loop.run_until_complete(self.broadcast_portfolio_update())
+                    loop.close()
+                except Exception as e:
+                    logger.error(f"Error in broadcast thread: {e}")
+
+            # Run broadcast in a separate thread to avoid blocking
+            broadcast_thread = threading.Thread(target=run_broadcast, daemon=True)
+            broadcast_thread.start()
+
+        except Exception as e:
+            logger.error(f"Error in trade callback: {e}")
 
 def initialize_bot():
     """Initialize the trading bot with default configuration"""
@@ -643,6 +748,47 @@ async def update_settings(request: SettingsRequest):
     except Exception as e:
         logger.error(f"Error updating settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time updates"""
+    await manager.connect(websocket)
+    try:
+        # Send initial data when client connects
+        if trading_bot:
+            initial_data = trading_bot.get_complete_bot_data()
+            await manager.send_personal_message(
+                json.dumps({
+                    "type": "initial_data",
+                    "data": initial_data,
+                    "timestamp": datetime.now().isoformat()
+                }),
+                websocket
+            )
+
+        while True:
+            # Keep connection alive and handle incoming messages
+            data = await websocket.receive_text()
+
+            if data == "ping":
+                await manager.send_personal_message("pong", websocket)
+            elif data == "get_initial_data":
+                if trading_bot:
+                    initial_data = trading_bot.get_complete_bot_data()
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "initial_data",
+                            "data": initial_data,
+                            "timestamp": datetime.now().isoformat()
+                        }),
+                        websocket
+                    )
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        manager.disconnect(websocket)
 
 def run_web_server(host='127.0.0.1', port=5000, debug=False):
     """Run the FastAPI web server with uvicorn"""

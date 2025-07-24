@@ -1775,3 +1775,48 @@
 2025-07-24 11:45:48,124 - INFO - Web Trading Bot stopped successfully
 2025-07-24 11:45:48,124 - INFO - Trading bot stopped on shutdown
 2025-07-24 11:45:48,125 - INFO - Web server stopped by user
+2025-07-24 11:47:33,191 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-24 11:47:33,191 - INFO - Loaded 3 trades from trade log
+2025-07-24 11:47:33,209 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-24 11:47:33,209 - INFO - Trading bot initialized successfully
+2025-07-24 11:47:33,209 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-24 11:47:33,209 - INFO - Web interface will be available at the above URL
+2025-07-24 11:47:33,209 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-24 11:47:33,243 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-24 11:47:33,244 - INFO - Loaded 3 trades from trade log
+2025-07-24 11:47:33,259 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-24 11:47:33,259 - INFO - Trading bot initialized successfully
+2025-07-24 11:47:33,259 - INFO - Trading bot initialized on startup
+2025-07-24 11:59:33,364 - WARNING - Trade log file not found
+2025-07-24 11:59:33,365 - WARNING - Trade log file not found
+2025-07-24 12:00:03,581 - WARNING - Trade log file not found
+2025-07-24 12:00:03,582 - WARNING - Trade log file not found
+2025-07-24 12:01:34,080 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-24 12:01:34,081 - INFO - Loaded 2 trades from trade log
+2025-07-24 12:01:34,097 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-24 12:01:34,097 - INFO - Trading bot initialized successfully
+2025-07-24 12:01:34,097 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-24 12:01:34,097 - INFO - Web interface will be available at the above URL
+2025-07-24 12:01:34,098 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-24 12:01:34,128 - INFO - Loaded portfolio: Cash=Rs.5534.60, Holdings=2 positions
+2025-07-24 12:01:34,129 - INFO - Loaded 2 trades from trade log
+2025-07-24 12:01:34,142 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-24 12:01:34,142 - INFO - Trading bot initialized successfully
+2025-07-24 12:01:34,143 - INFO - Trading bot initialized on startup
+2025-07-24 12:01:34,143 - INFO - Trading bot is already stopped
+2025-07-24 12:01:34,144 - INFO - Trading bot stopped on shutdown
+2025-07-24 13:35:35,622 - INFO - Fetched price for HDFCBANK.NS: Rs.2014.20
+2025-07-24 13:35:35,779 - INFO - Fetched price for HINDUNILVR.NS: Rs.2430.20
+2025-07-24 13:35:35,820 - ERROR - Error with Grok LLM: GrokLLM._call() got an unexpected keyword argument 'stop'. Did you mean '_stop'?
+2025-07-24 13:35:56,292 - INFO - Fetched price for HDFCBANK.NS: Rs.2014.20
+2025-07-24 13:35:56,317 - INFO - Fetched price for HINDUNILVR.NS: Rs.2430.50
+2025-07-24 13:36:39,761 - INFO - Fetched price for HDFCBANK.NS: Rs.2014.20
+2025-07-24 13:36:39,783 - INFO - Fetched price for HINDUNILVR.NS: Rs.2431.20
+2025-07-24 13:36:39,784 - ERROR - Error with Grok LLM: GrokLLM._call() got an unexpected keyword argument 'stop'. Did you mean '_stop'?
+2025-07-24 13:42:19,090 - INFO - Fetched price for HDFCBANK.NS: Rs.2014.60
+2025-07-24 13:42:19,236 - INFO - Fetched price for HINDUNILVR.NS: Rs.2430.30
+2025-07-24 13:42:27,044 - INFO - Fetched price for HDFCBANK.NS: Rs.2014.60
+2025-07-24 13:42:27,064 - INFO - Fetched price for HINDUNILVR.NS: Rs.2430.30
+2025-07-24 13:42:27,066 - ERROR - Error with Grok LLM: GrokLLM._call() got an unexpected keyword argument 'stop'. Did you mean '_stop'?
+2025-07-24 13:44:35,328 - ERROR - $HDFCBANK.NS: possibly delisted; no price data found  (period=1d)
+2025-07-24 13:44:45,333 - ERROR - $HINDUNILVR.NS: possibly delisted; no price data found  (period=1d)
