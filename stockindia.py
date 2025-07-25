@@ -2773,7 +2773,7 @@ class StockTradingBot:
 
 def main():
     config = {
-        "tickers": ["SBIN.NS","TCS.NS","TATAMOTORS.NS","ETERNAL.NS","POWERGRID.NS","WIPRO.NS"],
+        "tickers": [],  # Empty by default - users can add tickers manually
         "starting_balance": 1000000,  # Default starting balance in INR
         "current_portfolio_value": 1000000,  # Initial portfolio value
         "current_pnl": 0,  # Initial PnL
@@ -2816,12 +2816,7 @@ def main_with_mode():
 
         # Enhanced configuration with risk management
         config = {
-            "tickers": [
-                "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "HINDUNILVR.NS",
-                "ICICIBANK.NS", "KOTAKBANK.NS", "BHARTIARTL.NS", "ITC.NS", "SBIN.NS",
-                "BAJFINANCE.NS", "ASIANPAINT.NS", "MARUTI.NS", "AXISBANK.NS", "LT.NS",
-                "HCLTECH.NS", "WIPRO.NS", "ULTRACEMCO.NS", "TITAN.NS", "NESTLEIND.NS"
-            ],
+            "tickers": [],  # Empty by default - users can add tickers manually
             "starting_balance": 1000000,  # ₹10 lakh
             "current_portfolio_value": 1000000,
             "current_pnl": 0,

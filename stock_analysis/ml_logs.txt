@@ -3511,3 +3511,109 @@ Reinforcement Learning Results:
     Episode 80: Reward = 4568440.25, Avg Reward = 3682637.37, Events = 168
     Episode 90: Reward = 2947016.60, Avg Reward = 359701.53, Events = 135
     Episode 100: Reward = -4278722.83, Avg Reward = 3180443.44, Events = 140
+
+[20250724_152157] Analysis for RELIANCE.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for RELIANCE INDUSTRIES LTD (RELIANCE.NS): STRONG SELL
+Current Price: ₹1402.40
+
+Buy Score: -0.449, Sell Score: 0.549
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0117 (higher values indicate higher risk)
+- Sector: Energy
+- Industry: Oil & Gas Refining & Marketing
+
+Prediction Days: 30
+Current Price (USD): 16.24
+Predicted Price (USD): 1398.0608241849884
+Predicted Change (%): 8508.75
+Confidence Score: -0.2181571828742801
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 18654.609532111706
+  mae:
+    Score: 111.11419322678906
+  r2:
+    Score: -0.2181571828742801
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: SELL
+  Performance (%): -8.81829232972089
+  Average Reward: 4992972.152392991
+  Average Events/Episode: 147.24
+  Actions Distribution:
+    hold: 0.9283
+    buy: 0.0284
+    sell: 0.0433
+  RL Epoch Logs:
+    Episode 10: Reward = -1259421.72, Avg Reward = 5018204.26, Events = 150
+    Episode 20: Reward = 8436903.91, Avg Reward = 6770491.92, Events = 159
+    Episode 30: Reward = -8890746.28, Avg Reward = 7906981.74, Events = 132
+    Episode 40: Reward = 11893879.38, Avg Reward = 3062380.11, Events = 156
+    Episode 50: Reward = 16186517.53, Avg Reward = 5923772.29, Events = 149
+    Episode 60: Reward = -1913756.60, Avg Reward = 1365143.54, Events = 135
+    Episode 70: Reward = 5369143.37, Avg Reward = 605668.45, Events = 145
+    Episode 80: Reward = 4712311.56, Avg Reward = 8272392.51, Events = 153
+    Episode 90: Reward = -8214011.58, Avg Reward = 3192883.44, Events = 159
+    Episode 100: Reward = -486925.70, Avg Reward = 7811803.27, Events = 151
+
+[20250724_152937] Analysis for RELIANCE.NS
+==================================================
+Stock Analysis Report
+==================================================
+Recommendation for RELIANCE INDUSTRIES LTD (RELIANCE.NS): STRONG SELL
+Current Price: ₹1402.10
+
+Buy Score: -0.448, Sell Score: 0.548
+
+Bearish Factors:
+- Price is above the 200-day SMA, suggesting potential overvaluation.
+- Negative risk-adjusted return (Sharpe Ratio).
+
+Risk Assessment:
+- Volatility: 0.0117 (higher values indicate higher risk)
+- Sector: Energy
+- Industry: Oil & Gas Refining & Marketing
+
+Prediction Days: 30
+Current Price (USD): 16.23
+Predicted Price (USD): 1370.7092438451639
+Predicted Change (%): 8345.53
+Confidence Score: 0.4895561315223387
+Pattern: Technical and Sentiment Analysis
+Model Scores:
+  mse:
+    Score: 7787.79899188599
+  mae:
+    Score: 70.68133237445647
+  r2:
+    Score: 0.4895561315223387
+Best Model: Stacking Ensemble
+Reinforcement Learning Results:
+  Recommendation: HOLD
+  Performance (%): 4.368424994292276
+  Average Reward: 6385660.947967146
+  Average Events/Episode: 147.63
+  Actions Distribution:
+    hold: 0.9296
+    buy: 0.0244
+    sell: 0.0460
+  RL Epoch Logs:
+    Episode 10: Reward = 3276364.32, Avg Reward = 3893671.47, Events = 130
+    Episode 20: Reward = 16707432.27, Avg Reward = 5816548.83, Events = 165
+    Episode 30: Reward = 16565438.34, Avg Reward = 99183.00, Events = 156
+    Episode 40: Reward = 14256091.23, Avg Reward = 5180966.90, Events = 154
+    Episode 50: Reward = 15602664.28, Avg Reward = 9629067.33, Events = 150
+    Episode 60: Reward = 7183190.13, Avg Reward = 8891453.16, Events = 158
+    Episode 70: Reward = 15007502.90, Avg Reward = 7546221.51, Events = 134
+    Episode 80: Reward = 8291398.09, Avg Reward = 3182854.25, Events = 151
+    Episode 90: Reward = 5637060.40, Avg Reward = 14511828.61, Events = 153
+    Episode 100: Reward = -11779325.70, Avg Reward = 5104814.43, Events = 151

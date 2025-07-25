@@ -2472,7 +2472,7 @@ class StockTradingBot:
 
 def main():
     config = {
-        "tickers": ["SBIN.NS","TCS.NS","TATAMOTORS.NS","ETERNAL.NS","POWERGRID.NS","WIPRO.NS"],
+        "tickers": [],  # Empty by default - users can add tickers manually
         "starting_balance": 1000000,  # Default starting balance in INR
         "current_portfolio_value": 1000000,  # Initial portfolio value
         "current_pnl": 0,  # Initial PnL

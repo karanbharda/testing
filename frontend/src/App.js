@@ -81,12 +81,7 @@ function App() {
     },
     config: {
       mode: 'paper',
-      tickers: [
-        'RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'HINDUNILVR.NS',
-        'ICICIBANK.NS', 'KOTAKBANK.NS', 'BHARTIARTL.NS', 'ITC.NS', 'SBIN.NS',
-        'BAJFINANCE.NS', 'ASIANPAINT.NS', 'MARUTI.NS', 'AXISBANK.NS', 'LT.NS',
-        'HCLTECH.NS', 'WIPRO.NS', 'ULTRACEMCO.NS', 'TITAN.NS', 'NESTLEIND.NS'
-      ],
+      tickers: [], // Empty by default - users can add tickers manually
       riskLevel: 'MEDIUM',
       maxAllocation: 25
     },

@@ -203,6 +203,12 @@ class WebTradingBot:
             logger.info("Stopping Trading Bot...")
             if self.trading_thread and self.trading_thread.is_alive():
                 logger.info("Waiting for trading thread to finish...")
+                # Wait for the thread to finish with a timeout
+                self.trading_thread.join(timeout=10.0)
+                if self.trading_thread.is_alive():
+                    logger.warning("Trading thread did not stop within timeout, forcing stop...")
+                else:
+                    logger.info("Trading thread stopped successfully")
             logger.info("Web Trading Bot stopped successfully")
         else:
             logger.info("Trading bot is already stopped")
@@ -491,12 +497,7 @@ def initialize_bot():
         
         # Default configuration
         config = {
-            "tickers": [
-                "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "HINDUNILVR.NS",
-                "ICICIBANK.NS", "KOTAKBANK.NS", "BHARTIARTL.NS", "ITC.NS", "SBIN.NS",
-                "BAJFINANCE.NS", "ASIANPAINT.NS", "MARUTI.NS", "AXISBANK.NS", "LT.NS",
-                "HCLTECH.NS", "WIPRO.NS", "ULTRACEMCO.NS", "TITAN.NS", "NESTLEIND.NS"
-            ],
+            "tickers": [],  # Empty by default - users can add tickers manually
             "starting_balance": 10000,  # ₹10 thousand
             "current_portfolio_value": 10000,
             "current_pnl": 0,
@@ -506,7 +507,7 @@ def initialize_bot():
             "period": "3y",
             "prediction_days": 30,
             "benchmark_tickers": ["^NSEI"],
-            "sleep_interval": 300,  # 5 minutes
+            "sleep_interval": 30,  # 30 seconds
             # Risk management settings
             "stop_loss_pct": float(os.getenv("STOP_LOSS_PCT", "0.05")),
             "max_capital_per_trade": float(os.getenv("MAX_CAPITAL_PER_TRADE", "0.25")),

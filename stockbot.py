@@ -2366,7 +2366,7 @@ def main():
     current_pnl = portfolio_value - last_equity
 
     config = {
-        "tickers" : ["UBER", "FUBO", "XPEV", "LI","LNTH","META","BKNG","AGX","PLTR","APPS","NFLX","TSLA"],
+        "tickers" : [],  # Empty by default - users can add tickers manually
         "starting_balance": current_cash,
         "current_portfolio_value": portfolio_value,
         "current_pnl": current_pnl,

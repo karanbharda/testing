@@ -389,3 +389,111 @@ Decision Factors:
   • Sell Signals: 2/4
   • Final Decision: HOLD
 ============================================================
+
+[2025-07-24 15:02:41] === STRATEGY ANALYSIS: RELIANCE.NS ===
+Market Sentiment:
+  • Positive: 45.0% (9 articles)
+  • Negative: 30.0% (6 articles)
+  • Overall: Bullish
+ML/RL Analysis:
+  • Current Price: ₹1402.80
+  • Predicted Price: ₹1503.09
+  • Expected Change: +7.15%
+  • RL Recommendation: BUY
+Decision Factors:
+  • Buy Score: 0.030
+  • Sell Score: 0.350
+  • Buy Signals: 1/4
+  • Sell Signals: 2/4
+  • Final Decision: HOLD
+============================================================
+
+[2025-07-24 15:05:25] === STRATEGY ANALYSIS: TCS.NS ===
+Market Sentiment:
+  • Positive: 45.0% (9 articles)
+  • Negative: 25.0% (5 articles)
+  • Overall: Bullish
+ML/RL Analysis:
+  • Current Price: ₹3152.80
+  • Predicted Price: ₹3319.16
+  • Expected Change: +5.28%
+  • RL Recommendation: BUY
+Decision Factors:
+  • Buy Score: 0.042
+  • Sell Score: 0.430
+  • Buy Signals: 2/4
+  • Sell Signals: 2/4
+  • Final Decision: HOLD
+============================================================
+
+[2025-07-24 15:08:07] === BUY SIGNAL EXECUTED ===
+Asset: HDFCBANK.NS
+Action: BUY 1 shares at ₹2015.70
+Trade Value: ₹2,015.70
+Entry Signal: Price ₹2015.70 identified as favorable entry point
+Position Size: 1 shares (20.2% of portfolio)
+Portfolio Cash: ₹7,984.30
+Total Portfolio Value: ₹9,999.50
+Unrealized P&L: ₹-0.50
+============================================================
+
+[2025-07-24 15:08:07] === STRATEGY ANALYSIS: HDFCBANK.NS ===
+Market Sentiment:
+  • Positive: 80.0% (8 articles)
+  • Negative: 10.0% (1 articles)
+  • Overall: Bullish
+ML/RL Analysis:
+  • Current Price: ₹2015.70
+  • Predicted Price: ₹1487.73
+  • Expected Change: -26.19%
+  • RL Recommendation: BUY
+Decision Factors:
+  • Buy Score: 0.210
+  • Sell Score: 0.320
+  • Buy Signals: 2/4
+  • Sell Signals: 1/4
+  • Final Decision: BUY
+  • Quantity: 1 shares
+  • Trade Value: ₹2,015.70
+============================================================
+
+[2025-07-24 15:10:45] === STRATEGY ANALYSIS: INFY.NS ===
+Market Sentiment:
+  • Positive: 60.0% (12 articles)
+  • Negative: 25.0% (5 articles)
+  • Overall: Bullish
+ML/RL Analysis:
+  • Current Price: ₹1553.40
+  • Predicted Price: ₹1389.06
+  • Expected Change: -10.58%
+  • RL Recommendation: SELL
+Decision Factors:
+  • Buy Score: 0.060
+  • Sell Score: 0.430
+  • Buy Signals: 1/4
+  • Sell Signals: 2/4
+  • Final Decision: HOLD
+============================================================
+
+[2025-07-24 15:10:45] === PAPER TRADING P&L SUMMARY ===
+Session Duration: 0.0 hours
+
+Portfolio Performance:
+  • Starting Balance: ₹10,000.00
+  • Current Cash: ₹7,984.30
+  • Holdings Value: ₹2,015.30
+  • Total Portfolio Value: ₹9,999.60
+  • Total Return: ₹-0.40 (-0.00%)
+  • Realized P&L: ₹0.00
+  • Unrealized P&L: ₹-0.40
+
+Trading Statistics:
+  • Total Trades: 1
+  • Buy Orders: 1
+  • Sell Orders: 0
+  • Win Rate: 0.0%
+  • Active Positions: 1
+
+Current Holdings:
+  • HDFCBANK.NS: 1 shares @ ₹2015.70 (₹2,015.70)
+======================================================================

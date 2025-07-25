@@ -1695,8 +1695,8 @@ class Stock:
             logger.error(f"Error generating adversarial data: {e}")
             return history
 
-    def train_rl_with_adversarial_events(self, history, ml_predicted_price, current_price, 
-                                       num_episodes=100, adversarial_freq=0.2, max_event_magnitude=0.1):
+    def train_rl_with_adversarial_events(self, history, ml_predicted_price, current_price,
+                                       num_episodes=100, adversarial_freq=0.2, max_event_magnitude=0.1, bot_running=True):
         try:
             history = history.copy()
             history["SMA_50"] = history["Close"].rolling(window=50).mean()
@@ -1863,12 +1863,22 @@ class Stock:
             
             logger.info(f"Training adversarial RL agent...")
             for episode in range(num_episodes):
+                # Check if bot should stop
+                if not bot_running:
+                    logger.info("Bot stop signal received, stopping RL training...")
+                    break
+
                 state = env.reset()
                 total_reward = 0
                 done = False
                 episode_events = 0
-                
+
                 while not done:
+                    # Check if bot should stop during episode
+                    if not bot_running:
+                        logger.info("Bot stop signal received, stopping RL episode...")
+                        break
+
                     action = agent.get_action(state)
                     next_state, reward, done, _ = env.step(action)
                     agent.update(state, action, reward, next_state)
@@ -1876,7 +1886,11 @@ class Stock:
                     total_reward += reward
                     if state[-1] > 0:
                         episode_events += 1
-                        
+
+                # Break out of episode loop if bot should stop
+                if not bot_running:
+                    break
+
                 total_rewards.append(total_reward)
                 event_counts.append(episode_events)
                 if (episode + 1) % 10 == 0:
@@ -1928,8 +1942,8 @@ class Stock:
                 "message": f"Error in adversarial RL training: {str(e)}"
             }
 
-    def adversarial_training_loop(self, X_train, y_train, X_test, y_test, input_size, 
-                                 seq_length=20, num_epochs=50, adv_lambda=0.1):
+    def adversarial_training_loop(self, X_train, y_train, X_test, y_test, input_size,
+                                 seq_length=20, num_epochs=50, adv_lambda=0.1, bot_running=True):
         try:
             logger.info("Cleaning input data...")
             X_train = np.nan_to_num(X_train, nan=0.0, posinf=0.0, neginf=0.0)
@@ -2028,20 +2042,30 @@ class Stock:
             
             logger.info("Starting adversarial training for LSTM and Transformer...")
             for epoch in range(num_epochs):
+                # Check if bot should stop
+                if not bot_running:
+                    logger.info("Bot stop signal received, stopping adversarial training...")
+                    break
+
                 lstm_model.train()
                 transformer_model.train()
                 lstm_running_loss = 0.0
                 transformer_running_loss = 0.0
-                
+
                 for batch_idx, (inputs, labels) in enumerate(train_loader):
+                    # Check if bot should stop during batch processing
+                    if not bot_running:
+                        logger.info("Bot stop signal received, stopping batch processing...")
+                        break
+
                     inputs, labels = inputs.to(self.device), labels.to(self.device)
                     inputs = inputs.clone().detach().requires_grad_(True)
-                    
+
                     lstm_optimizer.zero_grad()
                     with torch.enable_grad():
                         lstm_outputs = lstm_model(inputs)
                         lstm_loss = criterion(lstm_outputs.squeeze(), labels)
-                        
+
                         lstm_loss.backward(retain_graph=True)
                         data_grad = inputs.grad
                         if data_grad is None:
@@ -2049,23 +2073,23 @@ class Stock:
                             perturbed_inputs = inputs.clone().detach().requires_grad_(True)
                         else:
                             perturbed_inputs = fgsm_attack(inputs, epsilon=0.1, data_grad=data_grad)
-                        
+
                         lstm_optimizer.zero_grad()
                         lstm_adv_outputs = lstm_model(perturbed_inputs)
                         lstm_adv_loss = criterion(lstm_adv_outputs.squeeze(), labels)
-                        
+
                         lstm_total_loss = lstm_loss + adv_lambda * lstm_adv_loss
                         lstm_total_loss.backward()
-                    
+
                     lstm_optimizer.step()
                     lstm_running_loss += lstm_total_loss.item()
-                    
+
                     transformer_optimizer.zero_grad()
                     inputs = inputs.clone().detach().requires_grad_(True)
                     with torch.enable_grad():
                         transformer_outputs = transformer_model(inputs)
                         transformer_loss = criterion(transformer_outputs.squeeze(), labels)
-                        
+
                         transformer_loss.backward(retain_graph=True)
                         data_grad = inputs.grad
                         if data_grad is None:
@@ -2073,17 +2097,21 @@ class Stock:
                             perturbed_inputs = inputs.clone().detach().requires_grad_(True)
                         else:
                             perturbed_inputs = fgsm_attack(inputs, epsilon=0.1, data_grad=data_grad)
-                        
+
                         transformer_optimizer.zero_grad()
                         transformer_adv_outputs = transformer_model(perturbed_inputs)
                         transformer_adv_loss = criterion(transformer_adv_outputs.squeeze(), labels)
-                        
+
                         transformer_total_loss = transformer_loss + adv_lambda * transformer_adv_loss
                         transformer_total_loss.backward()
-                    
+
                     transformer_optimizer.step()
                     transformer_running_loss += transformer_total_loss.item()
-                
+
+                # Break out of epoch loop if bot should stop
+                if not bot_running:
+                    break
+
                 if (epoch + 1) % 10 == 0:
                     lstm_epoch_loss = lstm_running_loss / len(train_loader)
                     transformer_epoch_loss = transformer_running_loss / len(train_loader)
@@ -2172,8 +2200,16 @@ class Stock:
                 "transformer_epoch_logs": {}
             }
 
-    def analyze_stock(self, ticker, benchmark_tickers=None, prediction_days=30, training_period="7y"):
+    def analyze_stock(self, ticker, benchmark_tickers=None, prediction_days=30, training_period="7y", bot_running=True):
         try:
+            # Check if bot should stop before starting analysis
+            if not bot_running:
+                logger.info(f"Bot stop signal received, skipping analysis for {ticker}")
+                return {
+                    "success": False,
+                    "message": "Bot stopped during analysis"
+                }
+
             ticker = ticker.strip().upper()
             logger.info(f"Fetching and analyzing data for {ticker}...")
 
@@ -2596,7 +2632,7 @@ class Stock:
 
                         logger.info(f"Performing adversarial training for {ticker}...")
                         adv_training_result = self.adversarial_training_loop(
-                            X_train, y_train, X_test, y_test, input_size=X.shape[1]
+                            X_train, y_train, X_test, y_test, input_size=X.shape[1], bot_running=bot_running
                         )
 
                         if adv_training_result["success"]:
@@ -2630,7 +2666,8 @@ class Stock:
                         rl_result = self.train_rl_with_adversarial_events(
                             extended_history,
                             ensemble_pred,
-                            current_price
+                            current_price,
+                            bot_running=bot_running
                         )
 
                         ml_analysis = {
@@ -3303,7 +3340,8 @@ class StockTradingBot:
             ticker,
             benchmark_tickers=self.config.get("benchmark_tickers", ["^NSEI"]),
             prediction_days=self.config.get("prediction_days", 30),
-            training_period=self.config.get("period", "3y")
+            training_period=self.config.get("period", "3y"),
+            bot_running=self.bot_running
         )
 
     def run(self):
@@ -3311,8 +3349,13 @@ class StockTradingBot:
         logger.info("Starting Stock Trading Bot for Indian market...")
         self.bot_running = True
 
-        while True:
+        while self.bot_running:
             try:
+                # Check if bot should stop
+                if not self.bot_running:
+                    logger.info("Bot stop signal received, exiting main loop...")
+                    break
+
                 # Check if trading is paused
                 if self.chatbot.trading_paused:
                     if self.chatbot.pause_until and datetime.now() >= self.chatbot.pause_until:
@@ -3333,6 +3376,11 @@ class StockTradingBot:
                 self.tracker.log_metrics()
 
                 for ticker in self.config["tickers"]:
+                    # Check if bot should stop before processing each ticker
+                    if not self.bot_running:
+                        logger.info("Bot stop signal received, stopping ticker processing...")
+                        break
+
                     logger.info(f"Processing {ticker}...")
                     analysis = self.run_analysis(ticker)
                     if analysis.get("success"):
@@ -3346,6 +3394,11 @@ class StockTradingBot:
                             logger.info(f"Trade executed: {trade}")
                     else:
                         logger.warning(f"Analysis failed for {ticker}: {analysis.get('message')}")
+
+                # Check if bot should stop before generating report
+                if not self.bot_running:
+                    logger.info("Bot stop signal received, skipping report generation...")
+                    break
 
                 report = self.reporter.generate_report()
                 logger.info(f"Daily Report: {report}")
@@ -3362,9 +3415,11 @@ class StockTradingBot:
                 logger.error(f"Error in main loop: {e}")
                 time.sleep(60)
 
+        logger.info("Stock Trading Bot stopped successfully")
+
 def main():
     config = {
-        "tickers": ["SBIN.NS","TCS.NS","TATAMOTORS.NS","ETERNAL.NS","POWERGRID.NS","WIPRO.NS"],
+        "tickers": [],  # Empty by default - users can add tickers manually
         "starting_balance": 10000,  # Default starting balance in INR
         "current_portfolio_value": 10000,  # Initial portfolio value
         "current_pnl": 0,  # Initial PnL
@@ -3408,12 +3463,7 @@ def main_with_mode():
 
         # Enhanced configuration with risk management
         config = {
-            "tickers": [
-                "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "HINDUNILVR.NS",
-                "ICICIBANK.NS", "KOTAKBANK.NS", "BHARTIARTL.NS", "ITC.NS", "SBIN.NS",
-                "BAJFINANCE.NS", "ASIANPAINT.NS", "MARUTI.NS", "AXISBANK.NS", "LT.NS",
-                "HCLTECH.NS", "WIPRO.NS", "ULTRACEMCO.NS", "TITAN.NS", "NESTLEIND.NS"
-            ],
+            "tickers": [],  # Empty by default - users can add tickers manually
             "starting_balance": 10000,  # ₹10 thousand
             "current_portfolio_value": 10000,
             "current_pnl": 0,
