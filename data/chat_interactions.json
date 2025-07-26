@@ -47,5 +47,33 @@
     "bot_response": "Sorry, I'm having trouble with the AI service right now.",
     "command_type": "general",
     "session_id": "session_20250724134227"
+  },
+  {
+    "timestamp": "2025-07-25T16:31:24.744867",
+    "user_input": "ganpati bappa moriya",
+    "bot_response": "Your query seems to be unrelated to trading or finance. However, I can try to connect it to trading by mentioning Lord Ganesha, the remover of obstacles.\n\nIn trading, having a clear mind and focus is crucial. Just like how Lord Ganesha helps remove obstacles from our path, setting risk management strategies and staying disciplined in trading can help navigate market challenges.\n\nWould you like me to set a risk for your current portfolio?",
+    "command_type": "general",
+    "session_id": "session_20250725163124"
+  },
+  {
+    "timestamp": "2025-07-25T16:31:51.662582",
+    "user_input": "hello",
+    "bot_response": "Namaste! Welcome to our Indian stock trading bot. I'm here to help you navigate the markets with confidence. Before we begin, let's quickly review your current status:\n\nPortfolio Value: ₹9,979.91\nActive Positions: 2\nTrading Mode: Paper (for simulated trading only)\n\nWhat would you like to do today? You can use commands like /start_bot or /set_risk to get started.",
+    "command_type": "general",
+    "session_id": "session_20250725163151"
+  },
+  {
+    "timestamp": "2025-07-26T11:44:30.712487",
+    "user_input": "hello",
+    "bot_response": "Namaste! Welcome to our Indian stock trading bot. How can I assist you today? You currently have ₹9,979.91 in your portfolio with 2 active positions. What would you like to know or do next?",
+    "command_type": "general",
+    "session_id": "session_20250726114430"
+  },
+  {
+    "timestamp": "2025-07-26T11:47:53.825684",
+    "user_input": "hello",
+    "bot_response": "Namaste! Welcome to your Indian stock trading bot.\n\nBefore we begin, a quick update on your current status:\n\n- Portfolio Value: ₹9,979.91\n- Active Positions: 2\n\nWe're currently in paper trading mode to practice and refine our strategies. Would you like to explore market trends, optimize your portfolio, or execute a trade?",
+    "command_type": "general",
+    "session_id": "session_20250726114753"
   }
 ]

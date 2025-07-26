@@ -4068,3 +4068,23 @@
 2025-07-25 16:32:29,056 - INFO - Trading bot is already stopped
 2025-07-25 16:32:29,057 - INFO - Trading bot stopped on shutdown
 2025-07-25 16:32:29,057 - INFO - Web server stopped by user
+2025-07-26 11:42:49,677 - INFO - Loaded portfolio: Cash=Rs.6003.09, Holdings=2 positions
+2025-07-26 11:42:49,690 - INFO - Loaded 2 trades from trade log
+2025-07-26 11:42:49,729 - INFO - Dynamic ticker mapper initialized
+2025-07-26 11:42:49,745 - INFO - Llama LLM initialized successfully with Ollama
+2025-07-26 11:42:49,745 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-26 11:42:49,745 - INFO - Trading bot initialized successfully
+2025-07-26 11:42:49,745 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-26 11:42:49,745 - INFO - Web interface will be available at the above URL
+2025-07-26 11:42:49,746 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-26 11:42:49,847 - INFO - Loaded portfolio: Cash=Rs.6003.09, Holdings=2 positions
+2025-07-26 11:42:49,847 - INFO - Loaded 2 trades from trade log
+2025-07-26 11:42:49,861 - INFO - Dynamic ticker mapper initialized
+2025-07-26 11:42:49,862 - INFO - Llama LLM initialized successfully with Ollama
+2025-07-26 11:42:49,863 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-26 11:42:49,863 - INFO - Trading bot initialized successfully
+2025-07-26 11:42:49,863 - INFO - Trading bot initialized on startup
+2025-07-26 11:44:19,794 - INFO - Fetched price for HDFCBANK.NS: Rs.2004.60
+2025-07-26 11:44:19,814 - INFO - Fetched price for SUZLON.NS: Rs.63.62
+2025-07-26 11:47:43,377 - INFO - Fetched price for HDFCBANK.NS: Rs.2004.60
+2025-07-26 11:47:43,484 - INFO - Fetched price for SUZLON.NS: Rs.63.62

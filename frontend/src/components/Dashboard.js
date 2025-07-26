@@ -588,23 +588,21 @@ const Dashboard = ({ botData }) => {
   const portfolioChartData = generatePortfolioChartData();
   const allocationChartData = generateAllocationChartData();
 
-  // Get recent trades and ensure we have enough to test scrolling
-  let recentTrades = (botData.portfolio.tradeLog || []).slice(-20).reverse();
+  // Get recent trades and remove any duplicates
+  const allTrades = (botData.portfolio.tradeLog || []);
 
-  // If we have fewer than 5 trades, duplicate some for testing scrolling
-  if (recentTrades.length > 0 && recentTrades.length < 5) {
-    const originalTrades = [...recentTrades];
-    while (recentTrades.length < 8) {
-      originalTrades.forEach((trade, index) => {
-        if (recentTrades.length < 8) {
-          recentTrades.push({
-            ...trade,
-            timestamp: new Date(new Date(trade.timestamp).getTime() + (index + 1) * 60000).toISOString() // Add minutes
-          });
-        }
-      });
-    }
-  }
+  // Remove duplicates based on asset, timestamp, qty, and price
+  const uniqueTrades = allTrades.filter((trade, index, self) =>
+    index === self.findIndex(t =>
+      t.asset === trade.asset &&
+      t.timestamp === trade.timestamp &&
+      t.qty === trade.qty &&
+      t.price === trade.price &&
+      t.action === trade.action
+    )
+  );
+
+  let recentTrades = uniqueTrades.slice(-20).reverse();
 
   return (
     <DashboardContainer>
@@ -705,7 +703,7 @@ const Dashboard = ({ botData }) => {
                 });
 
               return (
-                <ActivityItem key={`${trade.asset}-${trade.timestamp}-${index}`} type={action}>
+                <ActivityItem key={`trade-${index}-${trade.asset}-${trade.timestamp}-${trade.qty}-${trade.price}`} type={action}>
                   <ActivityDetails>
                     <ActivityTitle type={action}>
                       {action.toUpperCase()} {displayAsset}

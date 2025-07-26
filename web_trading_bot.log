@@ -674,3 +674,151 @@
 2025-07-25 13:07:34,069 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
 2025-07-25 13:07:36,218 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
 2025-07-25 13:07:45,389 - INFO - Trading bot is already stopped
+2025-07-25 16:00:10,314 - INFO - Loaded portfolio: Cash=Rs.6003.09, Holdings=2 positions
+2025-07-25 16:00:10,315 - INFO - Loaded 2 trades from trade log
+2025-07-25 16:00:10,329 - INFO - Loaded 24 stocks from cache
+2025-07-25 16:00:10,329 - INFO - Dynamic ticker mapper initialized
+2025-07-25 16:00:10,331 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-25 16:00:10,332 - INFO - Trading bot initialized successfully
+2025-07-25 16:00:10,332 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-25 16:00:10,332 - INFO - Web interface will be available at the above URL
+2025-07-25 16:00:10,332 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-25 16:00:10,362 - INFO - Loaded portfolio: Cash=Rs.6003.09, Holdings=2 positions
+2025-07-25 16:00:10,362 - INFO - Loaded 2 trades from trade log
+2025-07-25 16:00:10,375 - INFO - Loaded 24 stocks from cache
+2025-07-25 16:00:10,375 - INFO - Dynamic ticker mapper initialized
+2025-07-25 16:00:10,376 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-25 16:00:10,376 - INFO - Trading bot initialized successfully
+2025-07-25 16:00:10,376 - INFO - Trading bot initialized on startup
+2025-07-25 16:22:16,662 - INFO - Loaded portfolio: Cash=Rs.6003.09, Holdings=2 positions
+2025-07-25 16:22:16,663 - INFO - Loaded 2 trades from trade log
+2025-07-25 16:22:16,678 - INFO - Loaded 24 stocks from cache
+2025-07-25 16:22:16,679 - INFO - Dynamic ticker mapper initialized
+2025-07-25 16:22:16,681 - INFO - Llama LLM initialized successfully with Ollama
+2025-07-25 16:22:16,681 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-25 16:22:16,681 - INFO - Trading bot initialized successfully
+2025-07-25 16:22:16,682 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-25 16:22:16,682 - INFO - Web interface will be available at the above URL
+2025-07-25 16:22:16,682 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-25 16:22:16,732 - INFO - Loaded portfolio: Cash=Rs.6003.09, Holdings=2 positions
+2025-07-25 16:22:16,733 - INFO - Loaded 2 trades from trade log
+2025-07-25 16:22:16,747 - INFO - Loaded 24 stocks from cache
+2025-07-25 16:22:16,747 - INFO - Dynamic ticker mapper initialized
+2025-07-25 16:22:16,748 - INFO - Llama LLM initialized successfully with Ollama
+2025-07-25 16:22:16,748 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-25 16:22:16,748 - INFO - Trading bot initialized successfully
+2025-07-25 16:22:16,748 - INFO - Trading bot initialized on startup
+2025-07-25 16:22:16,749 - INFO - Trading bot is already stopped
+2025-07-25 16:22:16,749 - INFO - Trading bot stopped on shutdown
+2025-07-25 16:22:47,894 - INFO - Fetched price for HDFCBANK.NS: Rs.2004.60
+2025-07-25 16:22:48,008 - INFO - Fetched price for SUZLON.NS: Rs.63.62
+2025-07-25 16:22:48,057 - INFO - Fetched price for HDFCBANK.NS: Rs.2004.60
+2025-07-25 16:22:48,103 - INFO - Fetched price for SUZLON.NS: Rs.63.62
+2025-07-25 16:22:48,111 - ERROR - Error with Grok LLM: GrokLLM._call() got an unexpected keyword argument 'stop'. Did you mean '_stop'?
+2025-07-25 16:22:48,116 - ERROR - Error handling command /why_trade: 'ChatbotCommandHandler' object has no attribute 'why_trade'
+2025-07-25 16:24:48,567 - INFO - Loaded portfolio: Cash=Rs.6003.09, Holdings=2 positions
+2025-07-25 16:24:48,568 - INFO - Loaded 2 trades from trade log
+2025-07-25 16:24:48,581 - INFO - Loaded 24 stocks from cache
+2025-07-25 16:24:48,582 - INFO - Dynamic ticker mapper initialized
+2025-07-25 16:24:48,596 - INFO - Llama LLM initialized successfully with Ollama
+2025-07-25 16:24:48,597 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-25 16:24:48,597 - INFO - Trading bot initialized successfully
+2025-07-25 16:24:48,597 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-25 16:24:48,597 - INFO - Web interface will be available at the above URL
+2025-07-25 16:24:48,597 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-25 16:24:48,646 - INFO - Loaded portfolio: Cash=Rs.6003.09, Holdings=2 positions
+2025-07-25 16:24:48,647 - INFO - Loaded 2 trades from trade log
+2025-07-25 16:24:48,659 - INFO - Loaded 24 stocks from cache
+2025-07-25 16:24:48,659 - INFO - Dynamic ticker mapper initialized
+2025-07-25 16:24:48,660 - INFO - Llama LLM initialized successfully with Ollama
+2025-07-25 16:24:48,660 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-25 16:24:48,660 - INFO - Trading bot initialized successfully
+2025-07-25 16:24:48,660 - INFO - Trading bot initialized on startup
+2025-07-25 16:24:57,920 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:25:25,316 - ERROR - Error fetching price for HDFCBANK.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:25:26,679 - ERROR - Error fetching price for SUZLON.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:25:28,184 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:25:29,853 - ERROR - Error fetching price for HDFCBANK.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:25:31,078 - ERROR - Error fetching price for SUZLON.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:25:38,900 - INFO - Bot stop signal received, skipping analysis for HDFCBANK.NS
+2025-07-25 16:25:58,245 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:26:31,468 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:26:43,081 - INFO - Bot start command received via chat interface
+2025-07-25 16:26:45,372 - ERROR - Error fetching price for HDFCBANK.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:26:46,945 - ERROR - Error fetching price for SUZLON.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:26:50,301 - ERROR - Error fetching price for HDFCBANK.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:26:51,892 - ERROR - Error fetching price for SUZLON.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:26:54,445 - ERROR - Error fetching price for HDFCBANK.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:26:55,577 - ERROR - Error fetching price for SUZLON.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:27:06,734 - ERROR - Error fetching price for HDFCBANK.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:27:13,433 - ERROR - Error fetching price for SUZLON.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:27:31,304 - ERROR - $HDFCBANK.NS: possibly delisted; no price data found  (period=1d)
+2025-07-25 16:27:31,305 - WARNING - No price data available for HDFCBANK.NS
+2025-07-25 16:28:01,349 - ERROR - $SUZLON.NS: possibly delisted; no price data found  (period=1d)
+2025-07-25 16:28:01,350 - WARNING - No price data available for SUZLON.NS
+2025-07-25 16:28:23,469 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:28:24,617 - ERROR - Error fetching price for HDFCBANK.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:28:26,212 - ERROR - Error fetching price for SUZLON.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:28:41,603 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:28:42,962 - ERROR - Error fetching price for HDFCBANK.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:28:45,158 - ERROR - Error fetching price for SUZLON.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:28:56,392 - ERROR - Error fetching price for HDFCBANK.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:28:57,982 - ERROR - Error fetching price for SUZLON.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:29:11,986 - ERROR - Error fetching price for HDFCBANK.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:29:13,636 - ERROR - Error fetching price for SUZLON.NS: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:29:28,276 - ERROR - Exception in callback BaseProactorEventLoop._start_serving.<locals>.loop() at C:\Python313\Lib\asyncio\proactor_events.py:840
+handle: <Handle BaseProactorEventLoop._start_serving.<locals>.loop() at C:\Python313\Lib\asyncio\proactor_events.py:840>
+Traceback (most recent call last):
+  File "C:\Python313\Lib\asyncio\events.py", line 89, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\proactor_events.py", line 855, in loop
+    self._make_socket_transport(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        conn, protocol,
+        ^^^^^^^^^^^^^^^
+        extra={'peername': addr}, server=server)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\proactor_events.py", line 644, in _make_socket_transport
+    return _ProactorSocketTransport(self, sock, protocol, waiter,
+                                    extra, server)
+  File "C:\Python313\Lib\asyncio\proactor_events.py", line 610, in __init__
+    super().__init__(loop, sock, protocol, waiter, extra, server)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\proactor_events.py", line 189, in __init__
+    super().__init__(loop, sock, protocol, waiter, extra, server)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\proactor_events.py", line 335, in __init__
+    super().__init__(*args, **kw)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\proactor_events.py", line 66, in __init__
+    self._server._attach(self)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 297, in _attach
+    assert self._sockets is not None
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+2025-07-25 16:29:29,599 - WARNING - Error fetching current prices: Too Many Requests. Rate limited. Try after a while.
+2025-07-25 16:29:29,715 - INFO - Trading bot is already stopped
+2025-07-25 16:29:29,716 - INFO - Trading bot stopped on shutdown
+2025-07-25 16:29:29,717 - INFO - Web server stopped by user
+2025-07-26 11:46:29,034 - INFO - Loaded portfolio: Cash=Rs.6003.09, Holdings=2 positions
+2025-07-26 11:46:29,034 - INFO - Loaded 2 trades from trade log
+2025-07-26 11:46:29,075 - INFO - Loaded 24 stocks from cache
+2025-07-26 11:46:29,075 - INFO - Dynamic ticker mapper initialized
+2025-07-26 11:46:29,093 - INFO - Llama LLM initialized successfully with Ollama
+2025-07-26 11:46:29,093 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-26 11:46:29,093 - INFO - Trading bot initialized successfully
+2025-07-26 11:46:29,094 - INFO - Starting FastAPI web server on http://127.0.0.1:5000
+2025-07-26 11:46:29,094 - INFO - Web interface will be available at the above URL
+2025-07-26 11:46:29,094 - INFO - API documentation available at http://{host}:{port}/docs
+2025-07-26 11:46:29,278 - INFO - Loaded portfolio: Cash=Rs.6003.09, Holdings=2 positions
+2025-07-26 11:46:29,279 - INFO - Loaded 2 trades from trade log
+2025-07-26 11:46:29,290 - INFO - Loaded 24 stocks from cache
+2025-07-26 11:46:29,290 - INFO - Dynamic ticker mapper initialized
+2025-07-26 11:46:29,291 - INFO - Llama LLM initialized successfully with Ollama
+2025-07-26 11:46:29,292 - INFO - Initializing Stock Trading Bot for Indian market...
+2025-07-26 11:46:29,292 - INFO - Trading bot initialized successfully
+2025-07-26 11:46:29,292 - INFO - Trading bot initialized on startup
+2025-07-26 11:46:29,293 - INFO - Trading bot is already stopped
+2025-07-26 11:46:29,293 - INFO - Trading bot stopped on shutdown
