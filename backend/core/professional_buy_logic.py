@@ -24,18 +24,19 @@ except ImportError:
     parent_dir = os.path.dirname(current_dir)
     grandparent_dir = os.path.dirname(parent_dir)
     backend_dir = os.path.dirname(grandparent_dir)
-    
+
     # Add necessary paths to sys.path
     for path in [parent_dir, grandparent_dir, backend_dir]:
         if path not in sys.path:
             sys.path.insert(0, path)
-    
+
     # Now try the imports again
     from core.professional_sell_logic import MarketTrend, MarketContext
     from core.rl_agent import rl_agent
     from utils.ensemble_optimizer import get_ensemble_optimizer
 
 logger = logging.getLogger(__name__)
+
 
 class BuyReason(Enum):
     """Professional buy reasons for audit trail"""
@@ -47,6 +48,7 @@ class BuyReason(Enum):
     RISK_REWARD_OPTIMAL = "risk_reward_optimal"
     MARKET_REGIME_FAVORABLE = "market_regime_favorable"
 
+
 @dataclass
 class BuySignal:
     """Individual buy signal with strength and reasoning"""
@@ -56,7 +58,9 @@ class BuySignal:
     triggered: bool
     reasoning: str
     confidence: float
-    category: str = ""  # Category of the signal (Technical, Value, Sentiment, ML, Market)
+    # Category of the signal (Technical, Value, Sentiment, ML, Market)
+    category: str = ""
+
 
 @dataclass
 class StockMetrics:
@@ -89,6 +93,7 @@ class StockMetrics:
     insider_ownership: float = 0.0  # Default 0% insider ownership
     sector_pe: float = 20.0  # Default sector P/E of 20
 
+
 @dataclass
 class BuyDecision:
     """Professional buy decision output"""
@@ -104,6 +109,7 @@ class BuyDecision:
     take_profit_price: float
     reasoning: str
 
+
 class ProfessionalBuyLogic:
     """
     Professional-grade buy logic implementation
@@ -115,107 +121,142 @@ class ProfessionalBuyLogic:
     - Market context awareness
     - GENUINE BUY LOGIC: No forced signals, only genuine opportunities
     """
-    
+
     def __init__(self, config: Dict):
         self.config = config
-        
+
         # Professional thresholds - GENUINE for better opportunity capture with combined signals
-        self.min_signals_required = config.get("min_buy_signals", 3)  # CORRECTED: 3 categories as per project requirements
-        self.max_signals_required = config.get("max_buy_signals", 5)  # Maximum 5 categories
-        self.min_confidence_threshold = config.get("min_buy_confidence", 0.60)  # MODERATE: 60% for better signal generation
-        self.min_weighted_score = config.get("min_weighted_buy_score", 0.15)  # MODERATE: 15% for better signal generation
-        
+        # CORRECTED: 3 categories as per project requirements
+        self.min_signals_required = config.get("min_buy_signals", 3)
+        self.max_signals_required = config.get(
+            "max_buy_signals", 5)  # Maximum 5 categories
+        # MODERATE: 60% for better signal generation
+        self.min_confidence_threshold = config.get("min_buy_confidence", 0.60)
+        # MODERATE: 15% for better signal generation
+        self.min_weighted_score = config.get("min_weighted_buy_score", 0.15)
+
         # GENUINE BUY LOGIC: Enhanced parameters for better entry timing
-        self.signal_sensitivity_multiplier = config.get("signal_sensitivity_multiplier", 0.7)  # CORRECTED: 0.7 as per project requirements
-        self.early_entry_buffer_pct = config.get("early_entry_buffer_pct", 0.01)  # 1% early entry buffer
-        self.aggressive_entry_threshold = config.get("aggressive_entry_threshold", 0.90)  # CORRECTED: 90% as per project requirements
-        
+        self.signal_sensitivity_multiplier = config.get(
+            # CORRECTED: 0.7 as per project requirements
+            "signal_sensitivity_multiplier", 0.7)
+        self.early_entry_buffer_pct = config.get(
+            "early_entry_buffer_pct", 0.01)  # 1% early entry buffer
+        # CORRECTED: 90% as per project requirements
+        self.aggressive_entry_threshold = config.get(
+            "aggressive_entry_threshold", 0.90)
+
         # GENUINE BUY LOGIC: Dynamic signal thresholds
-        self.dynamic_signal_thresholds = config.get("dynamic_signal_thresholds", True)
-        self.signal_strength_boost = config.get("signal_strength_boost", 0.03)  # 3% boost
-        
+        self.dynamic_signal_thresholds = config.get(
+            "dynamic_signal_thresholds", True)
+        self.signal_strength_boost = config.get(
+            "signal_strength_boost", 0.03)  # 3% boost
+
         # GENUINE BUY LOGIC: Enhanced ML integration
-        self.ml_signal_weight_boost = config.get("ml_signal_weight_boost", 0.05)  # 5% ML boost
-        self.ml_confidence_multiplier = config.get("ml_confidence_multiplier", 1.10)  # 1.10x ML multiplier
-        
+        self.ml_signal_weight_boost = config.get(
+            "ml_signal_weight_boost", 0.05)  # 5% ML boost
+        self.ml_confidence_multiplier = config.get(
+            "ml_confidence_multiplier", 1.10)  # 1.10x ML multiplier
+
         # GENUINE BUY LOGIC: Improved momentum detection
-        self.momentum_confirmation_window = config.get("momentum_confirmation_window", 5)
-        self.momentum_strength_threshold = config.get("momentum_strength_threshold", 0.035)  # CORRECTED: 3.5% momentum threshold as per project requirements
-        
+        self.momentum_confirmation_window = config.get(
+            "momentum_confirmation_window", 5)
+        # CORRECTED: 3.5% momentum threshold as per project requirements
+        self.momentum_strength_threshold = config.get(
+            "momentum_strength_threshold", 0.035)
+
         # ADAPTIVE THRESHOLDS: Adjust based on market conditions
-        self.adaptive_thresholds_enabled = config.get("adaptive_thresholds_enabled", True)
-        self.market_volatility_threshold = config.get("market_volatility_threshold", 0.025)
-        self.low_confidence_multiplier = config.get("low_confidence_multiplier", 0.6)
-        self.high_confidence_multiplier = config.get("high_confidence_multiplier", 1.05)
-        
+        self.adaptive_thresholds_enabled = config.get(
+            "adaptive_thresholds_enabled", True)
+        self.market_volatility_threshold = config.get(
+            "market_volatility_threshold", 0.025)
+        self.low_confidence_multiplier = config.get(
+            "low_confidence_multiplier", 0.6)
+        self.high_confidence_multiplier = config.get(
+            "high_confidence_multiplier", 1.05)
+
         # Market context filters - More restrictive
-        self.uptrend_buy_multiplier = config.get("uptrend_buy_multiplier", 1.05)  # Less boost in uptrends
-        self.downtrend_buy_multiplier = config.get("downtrend_buy_multiplier", 0.70)  # More restriction in downtrends
-        
+        self.uptrend_buy_multiplier = config.get(
+            "uptrend_buy_multiplier", 1.05)  # Less boost in uptrends
+        self.downtrend_buy_multiplier = config.get(
+            "downtrend_buy_multiplier", 0.70)  # More restriction in downtrends
+
         # DYNAMIC STOP-LOSS: Read from live_config.json instead of hardcoded
         self._load_dynamic_config()
-        
+
         # Define category weights for signal generation
         self.category_weights = {
-            "Technical": 0.20,   # 20% weight to technical signals (reduced from 25%)
-            "Value": 0.25,       # 25% weight to value signals (increased from 20%)
-            "Sentiment": 0.25,   # 25% weight to sentiment signals (increased from 20%)
+            # 20% weight to technical signals (reduced from 25%)
+            "Technical": 0.20,
+            # 25% weight to value signals (increased from 20%)
+            "Value": 0.25,
+            # 25% weight to sentiment signals (increased from 20%)
+            "Sentiment": 0.25,
             "ML": 0.20,          # 20% weight to ML signals (reduced from 20%)
-            "Market": 0.10        # 10% weight to market structure signals (reduced from 15%)
+            # 10% weight to market structure signals (reduced from 15%)
+            "Market": 0.10
         }
-        
-        logger.info("Professional Buy Logic initialized with genuine parameters")
-    
+
+        logger.info(
+            "Professional Buy Logic initialized with genuine parameters")
+
     def _load_dynamic_config(self):
         """Load dynamic configuration from live_config.json"""
         try:
             import json
             import os
-            
-            config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'live_config.json')
+
+            config_path = os.path.join(os.path.dirname(
+                __file__), '..', '..', 'data', 'live_config.json')
             if os.path.exists(config_path):
                 with open(config_path, 'r') as f:
                     live_config = json.load(f)
-                
+
                 # Get dynamic stop-loss percentage from frontend config (already as decimal)
                 self.stop_loss_pct = live_config.get("stop_loss_pct", 0.03)
-                
+
                 # Get target price configuration from frontend config
                 # First check for target_profit_pct (new format), then fall back to level-based approach
                 if "target_profit_pct" in live_config:
                     # Use the direct target profit percentage
-                    self.target_price_pct = live_config.get("target_profit_pct", 0.02)
+                    self.target_price_pct = live_config.get(
+                        "target_profit_pct", 0.02)
                 else:
                     # Fall back to level-based approach for backward compatibility
-                    target_level = live_config.get("target_price_level", "MEDIUM")
-                    target_multiplier = live_config.get("target_price_multiplier", 0.02)  # Already as decimal from frontend
-                    
+                    target_level = live_config.get(
+                        "target_price_level", "MEDIUM")
+                    # Already as decimal from frontend
+                    target_multiplier = live_config.get(
+                        "target_price_multiplier", 0.02)
+
                     # Map target level to percentage (as decimal)
                     target_percentages = {
                         "LOW": 0.04,      # 4% target price
-                        "MEDIUM": 0.02,   # 2% target price  
+                        "MEDIUM": 0.02,   # 2% target price
                         "HIGH": 0.06,     # 6% target price
-                        "CUSTOM": target_multiplier  # Use custom value (already as decimal)
+                        # Use custom value (already as decimal)
+                        "CUSTOM": target_multiplier
                     }
-                    
+
                     # Store as decimal for calculation
-                    self.target_price_pct = target_percentages.get(target_level, 0.02)
-                
-                logger.info(f"Loaded dynamic config - Stop Loss: {self.stop_loss_pct:.1%}, Target Price: {self.target_price_pct:.1%}")
+                    self.target_price_pct = target_percentages.get(
+                        target_level, 0.02)
+
+                logger.info(
+                    f"Loaded dynamic config - Stop Loss: {self.stop_loss_pct:.1%}, Target Price: {self.target_price_pct:.1%}")
             else:
                 logger.warning("live_config.json not found, using defaults")
                 self.stop_loss_pct = 0.03
                 self.target_price_pct = 0.02
-                
+
         except Exception as e:
             logger.error(f"Failed to load dynamic config: {e}")
             self.stop_loss_pct = 0.03
             self.target_price_pct = 0.02
-    
+
     def refresh_dynamic_config(self):
         """Refresh dynamic configuration from live_config.json (call this periodically)"""
         self._load_dynamic_config()
-    
+
     def evaluate_buy_decision(
         self,
         ticker: str,
@@ -231,7 +272,8 @@ class ProfessionalBuyLogic:
         """
         # Validate input data before proceeding
         if not self._validate_input_data(ticker, stock_metrics, technical_analysis, sentiment_analysis, ml_analysis):
-            logger.warning(f"❌ Insufficient data for {ticker}, returning HOLD decision")
+            logger.warning(
+                f"❌ Insufficient data for {ticker}, returning HOLD decision")
             return BuyDecision(
                 should_buy=False,
                 buy_quantity=0,
@@ -250,11 +292,13 @@ class ProfessionalBuyLogic:
         """
         logger.info(f"=== PROFESSIONAL BUY EVALUATION: {ticker} ===")
         logger.info(f"Current Price: {stock_metrics.current_price:.2f}")
-        logger.info(f"Market Context: {market_context.trend.value} (strength: {market_context.trend_strength:.2f})")
-        
+        logger.info(
+            f"Market Context: {market_context.trend.value} (strength: {market_context.trend_strength:.2f})")
+
         # PRODUCTION ENHANCEMENT: False Signal Rate Reduction
         # Integrate multi-timeframe analysis for signal validation
-        mtf_validation = self._validate_with_multi_timeframe(ticker, technical_analysis)
+        mtf_validation = self._validate_with_multi_timeframe(
+            ticker, technical_analysis)
         if not mtf_validation['is_valid']:
             logger.info(f"❌ MTF validation failed: {mtf_validation['reason']}")
             return BuyDecision(
@@ -270,16 +314,18 @@ class ProfessionalBuyLogic:
                 take_profit_price=0.0,
                 reasoning=f"Multi-timeframe validation failed: {mtf_validation['reason']}"
             )
-        
+
         # PRODUCTION ENHANCEMENT: Market Regime Adaptation
         # Adjust parameters based on current market regime
         regime_adjusted_params = self._adapt_to_market_regime(market_context)
-        
+
         # PRODUCTION ENHANCEMENT: Liquidity Considerations
         # Check liquidity before proceeding with signal generation
-        liquidity_check = self._check_liquidity(ticker, stock_metrics, technical_analysis)
+        liquidity_check = self._check_liquidity(
+            ticker, stock_metrics, technical_analysis)
         if not liquidity_check['is_liquid']:
-            logger.info(f"❌ Liquidity check failed: {liquidity_check['reason']}")
+            logger.info(
+                f"❌ Liquidity check failed: {liquidity_check['reason']}")
             return BuyDecision(
                 should_buy=False,
                 buy_quantity=0,
@@ -293,18 +339,19 @@ class ProfessionalBuyLogic:
                 take_profit_price=0.0,
                 reasoning=f"Liquidity check failed: {liquidity_check['reason']}"
             )
-        
+
         # Step 1: Generate all buy signals with enhanced sensitivity
         signals = self._generate_buy_signals(
-            stock_metrics, market_context, technical_analysis, 
+            stock_metrics, market_context, technical_analysis,
             sentiment_analysis, ml_analysis
         )
-        
+
         # Log signal generation with detailed information
-        logger.info(f"Generated {len(signals)} combined signals (one per category)")
+        logger.info(
+            f"Generated {len(signals)} combined signals (one per category)")
         triggered_signals = [s for s in signals if s.triggered]
         logger.info(f"{len(triggered_signals)} triggered category signals:")
-        
+
         # Group signals by category for better visualization
         category_signals = {}
         for signal in signals:  # Show all signals, not just triggered ones
@@ -312,29 +359,36 @@ class ProfessionalBuyLogic:
             if category not in category_signals:
                 category_signals[category] = []
             category_signals[category].append(signal)
-        
+
         for category, signals_list in category_signals.items():
             for signal in signals_list:
                 status = "✅ TRIGGERED" if signal.triggered else "❌ NOT TRIGGERED"
                 logger.info(f"  {category} Signal:")
                 logger.info(f"    - {signal.name}: {status}")
-                logger.info(f"      Strength: {signal.strength:.3f}, Weight: {signal.weight:.3f}, Confidence: {signal.confidence:.3f}")
+                logger.info(
+                    f"      Strength: {signal.strength:.3f}, Weight: {signal.weight:.3f}, Confidence: {signal.confidence:.3f}")
                 logger.info(f"      Reasoning: {signal.reasoning}")
-        
+
         # Log non-triggered signals for completeness
         non_triggered_signals = [s for s in signals if not s.triggered]
         if non_triggered_signals:
             logger.info(f"{len(non_triggered_signals)} non-triggered signals:")
             for signal in non_triggered_signals:
-                logger.info(f"  - {signal.name}: Not triggered - {signal.reasoning}")
-        
+                logger.info(
+                    f"  - {signal.name}: Not triggered - {signal.reasoning}")
+
         # Step 2: Apply cross-category confirmation (at least 3 categories must align)
-        cross_category_confirmed = self._check_cross_category_confirmation(signals)
-        categories_triggered = set(s.category for s in triggered_signals if s.category)
-        logger.info(f"Cross-category confirmation: {cross_category_confirmed} (Categories: {', '.join(categories_triggered) if categories_triggered else 'None'})")
+        cross_category_confirmed = self._check_cross_category_confirmation(
+            signals)
+        categories_triggered = set(
+            s.category for s in triggered_signals if s.category)
+        logger.info(
+            f"Cross-category confirmation: {cross_category_confirmed} (Categories: {', '.join(categories_triggered) if categories_triggered else 'None'})")
         if not cross_category_confirmed:
-            logger.info("❌ BUY REJECTED: Cross-category confirmation failed - signals not aligned across multiple categories")
-            detailed_reasoning = f"Cross-category confirmation failed - only {len(categories_triggered)} categories triggered: {', '.join(categories_triggered) if categories_triggered else 'None'}. Need at least 3 different categories."  # CORRECTED: 3 categories as per project requirements
+            logger.info(
+                "❌ BUY REJECTED: Cross-category confirmation failed - signals not aligned across multiple categories")
+            # CORRECTED: 3 categories as per project requirements
+            detailed_reasoning = f"Cross-category confirmation failed - only {len(categories_triggered)} categories triggered: {', '.join(categories_triggered) if categories_triggered else 'None'}. Need at least 3 different categories."
             return BuyDecision(
                 should_buy=False,
                 buy_quantity=0,
@@ -348,14 +402,18 @@ class ProfessionalBuyLogic:
                 take_profit_price=0.0,
                 reasoning=detailed_reasoning
             )
-        
+
         # Step 3: Apply bearish block filter
         bearish_blocked = self._check_bearish_block(signals)
-        bearish_signals = [s for s in triggered_signals if "bearish" in s.name.lower() or "overbought" in s.name.lower()]
-        bearish_percentage = len(bearish_signals) / len(triggered_signals) if triggered_signals else 0
-        logger.info(f"Bearish block filter: {bearish_blocked} ({len(bearish_signals)} bearish signals, {bearish_percentage:.1%} of triggered signals)")
+        bearish_signals = [s for s in triggered_signals if "bearish" in s.name.lower(
+        ) or "overbought" in s.name.lower()]
+        bearish_percentage = len(bearish_signals) / \
+            len(triggered_signals) if triggered_signals else 0
+        logger.info(
+            f"Bearish block filter: {bearish_blocked} ({len(bearish_signals)} bearish signals, {bearish_percentage:.1%} of triggered signals)")
         if bearish_blocked:
-            logger.info("❌ BUY REJECTED: Bearish block filter triggered - too many bearish signals")
+            logger.info(
+                "❌ BUY REJECTED: Bearish block filter triggered - too many bearish signals")
             detailed_reasoning = f"Bearish block filter triggered - {len(bearish_signals)} bearish signals ({bearish_percentage:.1%} of triggered signals). Threshold is 20%."
             return BuyDecision(
                 should_buy=False,
@@ -370,7 +428,7 @@ class ProfessionalBuyLogic:
                 take_profit_price=0.0,
                 reasoning=detailed_reasoning
             )
-        
+
         # Step 4: Calculate weighted signal score and confidence
         triggered_signals = [s for s in signals if s.triggered]
         total_weight = sum(s.weight for s in triggered_signals)
@@ -378,20 +436,26 @@ class ProfessionalBuyLogic:
 
         # Calculate confidence based on signal agreement
         signal_confidences = [s.confidence for s in triggered_signals]
-        avg_confidence = np.mean(signal_confidences) if signal_confidences else 0.0
+        avg_confidence = np.mean(
+            signal_confidences) if signal_confidences else 0.0
 
         # Professional decision criteria with adjusted thresholds
         signals_count = len(triggered_signals)
         # For combined signals, we expect 2-5 triggered signals (one per category)
         # MODERATE: Adjust thresholds for better signal generation
-        meets_signal_threshold = 3 <= signals_count <= 5  # INCREASED: Require at least 3 categories (was 2)
+        # INCREASED: Require at least 3 categories (was 2)
+        meets_signal_threshold = 3 <= signals_count <= 5
         meets_confidence_threshold = avg_confidence >= self.min_confidence_threshold
         meets_weighted_threshold = weighted_score >= self.min_weighted_score
 
         logger.info(f"Signal Analysis Summary:")
-        logger.info(f"  Signal Count: {signals_count} (Required: 3-5) - {'✅ PASS' if meets_signal_threshold else '❌ FAIL'}")  # UPDATED: Changed required count to 3-5
-        logger.info(f"  Average Confidence: {avg_confidence:.3f} (Threshold: {self.min_confidence_threshold}) - {'✅ PASS' if meets_confidence_threshold else '❌ FAIL'}")
-        logger.info(f"  Weighted Score: {weighted_score:.3f} (Threshold: {self.min_weighted_score}) - {'✅ PASS' if meets_weighted_threshold else '❌ FAIL'}")
+        # UPDATED: Changed required count to 3-5
+        logger.info(
+            f"  Signal Count: {signals_count} (Required: 3-5) - {'✅ PASS' if meets_signal_threshold else '❌ FAIL'}")
+        logger.info(
+            f"  Average Confidence: {avg_confidence:.3f} (Threshold: {self.min_confidence_threshold}) - {'✅ PASS' if meets_confidence_threshold else '❌ FAIL'}")
+        logger.info(
+            f"  Weighted Score: {weighted_score:.3f} (Threshold: {self.min_weighted_score}) - {'✅ PASS' if meets_weighted_threshold else '❌ FAIL'}")
 
         # GENUINE BUY LOGIC: All three conditions must be met (similar to sell logic)
         # This prevents the system from generating buy signals when conditions are marginal
@@ -399,10 +463,12 @@ class ProfessionalBuyLogic:
 
         # Additional quality checks for professional trading
         if should_buy:
-            logger.info("✅ ALL THRESHOLD CHECKS PASSED - Proceeding with buy decision")
+            logger.info(
+                "✅ ALL THRESHOLD CHECKS PASSED - Proceeding with buy decision")
             # Step 5: Calculate entry levels with enhanced timing
-            entry_levels = self._calculate_optimized_entry_levels(stock_metrics, market_context)
-            
+            entry_levels = self._calculate_optimized_entry_levels(
+                stock_metrics, market_context)
+
             # Step 6: Apply market context filters
             base_decision = BuyDecision(
                 should_buy=True,
@@ -416,43 +482,53 @@ class ProfessionalBuyLogic:
                 stop_loss_price=entry_levels["stop_loss"],
                 take_profit_price=entry_levels["take_profit"],
                 reasoning=f"Professional buy confirmed: {signals_count} categories triggered, "
-                         f"confidence {avg_confidence:.3f}, weighted score {weighted_score:.3f}"
+                f"confidence {avg_confidence:.3f}, weighted score {weighted_score:.3f}"
             )
-            
+
             # Apply market context filters
-            final_decision = self._apply_market_context_filters(base_decision, market_context)
-            
+            final_decision = self._apply_market_context_filters(
+                base_decision, market_context)
+
             # Calculate position sizing with enhanced optimization
-            final_decision = self._calculate_enhanced_position_sizing(final_decision, weighted_score, triggered_signals)
-            
+            final_decision = self._calculate_enhanced_position_sizing(
+                final_decision, weighted_score, triggered_signals)
+
             logger.info(f"Final Buy Decision: Should Buy: {final_decision.should_buy}, "
-                       f"Confidence: {final_decision.confidence:.3f}, "
-                       f"Buy Percentage: {final_decision.buy_percentage:.3f}")
-            
+                        f"Confidence: {final_decision.confidence:.3f}, "
+                        f"Buy Percentage: {final_decision.buy_percentage:.3f}")
+
             return final_decision
         else:
             logger.info("❌ THRESHOLD CHECKS FAILED - Generating hold decision")
             # Provide detailed reasoning for why buy was rejected
             rejection_reasons = []
             if not meets_signal_threshold:
-                rejection_reasons.append(f"Triggered categories {signals_count} not in range [3, 5]")  # INCREASED: [3, 5] for better signal generation
+                # INCREASED: [3, 5] for better signal generation
+                rejection_reasons.append(
+                    f"Triggered categories {signals_count} not in range [3, 5]")
             if not meets_confidence_threshold:
-                rejection_reasons.append(f"Confidence {avg_confidence:.3f} below threshold {self.min_confidence_threshold}")
+                rejection_reasons.append(
+                    f"Confidence {avg_confidence:.3f} below threshold {self.min_confidence_threshold}")
             if not meets_weighted_threshold:
-                rejection_reasons.append(f"Weighted score {weighted_score:.3f} below threshold {self.min_weighted_score}")
-            
+                rejection_reasons.append(
+                    f"Weighted score {weighted_score:.3f} below threshold {self.min_weighted_score}")
+
             detailed_reasoning = " | ".join(rejection_reasons)
             logger.info(f"Rejection Reasons: {detailed_reasoning}")
-            
+
             # Log additional diagnostic information
             logger.info(f"🔍 DETAILED DIAGNOSTIC INFORMATION:")
             logger.info(f"   - Minimum Signals Required: 3 categories")
             logger.info(f"   - Maximum Signals Required: 5 categories")
-            logger.info(f"   - Minimum Confidence Threshold: {self.min_confidence_threshold}")
-            logger.info(f"   - Minimum Weighted Score Threshold: {self.min_weighted_score}")
-            logger.info(f"   - Signal Sensitivity Multiplier: {getattr(self, 'signal_sensitivity_multiplier', 1.0)}")
-            logger.info(f"   - ML Signal Weight Boost: {getattr(self, 'ml_signal_weight_boost', 0.0)}")
-            
+            logger.info(
+                f"   - Minimum Confidence Threshold: {self.min_confidence_threshold}")
+            logger.info(
+                f"   - Minimum Weighted Score Threshold: {self.min_weighted_score}")
+            logger.info(
+                f"   - Signal Sensitivity Multiplier: {getattr(self, 'signal_sensitivity_multiplier', 1.0)}")
+            logger.info(
+                f"   - ML Signal Weight Boost: {getattr(self, 'ml_signal_weight_boost', 0.0)}")
+
             return BuyDecision(
                 should_buy=False,
                 buy_quantity=0,
@@ -472,18 +548,19 @@ class ProfessionalBuyLogic:
         triggered_signals = [s for s in signals if s.triggered]
         if not triggered_signals:
             return False
-            
-        bearish_signals = [s for s in triggered_signals if "bearish" in s.name.lower() or "overbought" in s.name.lower()]
+
+        bearish_signals = [s for s in triggered_signals if "bearish" in s.name.lower(
+        ) or "overbought" in s.name.lower()]
         bearish_percentage = len(bearish_signals) / len(triggered_signals)
         return bearish_percentage > 0.20  # REDUCED from 0.25 to 0.20
 
     def _check_cross_category_confirmation(self, signals: List[BuySignal]) -> bool:
         """Check if signals are confirmed across multiple categories (at least 3)"""
         triggered_signals = [s for s in signals if s.triggered]
-        categories_triggered = set(s.category for s in triggered_signals if s.category)
+        categories_triggered = set(
+            s.category for s in triggered_signals if s.category)
         # Need at least 3 different categories to be triggered
         return len(categories_triggered) >= 3
-
 
     def _generate_buy_signals(
         self,
@@ -500,25 +577,34 @@ class ProfessionalBuyLogic:
         dynamic_weights = self._get_dynamic_category_weights(market_context)
 
         # 1. Technical Analysis Signals - Combine all technical signals into one
-        technical_signals = self._generate_technical_signals(technical_analysis, stock_metrics, dynamic_weights["Technical"])
+        technical_signals = self._generate_technical_signals(
+            technical_analysis, stock_metrics, dynamic_weights["Technical"])
         if technical_signals:
             # Log technical signals for debugging
-            logger.info(f"Generated {len(technical_signals)} technical signals")
+            logger.info(
+                f"Generated {len(technical_signals)} technical signals")
             for signal in technical_signals:
-                logger.info(f"  Technical signal: {signal.name}, triggered: {signal.triggered}, strength: {signal.strength:.3f}, confidence: {signal.confidence:.3f}")
-            
+                logger.info(
+                    f"  Technical signal: {signal.name}, triggered: {signal.triggered}, strength: {signal.strength:.3f}, confidence: {signal.confidence:.3f}")
+
             # Combine all technical signals into one signal
-            triggered_tech_signals = [s for s in technical_signals if s.triggered]
-            logger.info(f"{len(triggered_tech_signals)} triggered technical signals")
-            
+            triggered_tech_signals = [
+                s for s in technical_signals if s.triggered]
+            logger.info(
+                f"{len(triggered_tech_signals)} triggered technical signals")
+
             # Require at least 2 individual technical signals to trigger the combined signal
             # AND require average strength to be above a minimum threshold
-            if len(triggered_tech_signals) >= 2 and (sum(s.strength for s in triggered_tech_signals) / len(triggered_tech_signals)) > 0.3:  # INCREASED: Require 2 signals and 0.3 strength (was 1 signal and 0.1 strength)
+            # INCREASED: Require 2 signals and 0.3 strength (was 1 signal and 0.1 strength)
+            if len(triggered_tech_signals) >= 2 and (sum(s.strength for s in triggered_tech_signals) / len(triggered_tech_signals)) > 0.3:
                 # Calculate combined strength as average of triggered signals
-                combined_strength = sum(s.strength for s in triggered_tech_signals) / len(triggered_tech_signals)
-                combined_weight = dynamic_weights["Technical"]  # Use category weight
-                combined_confidence = sum(s.confidence for s in triggered_tech_signals) / len(triggered_tech_signals)
-                
+                combined_strength = sum(
+                    s.strength for s in triggered_tech_signals) / len(triggered_tech_signals)
+                # Use category weight
+                combined_weight = dynamic_weights["Technical"]
+                combined_confidence = sum(
+                    s.confidence for s in triggered_tech_signals) / len(triggered_tech_signals)
+
                 # Create single combined technical signal
                 combined_tech_signal = BuySignal(
                     name="technical_combined",
@@ -530,38 +616,50 @@ class ProfessionalBuyLogic:
                     category="Technical"
                 )
                 signals.append(combined_tech_signal)
-                logger.info(f"Combined technical signal created: strength={combined_strength:.3f}, confidence={combined_confidence:.3f}")
+                logger.info(
+                    f"Combined technical signal created: strength={combined_strength:.3f}, confidence={combined_confidence:.3f}")
             else:
                 # If fewer than 2 technical signals trigger or average strength is too low,
                 # don't create a combined signal
                 # This prevents weak technical signals from contributing to buy decisions
                 if len(triggered_tech_signals) < 2:
-                    logger.info(f"Not enough triggered technical signals: {len(triggered_tech_signals)} < 2")  # UPDATED: Changed to 2
+                    # UPDATED: Changed to 2
+                    logger.info(
+                        f"Not enough triggered technical signals: {len(triggered_tech_signals)} < 2")
                 else:
-                    avg_strength = sum(s.strength for s in triggered_tech_signals) / len(triggered_tech_signals) if triggered_tech_signals else 0
-                    logger.info(f"Average strength too low: {avg_strength:.3f} < 0.3")  # UPDATED: Changed to 0.3
+                    avg_strength = sum(s.strength for s in triggered_tech_signals) / len(
+                        triggered_tech_signals) if triggered_tech_signals else 0
+                    # UPDATED: Changed to 0.3
+                    logger.info(
+                        f"Average strength too low: {avg_strength:.3f} < 0.3")
                 pass
         else:
             logger.info("No technical signals generated")
 
         # 2. Value & Risk Signals - Combine all value signals into one
-        value_signals = self._generate_value_signals(stock_metrics, dynamic_weights["Value"])
+        value_signals = self._generate_value_signals(
+            stock_metrics, dynamic_weights["Value"])
         if value_signals:
             # Log value signals for debugging
             logger.info(f"Generated {len(value_signals)} value signals")
             for signal in value_signals:
-                logger.info(f"  Value signal: {signal.name}, triggered: {signal.triggered}, strength: {signal.strength:.3f}, confidence: {signal.confidence:.3f}")
-            
+                logger.info(
+                    f"  Value signal: {signal.name}, triggered: {signal.triggered}, strength: {signal.strength:.3f}, confidence: {signal.confidence:.3f}")
+
             # Combine all value signals into one signal
             triggered_value_signals = [s for s in value_signals if s.triggered]
-            logger.info(f"{len(triggered_value_signals)} triggered value signals")
-            
+            logger.info(
+                f"{len(triggered_value_signals)} triggered value signals")
+
             if triggered_value_signals:
                 # Calculate combined strength as average of triggered signals
-                combined_strength = sum(s.strength for s in triggered_value_signals) / len(triggered_value_signals)
-                combined_weight = dynamic_weights["Value"]  # Use category weight
-                combined_confidence = sum(s.confidence for s in triggered_value_signals) / len(triggered_value_signals)
-                
+                combined_strength = sum(
+                    s.strength for s in triggered_value_signals) / len(triggered_value_signals)
+                # Use category weight
+                combined_weight = dynamic_weights["Value"]
+                combined_confidence = sum(
+                    s.confidence for s in triggered_value_signals) / len(triggered_value_signals)
+
                 # Create single combined value signal
                 combined_value_signal = BuySignal(
                     name="value_combined",
@@ -573,28 +671,37 @@ class ProfessionalBuyLogic:
                     category="Value"
                 )
                 signals.append(combined_value_signal)
-                logger.info(f"Combined value signal created: strength={combined_strength:.3f}, confidence={combined_confidence:.3f}")
+                logger.info(
+                    f"Combined value signal created: strength={combined_strength:.3f}, confidence={combined_confidence:.3f}")
         else:
             logger.info("No value signals generated")
 
         # 3. Sentiment Signals - Combine all sentiment signals into one
-        sentiment_signals = self._generate_sentiment_signals(sentiment_analysis, dynamic_weights["Sentiment"])
+        sentiment_signals = self._generate_sentiment_signals(
+            sentiment_analysis, dynamic_weights["Sentiment"])
         if sentiment_signals:
             # Log sentiment signals for debugging
-            logger.info(f"Generated {len(sentiment_signals)} sentiment signals")
+            logger.info(
+                f"Generated {len(sentiment_signals)} sentiment signals")
             for signal in sentiment_signals:
-                logger.info(f"  Sentiment signal: {signal.name}, triggered: {signal.triggered}, strength: {signal.strength:.3f}, confidence: {signal.confidence:.3f}")
-            
+                logger.info(
+                    f"  Sentiment signal: {signal.name}, triggered: {signal.triggered}, strength: {signal.strength:.3f}, confidence: {signal.confidence:.3f}")
+
             # Combine all sentiment signals into one signal
-            triggered_sentiment_signals = [s for s in sentiment_signals if s.triggered]
-            logger.info(f"{len(triggered_sentiment_signals)} triggered sentiment signals")
-            
+            triggered_sentiment_signals = [
+                s for s in sentiment_signals if s.triggered]
+            logger.info(
+                f"{len(triggered_sentiment_signals)} triggered sentiment signals")
+
             if triggered_sentiment_signals:
                 # Calculate combined strength as average of triggered signals
-                combined_strength = sum(s.strength for s in triggered_sentiment_signals) / len(triggered_sentiment_signals)
-                combined_weight = dynamic_weights["Sentiment"]  # Use category weight
-                combined_confidence = sum(s.confidence for s in triggered_sentiment_signals) / len(triggered_sentiment_signals)
-                
+                combined_strength = sum(
+                    s.strength for s in triggered_sentiment_signals) / len(triggered_sentiment_signals)
+                # Use category weight
+                combined_weight = dynamic_weights["Sentiment"]
+                combined_confidence = sum(
+                    s.confidence for s in triggered_sentiment_signals) / len(triggered_sentiment_signals)
+
                 # Create single combined sentiment signal
                 combined_sentiment_signal = BuySignal(
                     name="sentiment_combined",
@@ -606,28 +713,33 @@ class ProfessionalBuyLogic:
                     category="Sentiment"
                 )
                 signals.append(combined_sentiment_signal)
-                logger.info(f"Combined sentiment signal created: strength={combined_strength:.3f}, confidence={combined_confidence:.3f}")
+                logger.info(
+                    f"Combined sentiment signal created: strength={combined_strength:.3f}, confidence={combined_confidence:.3f}")
         else:
             logger.info("No sentiment signals generated")
 
         # 4. ML/AI Signals - Combine all ML signals into one
-        ml_signals = self._generate_ml_signals(ml_analysis, dynamic_weights["ML"])
+        ml_signals = self._generate_ml_signals(
+            ml_analysis, dynamic_weights["ML"])
         if ml_signals:
             # Log ML signals for debugging
             logger.info(f"Generated {len(ml_signals)} ML signals")
             for signal in ml_signals:
-                logger.info(f"  ML signal: {signal.name}, triggered: {signal.triggered}, strength: {signal.strength:.3f}, confidence: {signal.confidence:.3f}")
-            
+                logger.info(
+                    f"  ML signal: {signal.name}, triggered: {signal.triggered}, strength: {signal.strength:.3f}, confidence: {signal.confidence:.3f}")
+
             # Combine all ML signals into one signal
             triggered_ml_signals = [s for s in ml_signals if s.triggered]
             logger.info(f"{len(triggered_ml_signals)} triggered ML signals")
-            
+
             if triggered_ml_signals:
                 # Calculate combined strength as average of triggered signals
-                combined_strength = sum(s.strength for s in triggered_ml_signals) / len(triggered_ml_signals)
+                combined_strength = sum(
+                    s.strength for s in triggered_ml_signals) / len(triggered_ml_signals)
                 combined_weight = dynamic_weights["ML"]  # Use category weight
-                combined_confidence = sum(s.confidence for s in triggered_ml_signals) / len(triggered_ml_signals)
-                
+                combined_confidence = sum(
+                    s.confidence for s in triggered_ml_signals) / len(triggered_ml_signals)
+
                 # Create single combined ML signal
                 combined_ml_signal = BuySignal(
                     name="ml_combined",
@@ -639,28 +751,36 @@ class ProfessionalBuyLogic:
                     category="ML"
                 )
                 signals.append(combined_ml_signal)
-                logger.info(f"Combined ML signal created: strength={combined_strength:.3f}, confidence={combined_confidence:.3f}")
+                logger.info(
+                    f"Combined ML signal created: strength={combined_strength:.3f}, confidence={combined_confidence:.3f}")
         else:
             logger.info("No ML signals generated")
 
         # 5. Market Structure Signals - Combine all market signals into one
-        market_signals = self._generate_market_signals(market_context, dynamic_weights["Market"])
+        market_signals = self._generate_market_signals(
+            market_context, dynamic_weights["Market"])
         if market_signals:
             # Log market signals for debugging
             logger.info(f"Generated {len(market_signals)} market signals")
             for signal in market_signals:
-                logger.info(f"  Market signal: {signal.name}, triggered: {signal.triggered}, strength: {signal.strength:.3f}, confidence: {signal.confidence:.3f}")
-            
+                logger.info(
+                    f"  Market signal: {signal.name}, triggered: {signal.triggered}, strength: {signal.strength:.3f}, confidence: {signal.confidence:.3f}")
+
             # Combine all market signals into one signal
-            triggered_market_signals = [s for s in market_signals if s.triggered]
-            logger.info(f"{len(triggered_market_signals)} triggered market signals")
-            
+            triggered_market_signals = [
+                s for s in market_signals if s.triggered]
+            logger.info(
+                f"{len(triggered_market_signals)} triggered market signals")
+
             if triggered_market_signals:
                 # Calculate combined strength as average of triggered signals
-                combined_strength = sum(s.strength for s in triggered_market_signals) / len(triggered_market_signals)
-                combined_weight = dynamic_weights["Market"]  # Use category weight
-                combined_confidence = sum(s.confidence for s in triggered_market_signals) / len(triggered_market_signals)
-                
+                combined_strength = sum(
+                    s.strength for s in triggered_market_signals) / len(triggered_market_signals)
+                # Use category weight
+                combined_weight = dynamic_weights["Market"]
+                combined_confidence = sum(
+                    s.confidence for s in triggered_market_signals) / len(triggered_market_signals)
+
                 # Create single combined market signal
                 combined_market_signal = BuySignal(
                     name="market_combined",
@@ -672,7 +792,8 @@ class ProfessionalBuyLogic:
                     category="Market"
                 )
                 signals.append(combined_market_signal)
-                logger.info(f"Combined market signal created: strength={combined_strength:.3f}, confidence={combined_confidence:.3f}")
+                logger.info(
+                    f"Combined market signal created: strength={combined_strength:.3f}, confidence={combined_confidence:.3f}")
         else:
             logger.info("No market signals generated")
 
@@ -682,7 +803,7 @@ class ProfessionalBuyLogic:
         """Dynamic weighting: Adjusts by market regime (bullish/bearish phases)"""
         # Start with base weights
         weights = self.category_weights.copy()
-        
+
         # Adjust weights based on market trend
         if market_context.trend in [MarketTrend.STRONG_UPTREND, MarketTrend.UPTREND]:
             # In bullish market, increase weight on momentum/technical signals
@@ -696,26 +817,26 @@ class ProfessionalBuyLogic:
             weights["Sentiment"] = min(0.25, weights["Sentiment"] + 0.05)
             # Reduce weight on technical signals as they might be misleading
             weights["Technical"] = max(0.20, weights["Technical"] - 0.05)
-        
+
         # Ensure weights sum to 1.0
         total_weight = sum(weights.values())
         if total_weight != 1.0:
             weights = {k: v/total_weight for k, v in weights.items()}
-            
+
         return weights
 
-    def _validate_input_data(self, ticker: str, stock_metrics: StockMetrics, technical_analysis: Dict, 
-                           sentiment_analysis: Dict, ml_analysis: Dict) -> bool:
+    def _validate_input_data(self, ticker: str, stock_metrics: StockMetrics, technical_analysis: Dict,
+                             sentiment_analysis: Dict, ml_analysis: Dict) -> bool:
         """
         Validate that we have sufficient data to make a trading decision.
-        
+
         Args:
             ticker: Stock symbol
             stock_metrics: Stock metrics data
             technical_analysis: Technical analysis results
             sentiment_analysis: Sentiment analysis results
             ml_analysis: ML analysis results
-            
+
         Returns:
             bool: True if data is sufficient, False otherwise
         """
@@ -723,34 +844,37 @@ class ProfessionalBuyLogic:
         if not hasattr(stock_metrics, 'current_price') or stock_metrics.current_price <= 0:
             logger.warning(f"Missing or invalid current price for {ticker}")
             return False
-        
+
         # Check if we have technical analysis data
         if not technical_analysis or len(technical_analysis) == 0:
             logger.warning(f"Missing technical analysis data for {ticker}")
             return False
-            
+
         # Check if we have at least some key technical indicators
         key_indicators = ['rsi', 'sma_20', 'sma_50', 'macd']
-        available_indicators = [ind for ind in key_indicators if ind in technical_analysis and technical_analysis[ind] is not None]
+        available_indicators = [
+            ind for ind in key_indicators if ind in technical_analysis and technical_analysis[ind] is not None]
         if len(available_indicators) < 2:
-            logger.warning(f"Insufficient technical indicators for {ticker}: {len(available_indicators)} available")
+            logger.warning(
+                f"Insufficient technical indicators for {ticker}: {len(available_indicators)} available")
             return False
-            
+
         # Check if we have sentiment analysis data
         if not sentiment_analysis or len(sentiment_analysis) == 0:
             logger.warning(f"Missing sentiment analysis data for {ticker}")
             return False
-            
+
         # Check if we have ML analysis data
         if not ml_analysis or len(ml_analysis) == 0:
             logger.warning(f"Missing ML analysis data for {ticker}")
             return False
-            
+
         # If ML analysis exists but failed, that's OK - we can still make decisions based on other signals
         # But if it exists, it should at least have a success flag or prediction
         if 'success' in ml_analysis and not ml_analysis.get('success', True):
-            logger.info(f"ML analysis failed for {ticker}, but continuing with other signals")
-            
+            logger.info(
+                f"ML analysis failed for {ticker}, but continuing with other signals")
+
         logger.info(f"All required data present for {ticker}")
         return True
 
@@ -759,16 +883,19 @@ class ProfessionalBuyLogic:
         # With combined signals, we check if at least 3 categories have triggered signals
         triggered_signals = [s for s in signals if s.triggered]
         categories = set(s.category for s in triggered_signals if s.category)
-        logger.info(f"Cross-category check: {len(categories)} categories triggered: {', '.join(categories) if categories else 'None'}")
-        result = len(categories) >= 3  # INCREASED: 3 categories for better signal generation
-        logger.info(f"Cross-category confirmation: {'PASS' if result else 'FAIL'} (need at least 3)")
+        logger.info(
+            f"Cross-category check: {len(categories)} categories triggered: {', '.join(categories) if categories else 'None'}")
+        # INCREASED: 3 categories for better signal generation
+        result = len(categories) >= 3
+        logger.info(
+            f"Cross-category confirmation: {'PASS' if result else 'FAIL'} (need at least 3)")
         return result
 
     def _calculate_advanced_indicators(self, prices: List[float], volumes: List[float] = None,
-                                     highs: List[float] = None, lows: List[float] = None,
-                                     put_volume: float = 0, call_volume: float = 0,
-                                     bid_volume: float = 0, ask_volume: float = 0,
-                                     bid_prices: List[float] = None, ask_prices: List[float] = None) -> Dict[str, Any]:
+                                       highs: List[float] = None, lows: List[float] = None,
+                                       put_volume: float = 0, call_volume: float = 0,
+                                       bid_volume: float = 0, ask_volume: float = 0,
+                                       bid_prices: List[float] = None, ask_prices: List[float] = None) -> Dict[str, Any]:
         """
         Calculate advanced technical indicators
         Returns dictionary with all advanced indicator values and signals
@@ -792,7 +919,8 @@ class ProfessionalBuyLogic:
 
         # Money Flow Index (MFI)
         if len(prices) >= 14 and len(volumes) >= 14 and len(highs) >= 14 and len(lows) >= 14:
-            typical_prices = [(h + l + c) / 3 for h, l, c in zip(highs[-14:], lows[-14:], prices[-14:])]
+            typical_prices = [(h + l + c) / 3 for h, l,
+                              c in zip(highs[-14:], lows[-14:], prices[-14:])]
             money_flows = []
             for i in range(1, len(typical_prices)):
                 if typical_prices[i] > typical_prices[i-1]:
@@ -824,9 +952,11 @@ class ProfessionalBuyLogic:
             pc_ratio = put_volume / call_volume
             indicators['pc_ratio'] = round(pc_ratio, 3)
             if pc_ratio > 1.2:
-                indicators['pc_ratio_signal'] = "BULLISH"  # Contrarian - high fear
+                # Contrarian - high fear
+                indicators['pc_ratio_signal'] = "BULLISH"
             elif pc_ratio < 0.8:
-                indicators['pc_ratio_signal'] = "BEARISH"  # Contrarian - high greed
+                # Contrarian - high greed
+                indicators['pc_ratio_signal'] = "BEARISH"
             else:
                 indicators['pc_ratio_signal'] = "NEUTRAL"
 
@@ -849,7 +979,8 @@ class ProfessionalBuyLogic:
             highest_high = max(highs[-14:])
 
             if highest_high != lowest_low:
-                stoch_k = ((current_price - lowest_low) / (highest_high - lowest_low)) * 100
+                stoch_k = ((current_price - lowest_low) /
+                           (highest_high - lowest_low)) * 100
                 indicators['stoch_k'] = round(stoch_k, 2)
 
                 if stoch_k < 20:
@@ -866,7 +997,8 @@ class ProfessionalBuyLogic:
             lowest_low = min(lows[-14:])
 
             if highest_high != lowest_low:
-                williams_r = ((highest_high - current_price) / (highest_high - lowest_low)) * -100
+                williams_r = ((highest_high - current_price) /
+                              (highest_high - lowest_low)) * -100
                 indicators['williams_r'] = round(williams_r, 2)
 
                 if williams_r < -80:
@@ -885,7 +1017,8 @@ class ProfessionalBuyLogic:
 
             current_price = prices[-1]
             if upper_band != lower_band:
-                position = (current_price - lower_band) / (upper_band - lower_band)
+                position = (current_price - lower_band) / \
+                    (upper_band - lower_band)
                 indicators['bb_position'] = round(position, 2)
                 indicators['bb_upper'] = round(upper_band, 2)
                 indicators['bb_middle'] = round(middle_band, 2)
@@ -903,7 +1036,8 @@ class ProfessionalBuyLogic:
             current_volume = volumes[-1]
             previous_volume = volumes[-2]
             if previous_volume > 0:
-                volume_roc = ((current_volume - previous_volume) / previous_volume) * 100
+                volume_roc = (
+                    (current_volume - previous_volume) / previous_volume) * 100
                 indicators['volume_roc'] = round(volume_roc, 2)
 
     def _check_price_rsi_divergence(self, current_price: float, technical: Dict) -> str:
@@ -924,12 +1058,12 @@ class ProfessionalBuyLogic:
             for i in range(1, len(recent_prices) - 1):
                 if (recent_prices[i] < recent_prices[i-1] and
                     recent_prices[i] < recent_prices[i+1] and
-                    recent_prices[i] < current_price * 0.98):  # Recent low
+                        recent_prices[i] < current_price * 0.98):  # Recent low
                     price_lows.append((i, recent_prices[i]))
 
             for i in range(1, len(recent_rsi) - 1):
                 if (recent_rsi[i] < recent_rsi[i-1] and
-                    recent_rsi[i] < recent_rsi[i+1]):
+                        recent_rsi[i] < recent_rsi[i+1]):
                     rsi_lows.append((i, recent_rsi[i]))
 
             if len(price_lows) >= 2 and len(rsi_lows) >= 2:
@@ -941,7 +1075,7 @@ class ProfessionalBuyLogic:
                 older_rsi_low = min([r[1] for r in rsi_lows[:-2]])
 
                 if (recent_price_low < older_price_low and
-                    recent_rsi_low > older_rsi_low):
+                        recent_rsi_low > older_rsi_low):
                     return "bullish_divergence"
 
             # Check for trend direction
@@ -969,14 +1103,16 @@ class ProfessionalBuyLogic:
         # MAINTAINED: Enhanced RSI thresholds for genuine opportunities
         if rsi < 30 and rsi_14 < 35:  # Enhanced thresholds for genuine oversold conditions
             # Enhanced divergence detection with multi-timeframe confirmation
-            price_trend = self._check_price_rsi_divergence(stock.current_price, technical)
-            
+            price_trend = self._check_price_rsi_divergence(
+                stock.current_price, technical)
+
             # Enhanced strength calculation with timeframe confirmation
             rsi_confirmation = 1.0
             if rsi_5 < rsi_14 < rsi:  # Multi-timeframe confirmation
                 rsi_confirmation = 1.15  # Boost for strong confirmation
-            
-            strength = min((40 - rsi) / 25, 1.0) * self.signal_sensitivity_multiplier * rsi_confirmation  # Adjust scaling
+
+            strength = min((40 - rsi) / 25, 1.0) * \
+                self.signal_sensitivity_multiplier * rsi_confirmation  # Adjust scaling
 
             if price_trend == "bullish_divergence":
                 strength *= 1.2  # Enhanced boost for divergence
@@ -1009,9 +1145,11 @@ class ProfessionalBuyLogic:
         if macd > macd_signal and macd > 0.1:  # More moderate threshold for genuine bullish momentum
             # Enhanced histogram analysis with momentum confirmation
             hist_expansion = macd_hist > macd_hist_prev
-            hist_momentum = (macd_hist - macd_hist_prev) / abs(macd_hist_prev) if macd_hist_prev != 0 else 0
-            
-            strength = min(abs(macd - macd_signal) / abs(macd_signal) if macd_signal != 0 else 1, 1.0) * self.signal_sensitivity_multiplier
+            hist_momentum = (macd_hist - macd_hist_prev) / \
+                abs(macd_hist_prev) if macd_hist_prev != 0 else 0
+
+            strength = min(abs(macd - macd_signal) / abs(macd_signal)
+                           if macd_signal != 0 else 1, 1.0) * self.signal_sensitivity_multiplier
 
             # Enhanced reasoning based on histogram behavior
             if hist_expansion and hist_momentum > 0.1:
@@ -1040,18 +1178,20 @@ class ProfessionalBuyLogic:
         sma_20 = technical.get("sma_20", stock.current_price)
         sma_50 = technical.get("sma_50", stock.current_price)
         sma_200 = technical.get("sma_200", stock.current_price)
-        
+
         # MAINTAINED: Enhanced condition to ensure genuine support
         if stock.current_price > sma_20 * 1.01:  # Enhanced threshold for genuine support confirmation
             # Enhanced with multi-MA confirmation
             ma_confirmation = 1.0
             if sma_20 > sma_50 > sma_200:  # Bullish MA alignment
                 ma_confirmation = 1.15  # Boost for alignment
-            
-            strength = (stock.current_price - sma_20 * 1.005) / (sma_20 * 0.03) * ma_confirmation  # Enhanced scaling
+
+            strength = (stock.current_price - sma_20 * 1.005) / \
+                (sma_20 * 0.03) * ma_confirmation  # Enhanced scaling
             signals.append(BuySignal(
                 name="ma_support",
-                strength=min(strength, 1.0) * self.signal_sensitivity_multiplier,
+                strength=min(strength, 1.0) *
+                self.signal_sensitivity_multiplier,
                 weight=category_weight * 0.09,
                 triggered=True,
                 reasoning=f"Price near key moving averages (alignment confirmed: 20>{sma_20:.2f}, 50>{sma_50:.2f}, 200>{sma_200:.2f})",
@@ -1062,18 +1202,22 @@ class ProfessionalBuyLogic:
         # GENUINE BUY LOGIC: Enhanced support level detection with volume confirmation
         support = technical.get("support_level", stock.current_price * 1.1)
         volume_ratio = technical.get("volume_ratio", 1.0)
-        
+
         # MAINTAINED: Strict support bounce condition
-        if support > 0 and stock.current_price > support * 1.01:  # More moderate threshold for genuine support bounce
+        # More moderate threshold for genuine support bounce
+        if support > 0 and stock.current_price > support * 1.01:
             # Enhanced with volume confirmation
             volume_confirmation = 1.0
             if volume_ratio > 1.5:  # Above average volume
                 volume_confirmation = 1.2  # Boost for volume confirmation
-            
-            strength = (stock.current_price - support) / support * volume_confirmation
+
+            strength = (stock.current_price - support) / \
+                support * volume_confirmation
             signals.append(BuySignal(
                 name="support_bounce",
-                strength=min(strength * 1.3, 1.0) * self.signal_sensitivity_multiplier,  # Enhanced multiplier
+                # Enhanced multiplier
+                strength=min(strength * 1.3, 1.0) *
+                self.signal_sensitivity_multiplier,
                 weight=category_weight * 0.12,
                 triggered=True,
                 reasoning=f"Support bounce at {support:.2f} with volume confirmation (ratio: {volume_ratio:.2f})",
@@ -1082,20 +1226,25 @@ class ProfessionalBuyLogic:
             ))
 
         # GENUINE BUY LOGIC: Enhanced breakout signal detection with volatility confirmation
-        resistance = technical.get("resistance_level", stock.current_price * 0.9)
-        atr = stock.atr if hasattr(stock, 'atr') else (stock.current_price * 0.01)  # Default 1% ATR
-        
+        resistance = technical.get(
+            "resistance_level", stock.current_price * 0.9)
+        atr = stock.atr if hasattr(stock, 'atr') else (
+            stock.current_price * 0.01)  # Default 1% ATR
+
         # MAINTAINED: Strict breakout detection
         if stock.current_price > resistance * 1.01:  # More moderate threshold for genuine breakout
             # Enhanced with volatility confirmation
             volatility_confirmation = 1.0
             if atr > (stock.current_price * 0.015):  # High volatility breakout
                 volatility_confirmation = 1.15  # Boost for volatility confirmation
-            
-            strength = (stock.current_price - resistance) / resistance * volatility_confirmation
+
+            strength = (stock.current_price - resistance) / \
+                resistance * volatility_confirmation
             signals.append(BuySignal(
                 name="breakout",
-                strength=min(strength * 1.2, 1.0) * self.signal_sensitivity_multiplier,  # Enhanced multiplier
+                # Enhanced multiplier
+                strength=min(strength * 1.2, 1.0) *
+                self.signal_sensitivity_multiplier,
                 weight=category_weight * 0.15,
                 triggered=True,
                 reasoning=f"Breakout above resistance {resistance:.2f} with volatility confirmation (ATR: {atr:.2f})",
@@ -1107,16 +1256,18 @@ class ProfessionalBuyLogic:
 
         # Money Flow Index (MFI) signal with volume trend confirmation
         mfi = technical.get("mfi", 50)
-        volume_trend = technical.get("volume_trend", 0)  # Positive for increasing volume
-        
+        # Positive for increasing volume
+        volume_trend = technical.get("volume_trend", 0)
+
         # MAINTAINED: Strict oversold condition
         if mfi < 20:  # More moderate threshold for genuine oversold conditions
             # Enhanced with volume trend confirmation
             volume_confirmation = 1.0
             if volume_trend > 0.1:  # Positive volume trend
                 volume_confirmation = 1.2  # Boost for confirmation
-            
-            strength = min((10 - mfi) / 10, 1.0) * self.signal_sensitivity_multiplier * volume_confirmation  # Adjust scaling
+
+            strength = min((10 - mfi) / 10, 1.0) * self.signal_sensitivity_multiplier * \
+                volume_confirmation  # Adjust scaling
             signals.append(BuySignal(
                 name="mfi_oversold",
                 strength=strength,
@@ -1130,15 +1281,16 @@ class ProfessionalBuyLogic:
         # Stochastic Oscillator signal with momentum confirmation
         stoch_k = technical.get("stoch_k", 50)
         stoch_d = technical.get("stoch_d", 50)  # Stochastic %D line
-        
+
         # MAINTAINED: Strict oversold condition
         if stoch_k < 20:  # More moderate threshold for genuine oversold conditions
             # Enhanced with %D line confirmation
             momentum_confirmation = 1.0
             if stoch_k > stoch_d:  # %K crossing above %D
                 momentum_confirmation = 1.15  # Boost for momentum confirmation
-            
-            strength = min((10 - stoch_k) / 10, 1.0) * self.signal_sensitivity_multiplier * momentum_confirmation  # Adjust scaling
+
+            strength = min((10 - stoch_k) / 10, 1.0) * \
+                self.signal_sensitivity_multiplier * momentum_confirmation  # Adjust scaling
             signals.append(BuySignal(
                 name="stoch_oversold",
                 strength=strength,
@@ -1152,15 +1304,16 @@ class ProfessionalBuyLogic:
         # Bollinger Bands signal with squeeze confirmation
         bb_position = technical.get("bb_position", 0.5)
         bb_width = technical.get("bb_width", 0.1)  # Bollinger Band width
-        
+
         # MAINTAINED: Strict lower band condition
         if bb_position < 0.10:  # More moderate threshold for genuine lower band position
             # Enhanced with band squeeze confirmation
             squeeze_confirmation = 1.0
             if bb_width < 0.05:  # Narrow bands (squeeze)
                 squeeze_confirmation = 1.2  # Boost for squeeze confirmation
-            
-            strength = min((0.02 - bb_position) / 0.02, 1.0) * self.signal_sensitivity_multiplier * squeeze_confirmation  # Adjust scaling
+
+            strength = min((0.02 - bb_position) / 0.02, 1.0) * \
+                self.signal_sensitivity_multiplier * squeeze_confirmation  # Adjust scaling
             signals.append(BuySignal(
                 name="bb_lower_band",
                 strength=strength,
@@ -1173,16 +1326,18 @@ class ProfessionalBuyLogic:
 
         # Williams %R signal with trend confirmation
         williams_r = technical.get("williams_r", -50)
-        price_trend_williams = technical.get("price_trend_williams", "neutral")  # Price trend from Williams perspective
-        
+        # Price trend from Williams perspective
+        price_trend_williams = technical.get("price_trend_williams", "neutral")
+
         # MAINTAINED: Strict oversold condition
         if williams_r < -80:  # More moderate threshold for genuine oversold conditions
             # Enhanced with trend confirmation
             trend_confirmation = 1.0
             if price_trend_williams == "bullish":  # Confirmed bullish trend
                 trend_confirmation = 1.15  # Boost for trend confirmation
-            
-            strength = min((-90 - williams_r) / 10, 1.0) * self.signal_sensitivity_multiplier * trend_confirmation  # Adjust scaling
+
+            strength = min((-90 - williams_r) / 10, 1.0) * \
+                self.signal_sensitivity_multiplier * trend_confirmation  # Adjust scaling
             signals.append(BuySignal(
                 name="williams_r_oversold",
                 strength=strength,
@@ -1196,15 +1351,16 @@ class ProfessionalBuyLogic:
         # Volume Rate of Change signal with price confirmation
         volume_roc = technical.get("volume_roc", 0)
         price_roc = technical.get("price_roc", 0)  # Price rate of change
-        
+
         # MAINTAINED: Strict volume increase
         if volume_roc > 100:  # More moderate threshold for genuine volume surge
             # Enhanced with price confirmation
             price_confirmation = 1.0
             if price_roc > 0:  # Positive price momentum
                 price_confirmation = 1.2  # Boost for price confirmation
-            
-            strength = min(volume_roc / 200, 1.0) * self.signal_sensitivity_multiplier * price_confirmation  # Adjust scaling
+
+            strength = min(volume_roc / 200, 1.0) * \
+                self.signal_sensitivity_multiplier * price_confirmation  # Adjust scaling
             signals.append(BuySignal(
                 name="volume_surge",
                 strength=strength,
@@ -1217,16 +1373,18 @@ class ProfessionalBuyLogic:
 
         # Order book imbalance signal (bullish pressure) with depth confirmation
         order_imbalance = technical.get("order_book_imbalance", 0)
-        bid_ask_spread = technical.get("bid_ask_spread", 0.01)  # Bid-ask spread
-        
+        bid_ask_spread = technical.get(
+            "bid_ask_spread", 0.01)  # Bid-ask spread
+
         # MAINTAINED: Strict bullish order flow
         if order_imbalance > 0.4:  # More moderate threshold for genuine bullish order flow
             # Enhanced with spread confirmation
             spread_confirmation = 1.0
             if bid_ask_spread < 0.02:  # Tight spread
                 spread_confirmation = 1.15  # Boost for tight spread confirmation
-            
-            strength = min((order_imbalance - 0.5) / 0.3, 1.0) * self.signal_sensitivity_multiplier * spread_confirmation  # Adjust scaling
+
+            strength = min((order_imbalance - 0.5) / 0.3, 1.0) * \
+                self.signal_sensitivity_multiplier * spread_confirmation  # Adjust scaling
             signals.append(BuySignal(
                 name="bullish_order_flow",
                 strength=strength,
@@ -1241,10 +1399,11 @@ class ProfessionalBuyLogic:
         adx = technical.get("adx", 20)
         plus_di = technical.get("plus_di", 20)
         minus_di = technical.get("minus_di", 20)
-        
+
         # Strong trend confirmation with ADX > 30 and +DI > -DI
         if adx > 25 and plus_di > minus_di:
-            strength = min((adx - 25) / 25, 1.0) * self.signal_sensitivity_multiplier
+            strength = min((adx - 25) / 25, 1.0) * \
+                self.signal_sensitivity_multiplier
             signals.append(BuySignal(
                 name="adx_trend_strength",
                 strength=strength,
@@ -1257,10 +1416,11 @@ class ProfessionalBuyLogic:
 
         # Aroon Oscillator signal for trend reversal
         aroon_osc = technical.get("aroon_osc", 0)
-        
+
         # Bullish Aroon Oscillator
         if aroon_osc > 50:
-            strength = min(aroon_osc / 100, 1.0) * self.signal_sensitivity_multiplier
+            strength = min(aroon_osc / 100, 1.0) * \
+                self.signal_sensitivity_multiplier
             signals.append(BuySignal(
                 name="aroon_bullish",
                 strength=strength,
@@ -1273,10 +1433,11 @@ class ProfessionalBuyLogic:
 
         # CCI signal for cyclical buying opportunities
         cci = technical.get("cci_14", 0)
-        
+
         # CCI oversold condition
         if cci < -100:
-            strength = min((-100 - cci) / 100, 1.0) * self.signal_sensitivity_multiplier
+            strength = min((-100 - cci) / 100, 1.0) * \
+                self.signal_sensitivity_multiplier
             signals.append(BuySignal(
                 name="cci_oversold",
                 strength=strength,
@@ -1290,10 +1451,11 @@ class ProfessionalBuyLogic:
         # ROC signal for momentum confirmation
         roc_10 = technical.get("roc_10", 0)
         roc_20 = technical.get("roc_20", 0)
-        
+
         # Positive momentum with ROC confirmation
         if roc_10 > 1.5 and roc_20 > 0.8:
-            strength = min(roc_10 / 5, 1.0) * self.signal_sensitivity_multiplier
+            strength = min(roc_10 / 5, 1.0) * \
+                self.signal_sensitivity_multiplier
             signals.append(BuySignal(
                 name="roc_momentum",
                 strength=strength,
@@ -1306,7 +1468,7 @@ class ProfessionalBuyLogic:
 
         # TRIX signal for trend direction
         trix = technical.get("trix", 0)
-        
+
         # Bullish TRIX crossover
         if trix > 0:
             strength = min(trix * 10, 1.0) * self.signal_sensitivity_multiplier
@@ -1322,10 +1484,11 @@ class ProfessionalBuyLogic:
 
         # CMO signal for momentum
         cmo = technical.get("cmo_14", 0)
-        
+
         # Oversold CMO condition
         if cmo < -60:
-            strength = min((-50 - cmo) / 50, 1.0) * self.signal_sensitivity_multiplier
+            strength = min((-50 - cmo) / 50, 1.0) * \
+                self.signal_sensitivity_multiplier
             signals.append(BuySignal(
                 name="cmo_oversold",
                 strength=strength,
@@ -1344,25 +1507,32 @@ class ProfessionalBuyLogic:
 
         # PEG Ratio Analysis (P/E adjusted for growth) with sector comparison
         # Ensure values are properly converted to floats
-        pe_ratio = float(stock.price_to_earnings) if not isinstance(stock.price_to_earnings, (int, float)) else stock.price_to_earnings
-        eps_growth = stock.earnings_growth if hasattr(stock, 'earnings_growth') else 0.05  # Default 5% growth
-        eps_growth = float(eps_growth) if not isinstance(eps_growth, (int, float)) else eps_growth
-        sector_pe = stock.sector_pe if hasattr(stock, 'sector_pe') else 20  # Default sector PE
-        sector_pe = float(sector_pe) if not isinstance(sector_pe, (int, float)) else sector_pe
+        pe_ratio = float(stock.price_to_earnings) if not isinstance(
+            stock.price_to_earnings, (int, float)) else stock.price_to_earnings
+        eps_growth = stock.earnings_growth if hasattr(
+            stock, 'earnings_growth') else 0.05  # Default 5% growth
+        eps_growth = float(eps_growth) if not isinstance(
+            eps_growth, (int, float)) else eps_growth
+        sector_pe = stock.sector_pe if hasattr(
+            stock, 'sector_pe') else 20  # Default sector PE
+        sector_pe = float(sector_pe) if not isinstance(
+            sector_pe, (int, float)) else sector_pe
 
         if pe_ratio > 0 and eps_growth > 0:
             peg_ratio = pe_ratio / (eps_growth * 100)  # Convert to percentage
             # Enhanced with sector comparison
-            sector_peg = sector_pe / (eps_growth * 100) if eps_growth > 0 else 1.0
-            peg_discount = (sector_peg - peg_ratio) / sector_peg if sector_peg > 0 else 0
-            
+            sector_peg = sector_pe / \
+                (eps_growth * 100) if eps_growth > 0 else 1.0
+            peg_discount = (sector_peg - peg_ratio) / \
+                sector_peg if sector_peg > 0 else 0
+
             # ENHANCED: More flexible threshold with additional validation
             if peg_ratio < 1.0:  # Increased threshold but with additional validation
                 # Enhanced with sector discount
                 sector_boost = 1.0
                 if peg_discount > 0.15:  # Slightly reduced sector discount requirement
                     sector_boost = 1.2  # Boost for sector discount
-                
+
                 strength = min((0.8 - peg_ratio) / 0.8, 1.0) * sector_boost
                 signals.append(BuySignal(
                     name="attractive_peg_ratio",
@@ -1372,13 +1542,14 @@ class ProfessionalBuyLogic:
                     reasoning=f"Attractive PEG ratio: {peg_ratio:.2f} (P/E: {pe_ratio:.1f}, Growth: {eps_growth:.1%}, Sector discount: {peg_discount:.1%})",
                     confidence=0.70,  # Enhanced confidence
                     category="Value"
-                ))  
+                ))
 
         # Enhanced P/E Analysis with sector comparison and growth adjustment
         # ENHANCED: More flexible threshold with additional validation
         if 0 < pe_ratio < 18:  # Increased threshold but with additional validation
             # Check if P/E is significantly below sector average
-            pe_discount = (sector_pe - pe_ratio) / sector_pe if sector_pe > 0 else 0
+            pe_discount = (sector_pe - pe_ratio) / \
+                sector_pe if sector_pe > 0 else 0
 
             # Enhanced with growth adjustment
             growth_adjustment = 1.0
@@ -1400,16 +1571,19 @@ class ProfessionalBuyLogic:
 
         # Enhanced P/B Analysis with ROE consideration and industry comparison
         # Ensure values are properly converted to floats
-        pb_ratio = float(stock.price_to_book) if not isinstance(stock.price_to_book, (int, float)) else stock.price_to_book
-        roe = stock.return_on_equity if hasattr(stock, 'return_on_equity') else 0.10  # Default 10% ROE
+        pb_ratio = float(stock.price_to_book) if not isinstance(
+            stock.price_to_book, (int, float)) else stock.price_to_book
+        roe = stock.return_on_equity if hasattr(
+            stock, 'return_on_equity') else 0.10  # Default 10% ROE
         roe = float(roe) if not isinstance(roe, (int, float)) else roe
 
         # ENHANCED: More flexible P/B threshold with additional validation
         if 0 < pb_ratio < 1.8:  # Increased threshold but with additional validation
             # Calculate justified P/B based on ROE with industry comparison
             justified_pb = roe / 0.15  # Strict required return
-            pb_discount = (justified_pb - pb_ratio) / justified_pb if justified_pb > 0 else 0
-            
+            pb_discount = (justified_pb - pb_ratio) / \
+                justified_pb if justified_pb > 0 else 0
+
             # Enhanced with ROE quality
             roe_quality = 1.0
             if roe > 0.12:  # Slightly reduced ROE requirement
@@ -1430,10 +1604,14 @@ class ProfessionalBuyLogic:
 
         # Free Cash Flow Yield Analysis with debt consideration
         # Ensure values are properly converted to floats
-        fcf_yield = stock.free_cash_flow_yield if hasattr(stock, 'free_cash_flow_yield') else 0.05
-        fcf_yield = float(fcf_yield) if not isinstance(fcf_yield, (int, float)) else fcf_yield
-        debt_equity = stock.debt_to_equity if hasattr(stock, 'debt_to_equity') else 0.5
-        debt_equity = float(debt_equity) if not isinstance(debt_equity, (int, float)) else debt_equity
+        fcf_yield = stock.free_cash_flow_yield if hasattr(
+            stock, 'free_cash_flow_yield') else 0.05
+        fcf_yield = float(fcf_yield) if not isinstance(
+            fcf_yield, (int, float)) else fcf_yield
+        debt_equity = stock.debt_to_equity if hasattr(
+            stock, 'debt_to_equity') else 0.5
+        debt_equity = float(debt_equity) if not isinstance(
+            debt_equity, (int, float)) else debt_equity
 
         # ENHANCED: More flexible FCF yield threshold with additional validation
         if fcf_yield > 0.06:  # Slightly reduced threshold but with additional validation
@@ -1441,8 +1619,9 @@ class ProfessionalBuyLogic:
             debt_adjustment = 1.0
             if debt_equity < 0.4:  # Slightly increased debt threshold
                 debt_adjustment = 1.2  # Boost for low debt
-            
-            strength = min(fcf_yield / 0.20, 1.0) * debt_adjustment  # Original scaling
+
+            strength = min(fcf_yield / 0.20, 1.0) * \
+                debt_adjustment  # Original scaling
             signals.append(BuySignal(
                 name="high_fcf_yield",
                 strength=strength,
@@ -1464,7 +1643,7 @@ class ProfessionalBuyLogic:
             debt_quality = 1.0
             if debt_equity < (industry_avg_debt * 0.6):  # Slightly reduced requirement
                 debt_quality = 1.15  # Boost for superior debt position
-            
+
             strength = min((0.15 - debt_equity) / 0.15, 1.0) * debt_quality
             signals.append(BuySignal(
                 name="healthy_balance_sheet",
@@ -1478,19 +1657,25 @@ class ProfessionalBuyLogic:
 
         # Dividend Sustainability (for dividend stocks) with payout quality
         # Ensure values are properly converted to floats
-        dividend_yield = stock.dividend_yield if hasattr(stock, 'dividend_yield') else 0
-        dividend_yield = float(dividend_yield) if not isinstance(dividend_yield, (int, float)) else dividend_yield
-        payout_ratio = stock.payout_ratio if hasattr(stock, 'payout_ratio') else 0
-        payout_ratio = float(payout_ratio) if not isinstance(payout_ratio, (int, float)) else payout_ratio
+        dividend_yield = stock.dividend_yield if hasattr(
+            stock, 'dividend_yield') else 0
+        dividend_yield = float(dividend_yield) if not isinstance(
+            dividend_yield, (int, float)) else dividend_yield
+        payout_ratio = stock.payout_ratio if hasattr(
+            stock, 'payout_ratio') else 0
+        payout_ratio = float(payout_ratio) if not isinstance(
+            payout_ratio, (int, float)) else payout_ratio
 
         # ENHANCED: More flexible dividend thresholds with additional validation
-        if dividend_yield > 0.015 and payout_ratio < 0.6:  # Slightly relaxed thresholds but with additional validation
+        # Slightly relaxed thresholds but with additional validation
+        if dividend_yield > 0.015 and payout_ratio < 0.6:
             # Enhanced with payout quality
             payout_quality = 1.0
             if payout_ratio < 0.35:  # Slightly increased payout requirement
                 payout_quality = 1.15  # Boost for quality payout
-            
-            strength = min((dividend_yield * (1 - payout_ratio / 0.6)) / 0.07, 1.0) * payout_quality
+
+            strength = min(
+                (dividend_yield * (1 - payout_ratio / 0.6)) / 0.07, 1.0) * payout_quality
             signals.append(BuySignal(
                 name="sustainable_dividend",
                 strength=strength,
@@ -1503,16 +1688,19 @@ class ProfessionalBuyLogic:
 
         # Earnings Quality Score with consistency check
         # Ensure values are properly converted to floats
-        earnings_quality = stock.earnings_quality if hasattr(stock, 'earnings_quality') else 0.5
-        earnings_quality = float(earnings_quality) if not isinstance(earnings_quality, (int, float)) else earnings_quality
+        earnings_quality = stock.earnings_quality if hasattr(
+            stock, 'earnings_quality') else 0.5
+        earnings_quality = float(earnings_quality) if not isinstance(
+            earnings_quality, (int, float)) else earnings_quality
 
         # ENHANCED: More flexible earnings quality threshold with additional validation
         if earnings_quality > 0.65:  # Slightly reduced threshold but with additional validation
             # Enhanced with consistency check
             consistency_boost = 1.0
-            if hasattr(stock, 'earnings_consistency') and stock.earnings_consistency > 0.85:  # Slightly reduced consistency requirement
+            # Slightly reduced consistency requirement
+            if hasattr(stock, 'earnings_consistency') and stock.earnings_consistency > 0.85:
                 consistency_boost = 1.15  # Boost for consistency
-            
+
             strength = min(earnings_quality / 0.95, 1.0) * consistency_boost
             signals.append(BuySignal(
                 name="high_earnings_quality",
@@ -1526,17 +1714,21 @@ class ProfessionalBuyLogic:
 
         # Insider Ownership Signal with recent activity
         # Ensure values are properly converted to floats
-        insider_ownership = stock.insider_ownership if hasattr(stock, 'insider_ownership') else 0
-        insider_ownership = float(insider_ownership) if not isinstance(insider_ownership, (int, float)) else insider_ownership
+        insider_ownership = stock.insider_ownership if hasattr(
+            stock, 'insider_ownership') else 0
+        insider_ownership = float(insider_ownership) if not isinstance(
+            insider_ownership, (int, float)) else insider_ownership
 
         # ENHANCED: More flexible insider ownership threshold with additional validation
         if insider_ownership > 0.08:  # Slightly reduced threshold but with additional validation
             # Enhanced with recent activity
             recent_activity = 1.0
-            if hasattr(stock, 'recent_insider_activity') and stock.recent_insider_activity > 0.04:  # Slightly reduced activity requirement
+            # Slightly reduced activity requirement
+            if hasattr(stock, 'recent_insider_activity') and stock.recent_insider_activity > 0.04:
                 recent_activity = 1.2  # Boost for recent activity
-            
-            strength = min(insider_ownership / 0.25, 1.0) * recent_activity  # Original scaling
+
+            strength = min(insider_ownership / 0.25, 1.0) * \
+                recent_activity  # Original scaling
             signals.append(BuySignal(
                 name="significant_insider_ownership",
                 strength=strength,
@@ -1555,7 +1747,7 @@ class ProfessionalBuyLogic:
 
         # GENUINE FIX: Handle different sentiment data structures
         # The sentiment data can come in different formats, so we need to check for all possible keys
-        
+
         # Check for comprehensive sentiment data (from fetch_combined_sentiment)
         if "weighted_aggregated" in sentiment:
             sentiment_data = sentiment["weighted_aggregated"]
@@ -1563,7 +1755,7 @@ class ProfessionalBuyLogic:
             negative = sentiment_data.get("negative", 0)
             neutral = sentiment_data.get("neutral", 0)
             total = positive + negative + neutral
-            
+
             if total > 0:
                 sentiment_score = (positive - negative) / total
             else:
@@ -1573,9 +1765,11 @@ class ProfessionalBuyLogic:
             comprehensive = sentiment["comprehensive_analysis"]
             sentiment_strength = comprehensive.get("sentiment_strength", {})
             # Use bullish sentiment as the base score
-            sentiment_score = sentiment_strength.get("bullish", 0) - sentiment_strength.get("bearish", 0)
+            sentiment_score = sentiment_strength.get(
+                "bullish", 0) - sentiment_strength.get("bearish", 0)
             # Apply regime multiplier if available
-            regime_multiplier = comprehensive.get("market_context_applied", 1.0)
+            regime_multiplier = comprehensive.get(
+                "market_context_applied", 1.0)
             sentiment_score *= regime_multiplier
         # Check for weighted aggregated sentiment data
         elif "weighted_aggregated" in sentiment:
@@ -1584,7 +1778,7 @@ class ProfessionalBuyLogic:
             negative = sentiment_data.get("negative", 0)
             neutral = sentiment_data.get("neutral", 0)
             total = positive + negative + neutral
-            
+
             if total > 0:
                 sentiment_score = (positive - negative) / total
             else:
@@ -1596,7 +1790,7 @@ class ProfessionalBuyLogic:
             negative = sentiment_data.get("negative", 0)
             neutral = sentiment_data.get("neutral", 0)
             total = positive + negative + neutral
-            
+
             if total > 0:
                 sentiment_score = (positive - negative) / total
             else:
@@ -1613,7 +1807,7 @@ class ProfessionalBuyLogic:
             negative = sentiment.get("negative", 0)
             neutral = sentiment.get("neutral", 0)
             total = positive + negative + neutral
-            
+
             if total > 0:
                 sentiment_score = (positive - negative) / total
             else:
@@ -1621,22 +1815,28 @@ class ProfessionalBuyLogic:
 
         # Enhanced Positive Sentiment with momentum and source diversity
         sentiment_momentum = sentiment.get("sentiment_momentum", 0)
-        source_diversity = sentiment.get("source_diversity", 1)  # Number of different sentiment sources
+        # Number of different sentiment sources
+        source_diversity = sentiment.get("source_diversity", 1)
 
         # INCREASED: Stricter positive sentiment threshold
-        if sentiment_score > 0.5:  # INCREASED: Require stronger positive sentiment (was 0.3)
+        # INCREASED: Require stronger positive sentiment (was 0.3)
+        if sentiment_score > 0.5:
             # Enhanced with momentum and source diversity
             momentum_boost = 1.0
-            if sentiment_momentum > 0.3:  # INCREASED: Require stronger momentum (was 0.2)
+            # INCREASED: Require stronger momentum (was 0.2)
+            if sentiment_momentum > 0.3:
                 momentum_boost = 1.1  # Boost for momentum
-            elif sentiment_momentum > 0.15:  # INCREASED: Require stronger momentum (was 0.1)
+            # INCREASED: Require stronger momentum (was 0.1)
+            elif sentiment_momentum > 0.15:
                 momentum_boost = 1.05  # Smaller boost
-            
+
             diversity_boost = 1.0
-            if source_diversity > 5:  # INCREASED: Require more diverse sources (was 3)
+            # INCREASED: Require more diverse sources (was 3)
+            if source_diversity > 5:
                 diversity_boost = 1.15  # Boost for diversity
-            
-            strength = min(sentiment_score / 0.8, 1.0) * momentum_boost * diversity_boost  # Enhanced scaling
+
+            strength = min(sentiment_score / 0.8, 1.0) * \
+                momentum_boost * diversity_boost  # Enhanced scaling
 
             reasoning = f"Positive sentiment: {sentiment_score:.2f}"
             if sentiment_momentum > 0.3:
@@ -1650,7 +1850,8 @@ class ProfessionalBuyLogic:
                 weight=category_weight * 0.15,
                 triggered=True,
                 reasoning=reasoning,
-                confidence=0.70,  # INCREASED: Higher confidence for stronger signals (was 0.60)
+                # INCREASED: Higher confidence for stronger signals (was 0.60)
+                confidence=0.70,
                 category="Sentiment"
             ))
 
@@ -1661,8 +1862,9 @@ class ProfessionalBuyLogic:
             confirmation_boost = 1.0
             if sentiment.get("extreme_negative_confirmed", False):  # Confirmed extreme negative
                 confirmation_boost = 1.2  # Boost for confirmation
-            
-            strength = min(abs(sentiment_score) / 0.8, 1.0) * confirmation_boost  # Enhanced scaling
+
+            strength = min(abs(sentiment_score) / 0.8, 1.0) * \
+                confirmation_boost  # Enhanced scaling
             signals.append(BuySignal(
                 name="negative_sentiment_extreme",
                 strength=strength,
@@ -1678,10 +1880,13 @@ class ProfessionalBuyLogic:
         if isinstance(news_sentiment, dict):
             news_positive = news_sentiment.get("positive", 0)
             news_negative = news_sentiment.get("negative", 0)
-            news_total = news_positive + news_negative + news_sentiment.get("neutral", 0)
-            news_volume = news_sentiment.get("volume", 0)  # Number of news articles
-            news_impact = news_sentiment.get("impact_score", 0.5)  # Average impact of news
-            
+            news_total = news_positive + news_negative + \
+                news_sentiment.get("neutral", 0)
+            news_volume = news_sentiment.get(
+                "volume", 0)  # Number of news articles
+            news_impact = news_sentiment.get(
+                "impact_score", 0.5)  # Average impact of news
+
             if news_total > 0:
                 news_score = (news_positive - news_negative) / news_total
                 # MAINTAINED: Strict news sentiment threshold
@@ -1690,12 +1895,13 @@ class ProfessionalBuyLogic:
                     volume_boost = 1.0
                     if news_volume > 10:  # High volume of news
                         volume_boost = 1.15  # Boost for volume
-                    
+
                     impact_boost = 1.0
                     if news_impact > 0.7:  # High impact news
                         impact_boost = 1.1  # Boost for impact
-                    
-                    strength = min(news_score / 0.7, 1.0) * volume_boost * impact_boost  # Enhanced scaling
+
+                    strength = min(news_score / 0.7, 1.0) * \
+                        volume_boost * impact_boost  # Enhanced scaling
                     signals.append(BuySignal(
                         name="positive_news_sentiment",
                         strength=strength,
@@ -1711,24 +1917,29 @@ class ProfessionalBuyLogic:
         if isinstance(social_sentiment, dict):
             social_positive = social_sentiment.get("positive", 0)
             social_negative = social_sentiment.get("negative", 0)
-            social_total = social_positive + social_negative + social_sentiment.get("neutral", 0)
-            engagement_rate = social_sentiment.get("engagement_rate", 0.1)  # Engagement rate
-            viral_score = social_sentiment.get("viral_score", 0.5)  # Viral potential score
-            
+            social_total = social_positive + social_negative + \
+                social_sentiment.get("neutral", 0)
+            engagement_rate = social_sentiment.get(
+                "engagement_rate", 0.1)  # Engagement rate
+            viral_score = social_sentiment.get(
+                "viral_score", 0.5)  # Viral potential score
+
             if social_total > 0:
-                social_score = (social_positive - social_negative) / social_total
+                social_score = (social_positive -
+                                social_negative) / social_total
                 # MAINTAINED: Strict social sentiment threshold
                 if social_score > 0.5:  # More moderate threshold for genuine positive social sentiment
                     # Enhanced with engagement and viral metrics
                     engagement_boost = 1.0
                     if engagement_rate > 0.2:  # High engagement
                         engagement_boost = 1.15  # Boost for engagement
-                    
+
                     viral_boost = 1.0
                     if viral_score > 0.7:  # High viral potential
                         viral_boost = 1.1  # Boost for viral potential
-                    
-                    strength = min(social_score / 0.8, 1.0) * engagement_boost * viral_boost  # Enhanced scaling
+
+                    strength = min(social_score / 0.8, 1.0) * \
+                        engagement_boost * viral_boost  # Enhanced scaling
                     signals.append(BuySignal(
                         name="positive_social_sentiment",
                         strength=strength,
@@ -1742,16 +1953,19 @@ class ProfessionalBuyLogic:
         # Options Flow Sentiment (institutional activity) with confirmation
         options_flow = sentiment.get("options_flow_sentiment", 0)
         call_put_ratio = sentiment.get("call_put_ratio", 1.0)
-        flow_confirmation = sentiment.get("flow_confirmed", False)  # Whether flow is confirmed by multiple sources
+        # Whether flow is confirmed by multiple sources
+        flow_confirmation = sentiment.get("flow_confirmed", False)
 
         # MAINTAINED: Strict options flow threshold
-        if options_flow > 0.3 and call_put_ratio > 1.2:  # More moderate thresholds for genuine institutional activity
+        # More moderate thresholds for genuine institutional activity
+        if options_flow > 0.3 and call_put_ratio > 1.2:
             # Enhanced with confirmation
             confirmation_boost = 1.0
             if flow_confirmation:  # Confirmed flow
                 confirmation_boost = 1.2  # Boost for confirmation
-            
-            strength = min((options_flow * (call_put_ratio - 1)) / 0.7, 1.0) * confirmation_boost  # Enhanced scaling
+
+            strength = min((options_flow * (call_put_ratio - 1)) /
+                           0.7, 1.0) * confirmation_boost  # Enhanced scaling
             signals.append(BuySignal(
                 name="bullish_options_flow",
                 strength=strength,
@@ -1765,8 +1979,10 @@ class ProfessionalBuyLogic:
         # Insider Trading Signal Aggregation with timing and size
         insider_activity = sentiment.get("insider_activity_score", 0)
         recent_insider_buys = sentiment.get("recent_insider_buys", 0)
-        insider_timing = sentiment.get("insider_timing_score", 0.5)  # Timing quality score
-        insider_size = sentiment.get("insider_transaction_size", 0.5)  # Relative transaction size
+        insider_timing = sentiment.get(
+            "insider_timing_score", 0.5)  # Timing quality score
+        # Relative transaction size
+        insider_size = sentiment.get("insider_transaction_size", 0.5)
 
         # MAINTAINED: Strict insider activity threshold
         if insider_activity > 0.5 and recent_insider_buys > 2:  # Strict thresholds for genuine insider activity
@@ -1774,12 +1990,13 @@ class ProfessionalBuyLogic:
             timing_boost = 1.0
             if insider_timing > 0.7:  # Good timing
                 timing_boost = 1.15  # Boost for timing
-            
+
             size_boost = 1.0
             if insider_size > 0.6:  # Large transactions
                 size_boost = 1.1  # Boost for size
-            
-            strength = min((insider_activity * recent_insider_buys) / 10, 1.0) * timing_boost * size_boost  # Enhanced scaling
+
+            strength = min((insider_activity * recent_insider_buys) /
+                           10, 1.0) * timing_boost * size_boost  # Enhanced scaling
             signals.append(BuySignal(
                 name="insider_buying_activity",
                 strength=strength,
@@ -1801,12 +2018,13 @@ class ProfessionalBuyLogic:
             trend_boost = 1.0
             if pc_trend > 0.1:  # Increasing fear trend
                 trend_boost = 1.1  # Boost for trend
-            
+
             volume_boost = 1.0
             if pc_volume > 5000:  # High volume
                 volume_boost = 1.15  # Boost for volume
 
-            strength = min((pc_ratio - 1.0) / 0.7, 1.0) * trend_boost * volume_boost  # Enhanced scaling
+            strength = min((pc_ratio - 1.0) / 0.7, 1.0) * \
+                trend_boost * volume_boost  # Enhanced scaling
 
             reasoning = f"High Put/Call ratio ({pc_ratio:.3f}) indicates fear"
             if pc_trend > 0.1:
@@ -1827,16 +2045,19 @@ class ProfessionalBuyLogic:
         # Short Interest Trend (contrarian indicator) with momentum and size
         short_interest = sentiment.get("short_interest_pct", 0)
         short_trend = sentiment.get("short_trend", 0)
-        short_momentum = sentiment.get("short_momentum", 0)  # Momentum in short interest changes
+        # Momentum in short interest changes
+        short_momentum = sentiment.get("short_momentum", 0)
 
         # MAINTAINED: Strict short interest thresholds
-        if short_interest > 0.10 and short_trend < -0.04:  # Strict thresholds for genuine short interest opportunity
+        # Strict thresholds for genuine short interest opportunity
+        if short_interest > 0.10 and short_trend < -0.04:
             # Enhanced with momentum
             momentum_boost = 1.0
             if short_momentum < -0.1:  # Strong declining momentum
                 momentum_boost = 1.2  # Boost for momentum
-            
-            strength = min((short_interest * abs(short_trend)) / 0.004, 1.0) * momentum_boost  # Enhanced scaling
+
+            strength = min((short_interest * abs(short_trend)) /
+                           0.004, 1.0) * momentum_boost  # Enhanced scaling
             signals.append(BuySignal(
                 name="declining_short_interest",
                 strength=strength,
@@ -1854,53 +2075,61 @@ class ProfessionalBuyLogic:
         signals = []
 
         # GENUINE FIX: Handle different ML data structures and missing data gracefully
-        
+
         # Enhanced ML Prediction with ensemble confidence and validation
         # Handle different possible keys for ML prediction
-        ml_prediction = (ml_analysis.get("prediction_direction", 0) or 
-                        ml_analysis.get("predicted_direction", 0) or
-                        ml_analysis.get("direction", 0))
-        
+        ml_prediction = (ml_analysis.get("prediction_direction", 0) or
+                         ml_analysis.get("predicted_direction", 0) or
+                         ml_analysis.get("direction", 0))
+
         # Handle different possible keys for ML confidence
         ml_confidence = (ml_analysis.get("confidence", 0.5) or
-                        ml_analysis.get("model_confidence", 0.5) or
-                        ml_analysis.get("prediction_confidence", 0.5))
-        
+                         ml_analysis.get("model_confidence", 0.5) or
+                         ml_analysis.get("prediction_confidence", 0.5))
+
         # Handle different possible keys for model accuracy
         model_accuracy = (ml_analysis.get("model_accuracy", 0.7) or
-                         ml_analysis.get("accuracy", 0.7) or
-                         ml_analysis.get("r2_score", 0.7))
+                          ml_analysis.get("accuracy", 0.7) or
+                          ml_analysis.get("r2_score", 0.7))
 
         # Check if ML analysis was successful
-        ml_success = ml_analysis.get("success", True)  # Default to True if not specified
-        
+        # Default to True if not specified
+        ml_success = ml_analysis.get("success", True)
+
         # GENUINE BUY LOGIC: Normalize ML values to prevent extreme inflation
         # Handle the case where ML values are extremely large
         if isinstance(ml_prediction, (int, float)) and abs(ml_prediction) > 1000:
             # Normalize extremely large values
-            ml_prediction = np.sign(ml_prediction) * min(abs(ml_prediction) / 1000000, 1.0)
-            logger.warning(f"ML prediction value normalized from {ml_analysis.get('prediction_direction', 0)} to {ml_prediction}")
-        
+            ml_prediction = np.sign(ml_prediction) * \
+                min(abs(ml_prediction) / 1000000, 1.0)
+            logger.warning(
+                f"ML prediction value normalized from {ml_analysis.get('prediction_direction', 0)} to {ml_prediction}")
+
         if isinstance(ml_confidence, (int, float)) and ml_confidence > 1000:
             # Normalize extremely large confidence values
             ml_confidence = min(ml_confidence / 1000000, 1.0)
-            logger.warning(f"ML confidence value normalized from {ml_analysis.get('confidence', 0)} to {ml_confidence}")
-        
+            logger.warning(
+                f"ML confidence value normalized from {ml_analysis.get('confidence', 0)} to {ml_confidence}")
+
         # Validate ML values to prevent extreme values
         if isinstance(ml_prediction, (int, float)):
-            ml_prediction = max(-1.0, min(ml_prediction, 1.0))  # Clamp to -1 to 1 range
-        
+            # Clamp to -1 to 1 range
+            ml_prediction = max(-1.0, min(ml_prediction, 1.0))
+
         if isinstance(ml_confidence, (int, float)):
-            ml_confidence = max(0.0, min(ml_confidence, 1.0))  # Clamp to 0 to 1 range
-        
+            # Clamp to 0 to 1 range
+            ml_confidence = max(0.0, min(ml_confidence, 1.0))
+
         if isinstance(model_accuracy, (int, float)):
-            model_accuracy = max(0.0, min(model_accuracy, 1.0))  # Clamp to 0 to 1 range
-        
+            # Clamp to 0 to 1 range
+            model_accuracy = max(0.0, min(model_accuracy, 1.0))
+
         # ENHANCED: More flexible ML prediction threshold with additional validation
         if ml_success and ml_prediction > 0.005:  # Lowered threshold but with additional validation
             # Calculate weighted confidence based on model accuracy and prediction strength
             prediction_strength = abs(ml_prediction)
-            weighted_confidence = (ml_confidence * 0.6) + (model_accuracy * 0.4)  # Weighted ensemble
+            weighted_confidence = (ml_confidence * 0.6) + \
+                (model_accuracy * 0.4)  # Weighted ensemble
             # Cap weighted confidence
             weighted_confidence = min(weighted_confidence, 1.0)
 
@@ -1912,106 +2141,123 @@ class ProfessionalBuyLogic:
                 accuracy_boost = 1.15  # Standard boost
             elif model_accuracy > 0.65:  # Moderate accuracy
                 accuracy_boost = 1.05  # Small boost
-            
+
             # Enhanced with recent performance validation
             recent_performance = ml_analysis.get("recent_performance", 1.0)
             # Validate recent performance
             if isinstance(recent_performance, (int, float)):
-                recent_performance = max(0.0, min(recent_performance, 2.0))  # Clamp to 0 to 2 range
-            
+                # Clamp to 0 to 2 range
+                recent_performance = max(0.0, min(recent_performance, 2.0))
+
             performance_boost = 1.0
             if recent_performance > 1.1:  # Outperforming recent trends
                 performance_boost = 1.15  # Boost for recent performance
 
-            strength = min(prediction_strength / 0.06, 1.0) * accuracy_boost * performance_boost * self.signal_sensitivity_multiplier  # Enhanced scaling
+            strength = min(prediction_strength / 0.06, 1.0) * accuracy_boost * \
+                performance_boost * self.signal_sensitivity_multiplier  # Enhanced scaling
 
             signals.append(BuySignal(
                 name="ml_bullish_prediction",
                 strength=strength,
                 weight=category_weight * (0.15 + self.ml_signal_weight_boost),
                 triggered=True,
-                confidence=min(weighted_confidence * 1.1, 1.0),  # Enhanced confidence
+                confidence=min(weighted_confidence * 1.1,
+                               1.0),  # Enhanced confidence
                 reasoning=f"ML prediction: {ml_prediction:.1%} (confidence: {ml_confidence:.2f}, accuracy: {model_accuracy:.2f}, recent perf: {recent_performance:.2f})",
                 category="ML"
             ))
 
         # Multi-model ensemble signal with diversity and consistency
         ensemble_prediction = (ml_analysis.get("ensemble_prediction", 0) or
-                              ml_analysis.get("ensemble_direction", 0))
+                               ml_analysis.get("ensemble_direction", 0))
         ensemble_models = (ml_analysis.get("ensemble_models_count", 1) or
-                          ml_analysis.get("models_count", 1))
-        model_diversity = ml_analysis.get("model_diversity_score", 0.5)  # Diversity of model types
-        ensemble_consistency = ml_analysis.get("ensemble_consistency", 0.7)  # Agreement among models
+                           ml_analysis.get("models_count", 1))
+        model_diversity = ml_analysis.get(
+            "model_diversity_score", 0.5)  # Diversity of model types
+        ensemble_consistency = ml_analysis.get(
+            "ensemble_consistency", 0.7)  # Agreement among models
 
         # GENUINE BUY LOGIC: Normalize ensemble values
         if isinstance(ensemble_prediction, (int, float)) and abs(ensemble_prediction) > 1000:
-            ensemble_prediction = np.sign(ensemble_prediction) * min(abs(ensemble_prediction) / 1000000, 1.0)
-            logger.warning(f"Ensemble prediction normalized from {ml_analysis.get('ensemble_prediction', 0)} to {ensemble_prediction}")
+            ensemble_prediction = np.sign(
+                ensemble_prediction) * min(abs(ensemble_prediction) / 1000000, 1.0)
+            logger.warning(
+                f"Ensemble prediction normalized from {ml_analysis.get('ensemble_prediction', 0)} to {ensemble_prediction}")
 
         # ENHANCED: More flexible ensemble threshold with additional validation
-        if ensemble_prediction > 0.01 and ensemble_models > 1:  # Lowered thresholds but with additional validation
+        # Lowered thresholds but with additional validation
+        if ensemble_prediction > 0.01 and ensemble_models > 1:
             # Enhanced with diversity and consistency
             diversity_boost = 1.0
             if model_diversity > 0.7:  # High diversity
                 diversity_boost = 1.2  # Boost for diversity
-            
+
             consistency_boost = 1.0
             if ensemble_consistency > 0.8:  # High consistency
                 consistency_boost = 1.15  # Boost for consistency
-            
+
             # Higher confidence for multi-model agreement
             model_agreement = min(ensemble_models / 5, 1.0)  # Adjust scaling
-            strength = min(abs(ensemble_prediction) / 0.07, 1.0) * (1 + model_agreement * 0.2) * diversity_boost * consistency_boost  # Enhanced scaling
-
+            strength = min(abs(ensemble_prediction) / 0.07, 1.0) * (1 + model_agreement *
+                                                                    0.2) * diversity_boost * consistency_boost  # Enhanced scaling
 
             signals.append(BuySignal(
                 name="ensemble_bullish_consensus",
                 strength=strength,
                 weight=category_weight * (0.12 + self.ml_signal_weight_boost),
                 triggered=True,
-                confidence=min(ml_analysis.get("ensemble_confidence", 0.6) * 1.1, 1.0),  # Enhanced confidence
+                # Enhanced confidence
+                confidence=min(ml_analysis.get(
+                    "ensemble_confidence", 0.6) * 1.1, 1.0),
                 reasoning=f"Multi-model consensus: {ensemble_prediction:.1%} ({ensemble_models} models, diversity: {model_diversity:.2f}, consistency: {ensemble_consistency:.2f})",
                 category="ML"
             ))
 
         # Enhanced RL recommendation with action confidence and performance history
         rl_recommendation = (ml_analysis.get("rl_recommendation", "HOLD") or
-                            ml_analysis.get("reinforcement_learning_recommendation", "HOLD"))
+                             ml_analysis.get("reinforcement_learning_recommendation", "HOLD"))
         rl_confidence = (ml_analysis.get("rl_confidence", 0.5) or
-                        ml_analysis.get("reinforcement_learning_confidence", 0.5))
+                         ml_analysis.get("reinforcement_learning_confidence", 0.5))
         rl_sharpe_ratio = (ml_analysis.get("rl_sharpe_ratio", 0.5) or
-                          ml_analysis.get("reinforcement_learning_sharpe", 0.5))
-        rl_performance_history = ml_analysis.get("rl_performance_history", [])  # Historical performance
+                           ml_analysis.get("reinforcement_learning_sharpe", 0.5))
+        rl_performance_history = ml_analysis.get(
+            "rl_performance_history", [])  # Historical performance
 
         # Cap RL values
         rl_confidence = min(rl_confidence, 1.0)
         rl_sharpe_ratio = min(rl_sharpe_ratio, 1.0)
 
         # ENHANCED: More flexible RL recommendation thresholds
-        if rl_recommendation in ["BUY", "STRONG_BUY"] and rl_confidence > 0.3:  # Lowered confidence threshold
+        # Lowered confidence threshold
+        if rl_recommendation in ["BUY", "STRONG_BUY"] and rl_confidence > 0.3:
             # Enhanced boost for strong recommendations from high-performing strategies
             performance_boost = 1.0
             if rl_sharpe_ratio > 0.8:  # Very high Sharpe ratio
                 performance_boost = 1.3  # Enhanced boost
             elif rl_sharpe_ratio > 0.6:  # High Sharpe ratio
                 performance_boost = 1.15  # Standard boost
-            
+
             # Enhanced with historical consistency
             history_consistency = 1.0
             if len(rl_performance_history) > 5:
-                positive_periods = sum(1 for perf in rl_performance_history[-5:] if perf > 0)
-                history_consistency = 1.0 + (positive_periods / 5) * 0.2  # Up to 20% boost
-            
+                positive_periods = sum(
+                    1 for perf in rl_performance_history[-5:] if perf > 0)
+                history_consistency = 1.0 + \
+                    (positive_periods / 5) * 0.2  # Up to 20% boost
+
             confidence_multiplier = 1.3 if rl_recommendation == "STRONG_BUY" else 1.1  # Enhanced values
 
-            strength = rl_confidence * performance_boost * history_consistency * self.signal_sensitivity_multiplier
+            strength = rl_confidence * performance_boost * \
+                history_consistency * self.signal_sensitivity_multiplier
 
             signals.append(BuySignal(
                 name="rl_buy_recommendation",
                 strength=strength,
-                weight=category_weight * (0.10 + self.ml_signal_weight_boost * 0.5),
+                weight=category_weight *
+                (0.10 + self.ml_signal_weight_boost * 0.5),
                 triggered=True,
-                confidence=min(rl_confidence * confidence_multiplier, 1.0),  # Enhanced confidence
+                # Enhanced confidence
+                confidence=min(rl_confidence * confidence_multiplier, 1.0),
                 reasoning=f"RL recommendation: {rl_recommendation} (confidence: {rl_confidence:.2f}, Sharpe: {rl_sharpe_ratio:.2f}, history consistency: {history_consistency:.2f})",
                 category="ML"
             ))
@@ -2019,33 +2265,38 @@ class ProfessionalBuyLogic:
         # Feature importance-based signal with stability and predictive power
         feature_importance = ml_analysis.get("feature_importance_score", 0)
         key_features = ml_analysis.get("key_bullish_features", [])
-        feature_stability = ml_analysis.get("feature_stability_score", 0.5)  # Stability of feature importance
-        predictive_power = ml_analysis.get("predictive_power_score", 0.5)  # Predictive power of features
+        # Stability of feature importance
+        feature_stability = ml_analysis.get("feature_stability_score", 0.5)
+        predictive_power = ml_analysis.get(
+            "predictive_power_score", 0.5)  # Predictive power of features
 
         # Cap feature importance
         feature_importance = min(feature_importance, 1.0)
 
         # ENHANCED: More flexible feature importance threshold
-        if feature_importance > 0.5 and len(key_features) > 0:  # Lowered thresholds but with additional validation
+        # Lowered thresholds but with additional validation
+        if feature_importance > 0.5 and len(key_features) > 0:
             # Enhanced with stability and predictive power
             stability_boost = 1.0
             if feature_stability > 0.8:  # High stability
                 stability_boost = 1.2  # Boost for stability
-            
+
             power_boost = 1.0
             if predictive_power > 0.7:  # High predictive power
                 power_boost = 1.15  # Boost for power
-            
+
             # Weight by number of important features
             feature_boost = min(len(key_features) / 8, 1.0)  # Adjust scaling
-            strength = min(feature_importance / 0.95, 1.0) * (1 + feature_boost * 0.2) * stability_boost * power_boost  # Enhanced scaling
+            strength = min(feature_importance / 0.95, 1.0) * (1 + feature_boost *
+                                                              0.2) * stability_boost * power_boost  # Enhanced scaling
 
             signals.append(BuySignal(
                 name="key_feature_alignment",
                 strength=strength,
                 weight=category_weight * 0.08,
                 triggered=True,
-                confidence=min(feature_importance * 1.1, 1.0),  # Enhanced confidence
+                confidence=min(feature_importance * 1.1,
+                               1.0),  # Enhanced confidence
                 reasoning=f"Key features aligned: {feature_importance:.2f} (features: {len(key_features)}, stability: {feature_stability:.2f}, power: {predictive_power:.2f})",
                 category="ML"
             ))
@@ -2053,8 +2304,10 @@ class ProfessionalBuyLogic:
         # Cross-validation score signal with robustness and generalization
         cv_score = ml_analysis.get("cross_validation_score", 0)
         backtest_performance = ml_analysis.get("backtest_performance", 0)
-        robustness_score = ml_analysis.get("robustness_score", 0.5)  # Model robustness
-        generalization_score = ml_analysis.get("generalization_score", 0.5)  # Model generalization
+        robustness_score = ml_analysis.get(
+            "robustness_score", 0.5)  # Model robustness
+        generalization_score = ml_analysis.get(
+            "generalization_score", 0.5)  # Model generalization
 
         # Cap scores
         cv_score = min(cv_score, 1.0)
@@ -2066,21 +2319,23 @@ class ProfessionalBuyLogic:
             robustness_boost = 1.0
             if robustness_score > 0.8:  # High robustness
                 robustness_boost = 1.15  # Boost for robustness
-            
+
             generalization_boost = 1.0
             if generalization_score > 0.7:  # Good generalization
                 generalization_boost = 1.1  # Boost for generalization
-            
+
             # Combined validation metric
             validation_score = (cv_score * 0.6) + (backtest_performance * 0.4)
-            strength = min(validation_score / 0.8, 1.0) * robustness_boost * generalization_boost  # Enhanced scaling
+            strength = min(validation_score / 0.8, 1.0) * \
+                robustness_boost * generalization_boost  # Enhanced scaling
 
             signals.append(BuySignal(
                 name="validated_ml_signal",
                 strength=strength,
                 weight=category_weight * 0.09,
                 triggered=True,
-                confidence=min(validation_score * 1.1, 1.0),  # Enhanced confidence
+                # Enhanced confidence
+                confidence=min(validation_score * 1.1, 1.0),
                 reasoning=f"Validated ML signal: CV {cv_score:.2f}, Backtest {backtest_performance:.2f} (robustness: {robustness_score:.2f}, generalization: {generalization_score:.2f})",
                 category="ML"
             ))
@@ -2088,30 +2343,36 @@ class ProfessionalBuyLogic:
         # Real-time model performance tracking with consistency and trend
         recent_accuracy = ml_analysis.get("recent_accuracy", 0.5)
         prediction_consistency = ml_analysis.get("prediction_consistency", 0.5)
-        performance_trend = ml_analysis.get("performance_trend", 0.0)  # Trend in recent performance
-        consistency_trend = ml_analysis.get("consistency_trend", 0.0)  # Trend in consistency
+        performance_trend = ml_analysis.get(
+            "performance_trend", 0.0)  # Trend in recent performance
+        consistency_trend = ml_analysis.get(
+            "consistency_trend", 0.0)  # Trend in consistency
 
         # Cap performance metrics
         recent_accuracy = min(recent_accuracy, 1.0)
         prediction_consistency = min(prediction_consistency, 1.0)
 
         # ENHANCED: More flexible performance thresholds
-        if recent_accuracy > 0.60 and prediction_consistency > 0.50:  # Lowered thresholds but with additional validation
+        # Lowered thresholds but with additional validation
+        if recent_accuracy > 0.60 and prediction_consistency > 0.50:
             # Enhanced with trends
             trend_boost = 1.0
             if performance_trend > 0.1 and consistency_trend > 0.05:  # Both improving
                 trend_boost = 1.25  # Enhanced boost
             elif performance_trend > 0.05 or consistency_trend > 0.025:  # One improving
                 trend_boost = 1.1  # Standard boost
-            
-            strength = min((recent_accuracy * prediction_consistency) / 0.7, 1.0) * trend_boost  # Enhanced scaling
+
+            strength = min((recent_accuracy * prediction_consistency) /
+                           0.7, 1.0) * trend_boost  # Enhanced scaling
 
             signals.append(BuySignal(
                 name="reliable_ml_performance",
                 strength=strength,
                 weight=category_weight * 0.07,
                 triggered=True,
-                confidence=min((recent_accuracy + prediction_consistency) / 2 * 1.1, 1.0),  # Enhanced confidence
+                # Enhanced confidence
+                confidence=min(
+                    (recent_accuracy + prediction_consistency) / 2 * 1.1, 1.0),
                 reasoning=f"Reliable ML performance: accuracy {recent_accuracy:.2f}, consistency {prediction_consistency:.2f} (trend boost: {trend_boost:.2f})",
                 category="ML"
             ))
@@ -2120,28 +2381,33 @@ class ProfessionalBuyLogic:
         current_price = ml_analysis.get("current_price", 0)
         predicted_price = ml_analysis.get("predicted_price", current_price)
         prediction_confidence = ml_analysis.get("prediction_confidence", 0.5)
-        confidence_interval = ml_analysis.get("confidence_interval", 0.1)  # Width of confidence interval
-        prediction_validation = ml_analysis.get("prediction_validation_score", 0.5)  # Validation of prediction
-        
+        confidence_interval = ml_analysis.get(
+            "confidence_interval", 0.1)  # Width of confidence interval
+        prediction_validation = ml_analysis.get(
+            "prediction_validation_score", 0.5)  # Validation of prediction
+
         # Define price_change_pct with a default value
         price_change_pct = 0.0
-        
+
         if current_price > 0 and predicted_price > 0:
-            price_change_pct = (predicted_price - current_price) / current_price
+            price_change_pct = (
+                predicted_price - current_price) / current_price
             # ENHANCED: More flexible price prediction threshold
             if price_change_pct > 0.01:  # Lowered threshold but with additional validation
                 # Enhanced with confidence interval and validation
                 interval_boost = 1.0
                 if confidence_interval < 0.05:  # Narrow confidence interval
                     interval_boost = 1.2  # Boost for narrow interval
-                
+
                 validation_boost = 1.0
                 if prediction_validation > 0.8:  # High validation score
                     validation_boost = 1.15  # Boost for validation
-                
-                strength = min(price_change_pct / 0.10, 1.0) * interval_boost * validation_boost  # Enhanced scaling
-                confidence = min(prediction_confidence * 1.1, 1.0)  # Enhanced confidence
-                
+
+                strength = min(price_change_pct / 0.10, 1.0) * \
+                    interval_boost * validation_boost  # Enhanced scaling
+                confidence = min(prediction_confidence * 1.1,
+                                 1.0)  # Enhanced confidence
+
                 signals.append(BuySignal(
                     name="positive_price_prediction",
                     strength=strength,
@@ -2162,11 +2428,11 @@ class ProfessionalBuyLogic:
                 'change_pct': price_change_pct * 100 if current_price > 0 else 0
             }
             rl_analysis = rl_agent.get_rl_analysis(rl_data)
-            
+
             if rl_analysis.get("success", False):
                 rl_recommendation = rl_analysis.get("recommendation", "HOLD")
                 rl_confidence = rl_analysis.get("confidence", 0.5)
-                
+
                 # ENHANCED: More flexible RL agent signal threshold
                 if rl_recommendation == "BUY" and rl_confidence > 0.5:  # Lowered confidence threshold
                     strength = min(rl_confidence, 1.0)
@@ -2186,7 +2452,7 @@ class ProfessionalBuyLogic:
         try:
             # Get ensemble optimizer
             ensemble_optimizer = get_ensemble_optimizer()
-            
+
             # Create features for ensemble prediction
             # This is a simplified feature vector - in practice, you would use actual technical features
             features = np.array([
@@ -2197,19 +2463,24 @@ class ProfessionalBuyLogic:
                 ml_analysis.get("volume_ratio", 1.0),
                 ml_analysis.get("volatility", 0.02),
                 1 if price_change_pct > 0 else 0,  # Positive momentum
-                ml_analysis.get("support_level", current_price) / current_price if current_price > 0 else 1,
-                ml_analysis.get("resistance_level", current_price) / current_price if current_price > 0 else 1,
-                ml_analysis.get("atr", 0) / current_price if current_price > 0 else 0.01
+                ml_analysis.get("support_level", current_price) /
+                current_price if current_price > 0 else 1,
+                ml_analysis.get("resistance_level", current_price) /
+                current_price if current_price > 0 else 1,
+                ml_analysis.get("atr", 0) /
+                current_price if current_price > 0 else 0.01
             ], dtype=np.float32)
-            
+
             # Get detailed ensemble analysis
-            ensemble_analysis = ensemble_optimizer.get_detailed_ensemble_analysis(features)
-            
+            ensemble_analysis = ensemble_optimizer.get_detailed_ensemble_analysis(
+                features)
+
             if ensemble_analysis.get("success", False):
-                ensemble_recommendation = ensemble_analysis.get("recommendation", "HOLD")
+                ensemble_recommendation = ensemble_analysis.get(
+                    "recommendation", "HOLD")
                 ensemble_confidence = ensemble_analysis.get("confidence", 0.5)
                 consensus_level = ensemble_analysis.get("consensus_level", 0.5)
-                
+
                 # ENHANCED: More flexible ensemble optimizer thresholds
                 if ensemble_recommendation == "BUY" and ensemble_confidence > 0.5 and consensus_level > 0.6:  # Lowered thresholds
                     strength = min(ensemble_confidence * consensus_level, 1.0)
@@ -2223,7 +2494,8 @@ class ProfessionalBuyLogic:
                         category="ML"
                     ))
         except Exception as e:
-            logger.warning(f"Failed to integrate Ensemble Optimizer signal: {e}")
+            logger.warning(
+                f"Failed to integrate Ensemble Optimizer signal: {e}")
 
         return signals
 
@@ -2235,11 +2507,14 @@ class ProfessionalBuyLogic:
         # MAINTAINED: Strict market stress threshold
         if market_context.market_stress < 0.35:  # More moderate threshold for genuine low stress environment
             # Check if stress is declining (improving conditions)
-            stress_trend = market_context.market_stress_trend if hasattr(market_context, 'market_stress_trend') else 0
+            stress_trend = market_context.market_stress_trend if hasattr(
+                market_context, 'market_stress_trend') else 0
             # MAINTAINED: Strict trend improvement threshold
-            trend_improvement = stress_trend < -0.04  # Strict threshold for genuine improvement
+            # Strict threshold for genuine improvement
+            trend_improvement = stress_trend < -0.04
 
-            strength = (0.25 - market_context.market_stress) / 0.25  # Original scaling
+            strength = (0.25 - market_context.market_stress) / \
+                0.25  # Original scaling
             if trend_improvement:
                 strength *= 1.05  # Boost for improving conditions
 
@@ -2249,20 +2524,23 @@ class ProfessionalBuyLogic:
                 weight=category_weight * 0.10,
                 triggered=True,
                 reasoning=f"Low market stress: {market_context.market_stress:.1%}" +
-                         (" (improving)" if trend_improvement else ""),
+                (" (improving)" if trend_improvement else ""),
                 confidence=0.65,
                 category="Market"
             ))
 
         # Sector Rotation Analysis (cyclical vs defensive)
-        sector_performance = market_context.sector_performance if hasattr(market_context, 'sector_performance') else 0
-        sector_rotation_score = market_context.sector_rotation_score if hasattr(market_context, 'sector_rotation_score') else 0
+        sector_performance = market_context.sector_performance if hasattr(
+            market_context, 'sector_performance') else 0
+        sector_rotation_score = market_context.sector_rotation_score if hasattr(
+            market_context, 'sector_rotation_score') else 0
 
         # MAINTAINED: Strict sector performance threshold
         if sector_performance > 0.02:  # More moderate threshold for genuine sector performance
             # Analyze if we're in favorable sector rotation
             rotation_quality = sector_rotation_score if sector_rotation_score > 0 else 0.5
-            strength = min(sector_performance / 0.07, 1.0) * (1 + rotation_quality * 0.2)  # Original scaling
+            strength = min(sector_performance / 0.07, 1.0) * \
+                (1 + rotation_quality * 0.2)  # Original scaling
 
             signals.append(BuySignal(
                 name="favorable_sector_rotation",
@@ -2275,12 +2553,15 @@ class ProfessionalBuyLogic:
             ))
 
         # Intermarket Correlation Analysis
-        intermarket_correlation = market_context.intermarket_correlation if hasattr(market_context, 'intermarket_correlation') else 0.5
-        commodity_correlation = market_context.commodity_correlation if hasattr(market_context, 'commodity_correlation') else 0
+        intermarket_correlation = market_context.intermarket_correlation if hasattr(
+            market_context, 'intermarket_correlation') else 0.5
+        commodity_correlation = market_context.commodity_correlation if hasattr(
+            market_context, 'commodity_correlation') else 0
 
         # MAINTAINED: Strict correlation threshold
         if intermarket_correlation < 0.3:  # More moderate threshold for genuine diversification opportunity
-            strength = (0.2 - intermarket_correlation) / 0.2  # Original scaling
+            strength = (0.2 - intermarket_correlation) / \
+                0.2  # Original scaling
             signals.append(BuySignal(
                 name="diversification_opportunity",
                 strength=strength,
@@ -2292,12 +2573,16 @@ class ProfessionalBuyLogic:
             ))
 
         # Market Breadth Indicators
-        market_breadth = market_context.market_breadth if hasattr(market_context, 'market_breadth') else 0.5
-        advancing_stocks = market_context.advancing_stocks if hasattr(market_context, 'advancing_stocks') else 0
+        market_breadth = market_context.market_breadth if hasattr(
+            market_context, 'market_breadth') else 0.5
+        advancing_stocks = market_context.advancing_stocks if hasattr(
+            market_context, 'advancing_stocks') else 0
 
         # MAINTAINED: Strict breadth thresholds
-        if market_breadth > 0.55 and advancing_stocks > 0.60:  # More moderate thresholds for genuine market breadth
-            strength = min((market_breadth * advancing_stocks) / 0.5, 1.0)  # Original scaling
+        # More moderate thresholds for genuine market breadth
+        if market_breadth > 0.55 and advancing_stocks > 0.60:
+            strength = min((market_breadth * advancing_stocks) /
+                           0.5, 1.0)  # Original scaling
             signals.append(BuySignal(
                 name="strong_market_breadth",
                 strength=strength,
@@ -2309,11 +2594,14 @@ class ProfessionalBuyLogic:
             ))
 
         # Volatility Regime Analysis
-        volatility_regime = market_context.volatility_regime if hasattr(market_context, 'volatility_regime') else "normal"
-        vix_level = market_context.vix_level if hasattr(market_context, 'vix_level') else 20
+        volatility_regime = market_context.volatility_regime if hasattr(
+            market_context, 'volatility_regime') else "normal"
+        vix_level = market_context.vix_level if hasattr(
+            market_context, 'vix_level') else 20
 
         # MAINTAINED: Strict volatility threshold
-        if volatility_regime == "low_volatility" and vix_level < 15:  # More moderate thresholds for genuine low volatility
+        # More moderate thresholds for genuine low volatility
+        if volatility_regime == "low_volatility" and vix_level < 15:
             strength = (12 - vix_level) / 12  # Original scaling
             signals.append(BuySignal(
                 name="low_volatility_regime",
@@ -2326,12 +2614,17 @@ class ProfessionalBuyLogic:
             ))
 
         # Economic Indicator Alignment
-        economic_alignment = market_context.economic_alignment if hasattr(market_context, 'economic_alignment') else 0
-        leading_indicators = market_context.leading_indicators if hasattr(market_context, 'leading_indicators') else 0
+        economic_alignment = market_context.economic_alignment if hasattr(
+            market_context, 'economic_alignment') else 0
+        leading_indicators = market_context.leading_indicators if hasattr(
+            market_context, 'leading_indicators') else 0
 
         # MAINTAINED: Strict economic alignment thresholds
-        if economic_alignment > 0.60 and leading_indicators > 0.50:  # More moderate thresholds for genuine economic alignment
-            strength = min((economic_alignment * leading_indicators) / 0.5, 1.0)  # Original scaling
+        # More moderate thresholds for genuine economic alignment
+        if economic_alignment > 0.60 and leading_indicators > 0.50:
+            # Original scaling
+            strength = min(
+                (economic_alignment * leading_indicators) / 0.5, 1.0)
             signals.append(BuySignal(
                 name="positive_economic_alignment",
                 strength=strength,
@@ -2343,11 +2636,14 @@ class ProfessionalBuyLogic:
             ))
 
         # Currency Strength Impact
-        currency_impact = market_context.currency_impact if hasattr(market_context, 'currency_impact') else 0
-        usd_strength = market_context.usd_strength if hasattr(market_context, 'usd_strength') else 0
+        currency_impact = market_context.currency_impact if hasattr(
+            market_context, 'currency_impact') else 0
+        usd_strength = market_context.usd_strength if hasattr(
+            market_context, 'usd_strength') else 0
 
         # MAINTAINED: Strict currency impact thresholds
-        if currency_impact > 0.15 and usd_strength < 0.45:  # More moderate thresholds for genuine currency impact
+        # More moderate thresholds for genuine currency impact
+        if currency_impact > 0.15 and usd_strength < 0.45:
             strength = min(currency_impact / 0.4, 1.0)  # Original scaling
             signals.append(BuySignal(
                 name="favorable_currency_impact",
@@ -2360,12 +2656,16 @@ class ProfessionalBuyLogic:
             ))
 
         # Bond Market Signal (risk-on/risk-off indicator)
-        bond_yield_trend = market_context.bond_yield_trend if hasattr(market_context, 'bond_yield_trend') else 0
-        treasury_spread = market_context.treasury_spread if hasattr(market_context, 'treasury_spread') else 0
+        bond_yield_trend = market_context.bond_yield_trend if hasattr(
+            market_context, 'bond_yield_trend') else 0
+        treasury_spread = market_context.treasury_spread if hasattr(
+            market_context, 'treasury_spread') else 0
 
         # MAINTAINED: Strict bond market thresholds
-        if bond_yield_trend < -0.08 and treasury_spread > 1.5:  # More moderate thresholds for genuine risk-on environment
-            strength = min(abs(bond_yield_trend) / 0.15, 1.0) * (treasury_spread / 4.0)  # Original scaling
+        # More moderate thresholds for genuine risk-on environment
+        if bond_yield_trend < -0.08 and treasury_spread > 1.5:
+            strength = min(abs(bond_yield_trend) / 0.15, 1.0) * \
+                (treasury_spread / 4.0)  # Original scaling
             signals.append(BuySignal(
                 name="risk_on_environment",
                 strength=strength,
@@ -2377,12 +2677,16 @@ class ProfessionalBuyLogic:
             ))
 
         # Global Market Momentum
-        global_momentum = market_context.global_momentum if hasattr(market_context, 'global_momentum') else 0
-        emerging_markets = market_context.emerging_markets_performance if hasattr(market_context, 'emerging_markets_performance') else 0
+        global_momentum = market_context.global_momentum if hasattr(
+            market_context, 'global_momentum') else 0
+        emerging_markets = market_context.emerging_markets_performance if hasattr(
+            market_context, 'emerging_markets_performance') else 0
 
         # MAINTAINED: Strict global momentum thresholds
-        if global_momentum > 0.02 and emerging_markets > 0.01:  # More moderate thresholds for genuine global momentum
-            strength = min((global_momentum * emerging_markets) / 0.0005, 1.0)  # Original scaling
+        # More moderate thresholds for genuine global momentum
+        if global_momentum > 0.02 and emerging_markets > 0.01:
+            strength = min((global_momentum * emerging_markets) /
+                           0.0005, 1.0)  # Original scaling
             signals.append(BuySignal(
                 name="global_market_momentum",
                 strength=strength,
@@ -2397,16 +2701,19 @@ class ProfessionalBuyLogic:
 
     def _calculate_optimized_entry_levels(self, stock: StockMetrics, market_context: MarketContext) -> Dict:
         """Calculate optimized entry levels for better timing"""
-        
+
         # GENUINE BUY LOGIC: Earlier entry opportunities
         base_entry = stock.current_price * (1 - self.early_entry_buffer_pct)
 
         # Volatility-adjusted entry with enhanced sensitivity
-        volatility_multiplier = 1 + (stock.volatility / 0.03) * 0.3  # Reduced multiplier for earlier entries
-        volatility_entry = stock.current_price * (1 - self.early_entry_buffer_pct * volatility_multiplier)
+        # Reduced multiplier for earlier entries
+        volatility_multiplier = 1 + (stock.volatility / 0.03) * 0.3
+        volatility_entry = stock.current_price * \
+            (1 - self.early_entry_buffer_pct * volatility_multiplier)
 
         # Support-based entry with buffer
-        support_entry = stock.support_level * 1.02 if stock.support_level > 0 else stock.current_price  # Reduced buffer
+        support_entry = stock.support_level * \
+            1.02 if stock.support_level > 0 else stock.current_price  # Reduced buffer
 
         # Choose the most aggressive (lowest) entry for better timing
         target_entry = min(base_entry, volatility_entry, support_entry)
@@ -2433,15 +2740,18 @@ class ProfessionalBuyLogic:
             logger.info("Market context filters skipped - no buy decision")
             return decision
 
-        logger.info(f"Applying market context filters - Market Trend: {market_context.trend.value}")
+        logger.info(
+            f"Applying market context filters - Market Trend: {market_context.trend.value}")
 
         # Be more conservative in downtrends
         if market_context.trend in [MarketTrend.DOWNTREND, MarketTrend.STRONG_DOWNTREND]:
             original_confidence = decision.confidence
             decision.confidence *= self.downtrend_buy_multiplier
-            logger.info(f"Downtrend filter applied - confidence reduced from {original_confidence:.3f} to {decision.confidence:.3f}")
+            logger.info(
+                f"Downtrend filter applied - confidence reduced from {original_confidence:.3f} to {decision.confidence:.3f}")
             if decision.confidence < self.min_confidence_threshold * 1.1:
-                logger.info(f"BUY BLOCKED: Market in {market_context.trend.value}, confidence {decision.confidence:.3f} < threshold {self.min_confidence_threshold * 1.1}")
+                logger.info(
+                    f"BUY BLOCKED: Market in {market_context.trend.value}, confidence {decision.confidence:.3f} < threshold {self.min_confidence_threshold * 1.1}")
                 decision.should_buy = False
                 decision.reasoning += " | BLOCKED: Downtrend"
                 return decision
@@ -2453,7 +2763,7 @@ class ProfessionalBuyLogic:
             decision.confidence *= self.uptrend_buy_multiplier
             decision.urgency = min(decision.urgency * 1.05, 1.0)
             logger.info(f"Uptrend filter applied - confidence increased from {original_confidence:.3f} to {decision.confidence:.3f}, "
-                       f"urgency increased from {original_urgency:.3f} to {decision.urgency:.3f}")
+                        f"urgency increased from {original_urgency:.3f} to {decision.urgency:.3f}")
 
         return decision
 
@@ -2469,12 +2779,15 @@ class ProfessionalBuyLogic:
             logger.info("Position sizing skipped - no buy decision")
             return decision
 
-        logger.info(f"Calculating enhanced position sizing - Weighted Score: {weighted_score:.3f}")
+        logger.info(
+            f"Calculating enhanced position sizing - Weighted Score: {weighted_score:.3f}")
 
         # Base position scale based on weighted score
-        position_scale = min(weighted_score * 1.0, 1.0)  # Reduced multiplier for better scaling
+        # Reduced multiplier for better scaling
+        position_scale = min(weighted_score * 1.0, 1.0)
         position_scale = max(position_scale, 0.1)  # Minimum 10% position
-        logger.info(f"Base position scale from weighted score: {position_scale:.3f}")
+        logger.info(
+            f"Base position scale from weighted score: {position_scale:.3f}")
 
         # GENUINE BUY LOGIC: Boost position size for high-confidence ML signals
         ml_signals = [s for s in triggered_signals if s.category == "ML"]
@@ -2482,28 +2795,33 @@ class ProfessionalBuyLogic:
             ml_confidence = np.mean([s.confidence for s in ml_signals])
             # Cap ML confidence to prevent extreme values
             ml_confidence = min(ml_confidence, 1.0)
-            logger.info(f"ML signals detected - average confidence: {ml_confidence:.3f}")
+            logger.info(
+                f"ML signals detected - average confidence: {ml_confidence:.3f}")
             if ml_confidence > 0.80:  # Stricter ML confidence threshold
                 original_scale = position_scale
                 position_scale *= 1.15  # 15% boost for high-confidence ML signals
-                logger.info(f"High-confidence ML boost applied - position scale increased from {original_scale:.3f} to {position_scale:.3f}")
+                logger.info(
+                    f"High-confidence ML boost applied - position scale increased from {original_scale:.3f} to {position_scale:.3f}")
             elif ml_confidence > 0.65:  # Medium confidence threshold
                 original_scale = position_scale
                 position_scale *= 1.05  # 5% boost for medium-confidence ML signals
-                logger.info(f"Medium-confidence ML boost applied - position scale increased from {original_scale:.3f} to {position_scale:.3f}")
+                logger.info(
+                    f"Medium-confidence ML boost applied - position scale increased from {original_scale:.3f} to {position_scale:.3f}")
 
         # GENUINE BUY LOGIC: Adjust for aggressive entry opportunities
         if weighted_score > self.aggressive_entry_threshold:
             original_scale = position_scale
             position_scale *= 1.10  # 10% boost for high-conviction setups
-            logger.info(f"Aggressive entry boost applied - position scale increased from {original_scale:.3f} to {position_scale:.3f}")
+            logger.info(
+                f"Aggressive entry boost applied - position scale increased from {original_scale:.3f} to {position_scale:.3f}")
 
         # Cap position size
         position_scale = min(position_scale, 1.0)
         logger.info(f"Final position scale (capped): {position_scale:.3f}")
 
         # Set position scale (the actual quantity will be calculated in the integration layer)
-        decision.buy_quantity = 1  # Placeholder - actual quantity calculated in integration layer
+        # Placeholder - actual quantity calculated in integration layer
+        decision.buy_quantity = 1
         decision.buy_percentage = position_scale
         decision.reasoning += f" | ENHANCED POSITION SIZING ({position_scale:.1%})"
 
@@ -2516,11 +2834,14 @@ class ProfessionalBuyLogic:
         """
         try:
             # Import multi-timeframe analyzer
-            from ..utils.multi_timeframe_analyzer import get_mtf_analyzer
-            
+            try:
+                from ..utils.multi_timeframe_analyzer import get_mtf_analyzer
+            except ImportError:
+                from backend.utils.multi_timeframe_analyzer import get_mtf_analyzer
+
             # Get analyzer instance
             mtf_analyzer = get_mtf_analyzer()
-            
+
             # For production, we would use real data provider
             # In this implementation, we'll simulate validation based on current signals
             validation_result = {
@@ -2528,12 +2849,12 @@ class ProfessionalBuyLogic:
                 'reason': 'Validation passed',
                 'confirmation_score': 0.8
             }
-            
+
             # Check if we have strong trend confirmation
             sma_20 = technical_analysis.get("sma_20", 0)
             sma_50 = technical_analysis.get("sma_50", 0)
             current_price = technical_analysis.get("current_price", 0)
-            
+
             # If we have moving averages, check for alignment
             if sma_20 > 0 and sma_50 > 0 and current_price > 0:
                 # Check if price is above both moving averages (bullish alignment)
@@ -2548,10 +2869,10 @@ class ProfessionalBuyLogic:
 
                     # Mixed signals, moderate confirmation
                     validation_result['confirmation_score'] = 0.6
-            
+
             logger.info(f"MTF Validation for {ticker}: {validation_result}")
             return validation_result
-            
+
         except Exception as e:
             logger.warning(f"MTF validation failed for {ticker}: {e}")
             # In case of error, be conservative but don't block completely
@@ -2560,7 +2881,7 @@ class ProfessionalBuyLogic:
                 'reason': f'MTF validation error: {e}',
                 'confirmation_score': 0.5
             }
-    
+
     def _adapt_to_market_regime(self, market_context: MarketContext) -> Dict:
         """
         PRODUCTION ENHANCEMENT: Adapt parameters based on market regime
@@ -2568,11 +2889,14 @@ class ProfessionalBuyLogic:
         """
         try:
             # Import regime detector
-            from ..utils.market_regime_detector import get_regime_detector
-            
+            try:
+                from ..utils.market_regime_detector import get_regime_detector
+            except ImportError:
+                from backend.utils.market_regime_detector import get_regime_detector
+
             regime_detector = get_regime_detector()
             regime_params = regime_detector.get_regime_parameters()
-            
+
             # Apply regime-specific adjustments with more sophisticated algorithms
             adapted_params = {
                 'rsi_buy_threshold': regime_params.get('rsi_buy_threshold', 30),
@@ -2582,7 +2906,7 @@ class ProfessionalBuyLogic:
                 'signal_sensitivity': regime_params.get('signal_sensitivity', 1.0),
                 'volatility_adjustment': regime_params.get('volatility_adjustment', 1.0)
             }
-            
+
             # Enhanced market regime classification
             if market_context.trend in [MarketTrend.STRONG_UPTREND]:
                 market_regime = "BULLISH"
@@ -2594,14 +2918,18 @@ class ProfessionalBuyLogic:
                 market_regime = "MODERATELY_BEARISH"
             else:
                 market_regime = "NEUTRAL"
-            
+
             # Adjust parameters based on sophisticated regime analysis
             if market_regime == "BULLISH":
-                adapted_params['signal_sensitivity'] = 1.2  # More sensitive to buy signals
-                adapted_params['position_size_multiplier'] = 1.1  # Slightly more aggressive
+                # More sensitive to buy signals
+                adapted_params['signal_sensitivity'] = 1.2
+                # Slightly more aggressive
+                adapted_params['position_size_multiplier'] = 1.1
             elif market_regime == "BEARISH":
-                adapted_params['signal_sensitivity'] = 0.7  # Less sensitive to buy signals
-                adapted_params['position_size_multiplier'] = 0.6  # More conservative
+                # Less sensitive to buy signals
+                adapted_params['signal_sensitivity'] = 0.7
+                # More conservative
+                adapted_params['position_size_multiplier'] = 0.6
             elif market_regime == "MODERATELY_BULLISH":
                 adapted_params['signal_sensitivity'] = 1.1
                 adapted_params['position_size_multiplier'] = 1.0
@@ -2611,10 +2939,11 @@ class ProfessionalBuyLogic:
             else:  # NEUTRAL
                 adapted_params['signal_sensitivity'] = 1.0
                 adapted_params['position_size_multiplier'] = 0.9
-            
-            logger.info(f"Market regime adaptation: {market_regime} -> {adapted_params}")
+
+            logger.info(
+                f"Market regime adaptation: {market_regime} -> {adapted_params}")
             return adapted_params
-            
+
         except Exception as e:
             logger.warning(f"Market regime adaptation failed: {e}")
             # Return default parameters with conservative settings
@@ -2626,7 +2955,7 @@ class ProfessionalBuyLogic:
                 'signal_sensitivity': 1.0,
                 'volatility_adjustment': 1.0
             }
-    
+
     def _check_liquidity(self, ticker: str, stock_metrics: StockMetrics, technical_analysis: Dict) -> Dict:
         """
         PRODUCTION ENHANCEMENT: Check liquidity before generating buy signals

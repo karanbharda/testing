@@ -1,62 +1,22 @@
 {
-  "cash": 8046.25,
-  "total_value": 20825.5899,
-  "starting_balance": 8046.25,
+  "cash": 907.11,
+  "total_value": 47584.45937,
+  "starting_balance": 907.11,
   "holdings": {
-    "KRBL": {
-      "qty": 3,
-      "avg_price": 396.1,
-      "last_price": 396.1
-    },
-    "SJVN": {
-      "qty": 1,
-      "avg_price": 93.39,
-      "last_price": 93.39
-    },
-    "INOXWIND": {
-      "qty": 1,
-      "avg_price": 153.32,
-      "last_price": 153.32
-    },
-    "JSWENERGY": {
-      "qty": 3,
-      "avg_price": 542.1333,
-      "last_price": 542.1333
-    },
-    "IREDA": {
-      "qty": 30,
-      "avg_price": 153.74733,
-      "last_price": 153.74733
-    },
-    "SUVEN": {
-      "qty": 1,
-      "avg_price": 225.05,
-      "last_price": 225.05
-    },
-    "HFCL": {
-      "qty": 30,
-      "avg_price": 75.50467,
-      "last_price": 75.50467
-    },
-    "ORIENTBELL": {
-      "qty": 1,
-      "avg_price": 287.9,
-      "last_price": 287.9
+    "BAJFINANCE": {
+      "qty": 11,
+      "avg_price": 993.14545,
+      "last_price": 993.14545
     },
     "NTPC": {
-      "qty": 1,
-      "avg_price": 341.35,
-      "last_price": 341.35
+      "qty": 63,
+      "avg_price": 324.86508,
+      "last_price": 324.86508
     },
-    "JUBLFOOD": {
-      "qty": 3,
-      "avg_price": 609.35,
-      "last_price": 609.35
-    },
-    "NHPC": {
-      "qty": 2,
-      "avg_price": 79.01,
-      "last_price": 79.01
+    "GENUSPOWER": {
+      "qty": 51,
+      "avg_price": 299.73038,
+      "last_price": 299.73038
     }
   },
   "unrealized_pnl": 0.0,
@@ -64,5 +24,5 @@
   "total_trades": 0,
   "winning_trades": 0,
   "losing_trades": 0,
-  "last_updated": "2025-10-31T14:55:45.385553"
+  "last_updated": "2026-01-02T15:20:50.262258"
 }

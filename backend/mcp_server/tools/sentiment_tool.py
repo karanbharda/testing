@@ -1015,6 +1015,25 @@ class SentimentTool:
             confidence=0.5
         )
     
+    def _calculate_news_sentiment(self, news_items: List[NewsItem]) -> SentimentScore:
+        """Calculate aggregate sentiment from list of news items"""
+        if not news_items:
+            return self._create_neutral_sentiment()
+        
+        # Extract sentiment scores from news items
+        sentiment_scores = [item.sentiment_score for item in news_items]
+        
+        # Calculate average sentiment
+        avg_sentiment = SentimentScore(
+            positive=sum(s.positive for s in sentiment_scores) / len(sentiment_scores),
+            negative=sum(s.negative for s in sentiment_scores) / len(sentiment_scores),
+            neutral=sum(s.neutral for s in sentiment_scores) / len(sentiment_scores),
+            compound=sum(s.compound for s in sentiment_scores) / len(sentiment_scores),
+            confidence=sum(s.confidence for s in sentiment_scores) / len(sentiment_scores)
+        )
+        
+        return avg_sentiment
+    
     def _parse_date(self, date_string: Optional[str]) -> datetime:
         """Parse date string to datetime"""
         if not date_string:

@@ -4,6 +4,7 @@ FastAPI backend for the Indian Stock Trading Bot Web Interface
 Provides REST API endpoints for the HTML/CSS/JS frontend
 """
 
+from data_service_client import get_data_client, DataServiceClient
 import os
 import sys
 from datetime import datetime
@@ -18,7 +19,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Configure logging format
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 logger.addHandler(handler)
@@ -70,17 +72,21 @@ except ImportError as e:
 
 # Architectural Fix: Graceful MCP dependency handling
 try:
-    from mcp_server import MCPTradingServer, TradingAgent, ExplanationAgent, MCP_SERVER_AVAILABLE
+    from mcp_service import MCPTradingServer, TradingAgent, ExplanationAgent
     MCP_AVAILABLE = True
+    MCP_SERVER_AVAILABLE = True
     print("MCP server components loaded successfully")
 except ImportError as e:
     print(f"MCP server components not available: {e}")
     MCP_AVAILABLE = False
     # Create fallback classes
+
     class MCPTradingServer:
         def __init__(self, *args, **kwargs): pass
+
     class TradingAgent:
         def __init__(self, *args, **kwargs): pass
+
     class ExplanationAgent:
         def __init__(self, *args, **kwargs): pass
     MCP_SERVER_AVAILABLE = False
@@ -91,25 +97,33 @@ try:
 except ImportError as e:
     print(f"Fyers client not available: {e}")
     FYERS_CLIENT_AVAILABLE = False
+
     class FyersAPIClient:
         def __init__(self, *args, **kwargs): pass
 
 try:
-    from llama_integration import LlamaReasoningEngine, TradingContext, LlamaResponse
+    from mcp_service.llm import LlamaReasoningEngine, TradingContext, LlamaResponse
     LLAMA_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Llama integration not available: {e}")
     LLAMA_AVAILABLE = False
+
     class LlamaReasoningEngine:
         def __init__(self, *args, **kwargs): pass
 
+    class TradingContext:
+        def __init__(self, *args, **kwargs): pass
+
+    class LlamaResponse:
+        def __init__(self, *args, **kwargs): pass
+
 # PRODUCTION FIX: Import data service client instead of direct Fyers
-from data_service_client import get_data_client, DataServiceClient
 
 # Priority 3: Standardized logging strategy
 LOG_FILE_PATH = os.getenv("WEB_BACKEND_LOG_FILE", "web_trading_bot.log")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-LOG_FORMAT = os.getenv("LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+LOG_FORMAT = os.getenv(
+    "LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 LOG_DATE_FORMAT = os.getenv("LOG_DATE_FORMAT", "%Y-%m-%d %H:%M:%S")
 
 # Configure logging with standardized format and levels
@@ -161,13 +175,27 @@ except ImportError as e:
     logger.error(f"Error importing utils modules: {e}")
     UTILS_AVAILABLE = False
     # Fallback implementations
-    class TradingBotError(Exception): pass
-    class ConfigurationError(TradingBotError): pass
-    class DataServiceError(TradingBotError): pass
-    class TradingExecutionError(TradingBotError): pass
-    class ValidationError(TradingBotError): pass
-    class NetworkError(TradingBotError): pass
-    class AuthenticationError(TradingBotError): pass
+
+    class TradingBotError(Exception):
+        pass
+
+    class ConfigurationError(TradingBotError):
+        pass
+
+    class DataServiceError(TradingBotError):
+        pass
+
+    class TradingExecutionError(TradingBotError):
+        pass
+
+    class ValidationError(TradingBotError):
+        pass
+
+    class NetworkError(TradingBotError):
+        pass
+
+    class AuthenticationError(TradingBotError):
+        pass
 
     class ConfigValidator:
         @staticmethod
@@ -212,8 +240,11 @@ except ImportError as e:
     sys.exit(1)
 
 # Pydantic Models for Request/Response validation
+
+
 class ChatRequest(BaseModel):
     message: str
+
 
 class ChatResponse(BaseModel):
     response: str
@@ -221,23 +252,28 @@ class ChatResponse(BaseModel):
     confidence: Optional[float] = None
     context: Optional[str] = None
 
+
 class WatchlistRequest(BaseModel):
     ticker: str
     action: str  # ADD or REMOVE
+
 
 class WatchlistResponse(BaseModel):
     message: str
     tickers: List[str]
 
+
 class BulkWatchlistRequest(BaseModel):
     tickers: List[str]
     action: str = "ADD"  # ADD or REMOVE
+
 
 class BulkWatchlistResponse(BaseModel):
     message: str
     successful_tickers: List[str]
     failed_tickers: List[str]
     total_processed: int
+
 
 class SettingsRequest(BaseModel):
     mode: Optional[str] = None
@@ -250,10 +286,13 @@ class SettingsRequest(BaseModel):
     max_trade_limit: Optional[int] = None
 
 # MCP-specific models
+
+
 class MCPAnalysisRequest(BaseModel):
     symbol: str
     timeframe: Optional[str] = "1D"
     analysis_type: Optional[str] = "comprehensive"
+
 
 class MCPTradeRequest(BaseModel):
     symbol: str
@@ -261,9 +300,11 @@ class MCPTradeRequest(BaseModel):
     quantity: Optional[int] = None
     override_reason: Optional[str] = None
 
+
 class MCPChatRequest(BaseModel):
     message: str
     context: Optional[Dict[str, Any]] = None
+
 
 class PredictionRequest(BaseModel):
     symbols: Optional[List[str]] = []
@@ -272,11 +313,13 @@ class PredictionRequest(BaseModel):
     include_explanations: Optional[bool] = True
     natural_query: Optional[str] = ""
 
+
 class ScanRequest(BaseModel):
     filters: Optional[Dict[str, Any]] = {}
     sort_by: Optional[str] = "score"
     limit: Optional[int] = 50
     natural_query: Optional[str] = ""
+
 
 class PortfolioMetrics(BaseModel):
     total_value: float
@@ -301,18 +344,23 @@ class PortfolioMetrics(BaseModel):
     trades_today: int = 0
     initial_balance: float = 10000
 
+
 class BotStatus(BaseModel):
     is_running: bool
     last_update: str
     mode: str
 
+
 class MessageResponse(BaseModel):
     message: str
 
 # New endpoint models for RL scanning
+
+
 class AnalyzeRequest(BaseModel):
     tickers: List[str]
     horizon: str = "day"
+
 
 class UpdateRiskRequest(BaseModel):
     stop_loss_pct: float
@@ -320,6 +368,7 @@ class UpdateRiskRequest(BaseModel):
     drawdown_limit_pct: float
 
 # Logger already configured above
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -340,11 +389,14 @@ app.add_middleware(
 )
 
 # Priority 2: Integrate custom exception handlers with FastAPI
+
+
 @app.exception_handler(ValidationError)
 async def validation_error_handler(request, exc: ValidationError):
     """Handle validation errors with proper HTTP responses"""
     logger.warning(f"Validation error: {exc}")
     return JSONResponse(status_code=400, content={"detail": str(exc)})
+
 
 @app.exception_handler(ConfigurationError)
 async def configuration_error_handler(request, exc: ConfigurationError):
@@ -352,11 +404,13 @@ async def configuration_error_handler(request, exc: ConfigurationError):
     logger.error(f"Configuration error: {exc}")
     return JSONResponse(status_code=500, content={"detail": "Configuration error occurred"})
 
+
 @app.exception_handler(DataServiceError)
 async def data_service_error_handler(request, exc: DataServiceError):
     """Handle data service errors"""
     logger.error(f"Data service error: {exc}")
     return JSONResponse(status_code=503, content={"detail": "Data service temporarily unavailable"})
+
 
 @app.exception_handler(TradingExecutionError)
 async def trading_execution_error_handler(request, exc: TradingExecutionError):
@@ -364,11 +418,13 @@ async def trading_execution_error_handler(request, exc: TradingExecutionError):
     logger.error(f"Trading execution error: {exc}")
     return JSONResponse(status_code=500, content={"detail": "Trading execution failed"})
 
+
 @app.exception_handler(NetworkError)
 async def network_error_handler(request, exc: NetworkError):
     """Handle network errors"""
     logger.error(f"Network error: {exc}")
     return JSONResponse(status_code=502, content={"detail": "Network connectivity issue"})
+
 
 @app.exception_handler(AuthenticationError)
 async def authentication_error_handler(request, exc: AuthenticationError):
@@ -377,17 +433,21 @@ async def authentication_error_handler(request, exc: AuthenticationError):
     return JSONResponse(status_code=401, content={"detail": "Authentication failed"})
 
 # Priority 4: Add comprehensive error handlers for common exceptions
+
+
 @app.exception_handler(ValueError)
 async def value_error_handler(request, exc: ValueError):
     """Handle value errors"""
     logger.warning(f"Value error: {exc}")
     return JSONResponse(status_code=400, content={"detail": "Invalid input value"})
 
+
 @app.exception_handler(KeyError)
 async def key_error_handler(request, exc: KeyError):
     """Handle key errors"""
     logger.error(f"Key error: {exc}")
     return JSONResponse(status_code=500, content={"detail": "Missing required data"})
+
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc: Exception):
@@ -407,6 +467,8 @@ fyers_client = None
 llama_engine = None
 
 # Real-time market data function
+
+
 async def get_real_time_market_response(message: str) -> Optional[str]:
     """Generate real-time market responses based on live data"""
     try:
@@ -438,7 +500,8 @@ async def get_real_time_market_response(message: str) -> Optional[str]:
                             "change_pct": data.get("change_pct", 0)
                         })
                     except Exception as e:
-                        logger.error(f"Error processing data service data for {symbol}: {e}")
+                        logger.error(
+                            f"Error processing data service data for {symbol}: {e}")
                         continue
 
             # PRIORITY 2: If Fyers failed, try Yahoo Finance
@@ -525,8 +588,10 @@ async def get_real_time_market_response(message: str) -> Optional[str]:
                         continue
 
             if market_data:
-                positive_stocks = len([s for s in market_data if s["change"] >= 0])
-                avg_change = sum(s["change_pct"] for s in market_data) / len(market_data)
+                positive_stocks = len(
+                    [s for s in market_data if s["change"] >= 0])
+                avg_change = sum(s["change_pct"]
+                                 for s in market_data) / len(market_data)
 
                 response = f"**Live Market Overview** (as of {current_time.strftime('%I:%M %p')})\n\n"
                 response += f"**Market Sentiment:** {'Positive' if avg_change > 0 else 'Negative'} with average change of {avg_change:+.2f}%\n\n"
@@ -544,6 +609,7 @@ async def get_real_time_market_response(message: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"Error generating real-time market response: {e}")
         return None
+
 
 def get_dynamic_stock_list():
     """Get dynamic list of stocks from multiple sources"""
@@ -576,13 +642,15 @@ def get_dynamic_stock_list():
 
         # Code Quality: Use constants instead of magic numbers
         import random
-        selected_count = random.randint(RANDOM_STOCK_MIN_COUNT, RANDOM_STOCK_MAX_COUNT)
+        selected_count = random.randint(
+            RANDOM_STOCK_MIN_COUNT, RANDOM_STOCK_MAX_COUNT)
         return random.sample(diverse_stocks, min(selected_count, len(diverse_stocks)))
 
     except Exception as e:
         logger.error(f"Error getting dynamic stock list: {e}")
         # Emergency fallback
         return ["NSE:TCS-EQ", "NSE:RELIANCE-EQ", "NSE:HDFCBANK-EQ", "NSE:INFY-EQ"]
+
 
 def get_realistic_mock_data():
     """Generate realistic mock market data for demonstration"""
@@ -618,7 +686,8 @@ def get_realistic_mock_data():
     }
 
     # Code Quality: Use constants instead of magic numbers
-    selected_stocks = random.sample(list(stock_data.keys()), random.randint(RANDOM_STOCK_MIN_COUNT, RANDOM_STOCK_MAX_COUNT))
+    selected_stocks = random.sample(list(stock_data.keys()), random.randint(
+        RANDOM_STOCK_MIN_COUNT, RANDOM_STOCK_MAX_COUNT))
 
     market_data = []
     for symbol in selected_stocks:
@@ -642,6 +711,7 @@ def get_realistic_mock_data():
     market_data.sort(key=lambda x: x["volume"], reverse=True)
     return market_data
 
+
 def get_real_market_data_from_api():
     """PRODUCTION FIX: Get real market data from data service"""
     # Use data service instead of direct Fyers connection
@@ -661,7 +731,8 @@ def get_real_market_data_from_api():
             for symbol, data in all_data.items():
                 try:
                     # Convert Fyers format to display format
-                    display_symbol = symbol.replace("NSE:", "").replace("-EQ", "")
+                    display_symbol = symbol.replace(
+                        "NSE:", "").replace("-EQ", "")
                     market_data.append({
                         "symbol": display_symbol,
                         "price": round(data.get("price", 0), 2),
@@ -674,7 +745,8 @@ def get_real_market_data_from_api():
                     continue
 
             if market_data and any(d['price'] > 0 for d in market_data):
-                logger.info(f"Using data service market data ({len(market_data)} symbols)")
+                logger.info(
+                    f"Using data service market data ({len(market_data)} symbols)")
                 return market_data
 
     except Exception as e:
@@ -682,6 +754,7 @@ def get_real_market_data_from_api():
 
     # Fallback to Yahoo Finance
     return get_yahoo_finance_fallback()
+
 
 def get_yahoo_finance_fallback():
     """Fallback to Yahoo Finance data"""
@@ -708,7 +781,8 @@ def get_yahoo_finance_fallback():
                 if not hist.empty:
                     current_price = hist['Close'].iloc[-1]
                     volume = hist['Volume'].iloc[-1]
-                    change = ((current_price - hist['Open'].iloc[-1]) / hist['Open'].iloc[-1]) * 100
+                    change = (
+                        (current_price - hist['Open'].iloc[-1]) / hist['Open'].iloc[-1]) * 100
 
                     market_data.append({
                         "symbol": symbol.replace(".NS", ""),
@@ -734,8 +808,10 @@ def get_yahoo_finance_fallback():
         logger.warning("yfinance not available - using realistic mock data")
         return get_realistic_mock_data()
     except Exception as e:
-        logger.error(f"Error fetching market data: {e} - using realistic mock data")
+        logger.error(
+            f"Error fetching market data: {e} - using realistic mock data")
         return get_realistic_mock_data()
+
 
 def get_fyers_client():
     """PRODUCTION FIX: Use data service instead of direct Fyers connection"""
@@ -743,6 +819,8 @@ def get_fyers_client():
     return get_data_client()
 
 # WebSocket Connection Manager
+
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
@@ -750,12 +828,14 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
-        logger.info(f"WebSocket client connected. Total connections: {len(self.active_connections)}")
+        logger.info(
+            f"WebSocket client connected. Total connections: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
-        logger.info(f"WebSocket client disconnected. Total connections: {len(self.active_connections)}")
+        logger.info(
+            f"WebSocket client disconnected. Total connections: {len(self.active_connections)}")
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
         try:
@@ -770,7 +850,7 @@ class ConnectionManager:
 
         message_str = json.dumps(message)
         disconnected = []
-        
+
         # Create a copy of connections list to prevent concurrent modification
         connections_copy = list(self.active_connections)
 
@@ -785,7 +865,9 @@ class ConnectionManager:
         for connection in disconnected:
             self.disconnect(connection)
 
+
 manager = ConnectionManager()
+
 
 class WebTradingBot:
     """Wrapper class for the actual trading bot to work with web interface"""
@@ -829,7 +911,8 @@ class WebTradingBot:
         # Register WebSocket callback for real-time updates
         try:
             if hasattr(self.trading_bot, 'portfolio'):
-                self.trading_bot.portfolio.add_trade_callback(self._on_trade_executed)
+                self.trading_bot.portfolio.add_trade_callback(
+                    self._on_trade_executed)
                 logger.info("Successfully registered portfolio callback")
             else:
                 logger.warning("Trading bot does not have portfolio attribute")
@@ -841,18 +924,19 @@ class WebTradingBot:
     def refresh_professional_integrations(self):
         """Refresh professional buy/sell integrations with updated configuration"""
         try:
-            logger.info("Refreshing professional buy/sell integrations with updated configuration")
-            
+            logger.info(
+                "Refreshing professional buy/sell integrations with updated configuration")
+
             # Refresh the professional buy integration if it exists
             if hasattr(self.trading_bot, 'professional_buy_integration') and self.trading_bot.professional_buy_integration:
                 self.trading_bot.professional_buy_integration.refresh_dynamic_config()
                 logger.info("Professional buy integration refreshed")
-            
+
             # Refresh the professional sell integration if it exists
             if hasattr(self.trading_bot, 'professional_sell_integration') and self.trading_bot.professional_sell_integration:
                 self.trading_bot.professional_sell_integration.refresh_dynamic_config()
                 logger.info("Professional sell integration refreshed")
-                
+
         except Exception as e:
             logger.error(f"Error refreshing professional integrations: {e}")
 
@@ -867,10 +951,12 @@ class WebTradingBot:
             component_config = getattr(self, 'config', {})
 
             # 1. Initialize Async Signal Collector with configurable parameters
-            signal_collector_config = component_config.get('signal_collector', {})
+            signal_collector_config = component_config.get(
+                'signal_collector', {})
             self.production_components['signal_collector'] = AsyncSignalCollector(
                 timeout_per_signal=signal_collector_config.get('timeout', 2.0),
-                max_concurrent_signals=signal_collector_config.get('max_concurrent', 10)
+                max_concurrent_signals=signal_collector_config.get(
+                    'max_concurrent', 10)
             )
 
             # Register signal sources with proper weights
@@ -898,42 +984,51 @@ class WebTradingBot:
             )
 
             # 2. Initialize Adaptive Threshold Manager
-            self.production_components['threshold_manager'] = AdaptiveThresholdManager()
+            self.production_components['threshold_manager'] = AdaptiveThresholdManager(
+            )
 
             # 3. Initialize Integrated Risk Manager
             self.production_components['risk_manager'] = IntegratedRiskManager({
-                "max_portfolio_risk_pct": 0.02,  # 2% max portfolio risk (industry standard)
+                # 2% max portfolio risk (industry standard)
+                "max_portfolio_risk_pct": 0.02,
                 "max_single_stock_exposure": 0.05    # 5% max position risk
             })
 
             # 4. Initialize Decision Audit Trail
             audit_config = component_config.get('audit_trail', {})
             audit_trail = DecisionAuditTrail(
-                storage_path=audit_config.get('storage_path', "data/audit_trail")
+                storage_path=audit_config.get(
+                    'storage_path', "data/audit_trail")
             )
             # Priority 2: Schedule async initialization for later
             self.production_components['audit_trail'] = audit_trail
-            self._pending_async_inits = getattr(self, '_pending_async_inits', [])
-            self._pending_async_inits.append(('audit_trail', audit_trail.initialize))
+            self._pending_async_inits = getattr(
+                self, '_pending_async_inits', [])
+            self._pending_async_inits.append(
+                ('audit_trail', audit_trail.initialize))
 
             # 5. Initialize Continuous Learning Engine
             learning_config = component_config.get('learning_engine', {})
             learning_engine = ContinuousLearningEngine()
             # Priority 2: Schedule async initialization if available
             if hasattr(learning_engine, 'initialize'):
-                self._pending_async_inits.append(('learning_engine', learning_engine.initialize))
+                self._pending_async_inits.append(
+                    ('learning_engine', learning_engine.initialize))
             self.production_components['learning_engine'] = learning_engine
 
             # PRODUCTION FIX: Add error handling for production components
             self.production_components_active = True
 
             logger.info("Production components initialized successfully")
-            logger.info(f"Signal Collector: {len(signal_collector.signal_sources)} sources registered")
-            logger.info("Adaptive thresholds, risk management, audit trail, and learning engine active")
+            logger.info(
+                f"Signal Collector: {len(signal_collector.signal_sources)} sources registered")
+            logger.info(
+                "Adaptive thresholds, risk management, audit trail, and learning engine active")
 
         except Exception as e:
             logger.error(f"Error initializing production components: {e}")
-            logger.debug(f"Production components error traceback: {traceback.format_exc()}")
+            logger.debug(
+                f"Production components error traceback: {traceback.format_exc()}")
             self.production_components = {}
             self.production_components_active = False
 
@@ -942,7 +1037,8 @@ class WebTradingBot:
         try:
             # Use existing stock analyzer from trading bot
             if hasattr(self.trading_bot, 'stock_analyzer'):
-                analysis = self.trading_bot.stock_analyzer.analyze_stock(symbol, bot_running=True)
+                analysis = self.trading_bot.stock_analyzer.analyze_stock(
+                    symbol, bot_running=True)
                 if analysis.get('success'):
                     technical_data = analysis.get('technical_analysis', {})
                     return {
@@ -965,7 +1061,7 @@ class WebTradingBot:
         try:
             import aiohttp
             import json
-            
+
             # Try to call the new FastAPI endpoint
             async with aiohttp.ClientSession() as session:
                 url = "http://localhost:8000/evaluate_buy"
@@ -973,28 +1069,33 @@ class WebTradingBot:
                     "symbol": symbol,
                     "mode": "auto"
                 }
-                
+
                 try:
                     async with session.post(url, json=payload, timeout=30) as response:
                         if response.status == 200:
                             result = await response.json()
-                            sentiment_score = result.get('sentiment', {}).get('compound', 0)
+                            sentiment_score = result.get(
+                                'sentiment', {}).get('compound', 0)
                             confidence = result.get('confidence', 0.2)
-                            
+
                             return {
-                                'signal_strength': (sentiment_score + 1) / 2,  # Normalize to 0-1
+                                # Normalize to 0-1
+                                'signal_strength': (sentiment_score + 1) / 2,
                                 'confidence': confidence,
                                 'direction': result.get('action', 'HOLD')
                             }
                 except asyncio.TimeoutError:
-                    logger.warning(f"Timeout calling sentiment service for {symbol}, falling back to stock analyzer")
+                    logger.warning(
+                        f"Timeout calling sentiment service for {symbol}, falling back to stock analyzer")
                 except Exception as http_error:
-                    logger.warning(f"Error calling sentiment service for {symbol}: {http_error}")
-            
+                    logger.warning(
+                        f"Error calling sentiment service for {symbol}: {http_error}")
+
             # Fallback to original method if FastAPI service is not available
             if hasattr(self.trading_bot, 'stock_analyzer'):
                 # Get sentiment from stock analyzer
-                sentiment_data = self.trading_bot.stock_analyzer.fetch_combined_sentiment(symbol)
+                sentiment_data = self.trading_bot.stock_analyzer.fetch_combined_sentiment(
+                    symbol)
                 if sentiment_data:
                     positive = sentiment_data.get('positive', 0)
                     negative = sentiment_data.get('negative', 0)
@@ -1003,7 +1104,8 @@ class WebTradingBot:
                         sentiment_score = positive / total
                         return {
                             'signal_strength': sentiment_score,
-                            'confidence': min(total / 100, 1.0),  # More articles = higher confidence
+                            # More articles = higher confidence
+                            'confidence': min(total / 100, 1.0),
                             'direction': 'BUY' if sentiment_score > 0.6 else 'SELL' if sentiment_score < 0.4 else 'HOLD'
                         }
             return {'signal_strength': 0.5, 'confidence': 0.2, 'direction': 'HOLD'}
@@ -1015,15 +1117,20 @@ class WebTradingBot:
         """Collect ML/AI prediction signals"""
         try:
             if hasattr(self.trading_bot, 'stock_analyzer'):
-                analysis = self.trading_bot.stock_analyzer.analyze_stock(symbol, bot_running=True)
+                analysis = self.trading_bot.stock_analyzer.analyze_stock(
+                    symbol, bot_running=True)
                 if analysis.get('success'):
                     ml_data = analysis.get('ml_analysis', {})
                     predicted_price = ml_data.get('predicted_price', 0)
-                    current_price = analysis.get('stock_data', {}).get('current_price', 0)
+                    current_price = analysis.get(
+                        'stock_data', {}).get('current_price', 0)
 
                     if predicted_price > 0 and current_price > 0:
-                        price_change = (predicted_price - current_price) / current_price
-                        signal_strength = min(max((price_change + 0.1) / 0.2, 0), 1)  # Normalize to 0-1
+                        price_change = (predicted_price -
+                                        current_price) / current_price
+                        signal_strength = min(
+                            # Normalize to 0-1
+                            max((price_change + 0.1) / 0.2, 0), 1)
                         return {
                             'signal_strength': signal_strength,
                             'confidence': ml_data.get('confidence', 0.5),
@@ -1046,7 +1153,8 @@ class WebTradingBot:
             # Load recent trades for learning
             recent_trades = self.get_recent_trades(limit=100)
             if recent_trades:
-                logger.info(f"Loading {len(recent_trades)} historical trades for learning engine")
+                logger.info(
+                    f"Loading {len(recent_trades)} historical trades for learning engine")
                 for trade in recent_trades:
                     try:
                         # Convert trade to learning experience
@@ -1064,9 +1172,9 @@ class WebTradingBot:
                         if hasattr(learning_engine, 'performance_tracker') and hasattr(learning_engine.performance_tracker, 'add_experience'):
                             # Use the PerformanceTracker's add_experience method
                             learning_engine.performance_tracker.add_experience(
-                                experience['state'], 
-                                experience['action'], 
-                                experience['reward'], 
+                                experience['state'],
+                                experience['action'],
+                                experience['reward'],
                                 None  # next_state not available in this context
                             )
                         else:
@@ -1077,26 +1185,31 @@ class WebTradingBot:
                                 'timestamp': experience['timestamp']
                             })
                     except KeyError as e:
-                        logger.error(f"Missing key in trade data: {e} - skipping trade")
+                        logger.error(
+                            f"Missing key in trade data: {e} - skipping trade")
                         continue
                     except Exception as e:
-                        logger.error(f"Error processing trade for learning: {e} - skipping trade")
+                        logger.error(
+                            f"Error processing trade for learning: {e} - skipping trade")
                         continue
-                logger.info("Historical data loaded successfully for learning engine")
+                logger.info(
+                    "Historical data loaded successfully for learning engine")
         except Exception as e:
             logger.error(f"Error loading historical data for learning: {e}")
 
     def _initialize_adaptive_thresholds(self):
         """Initialize adaptive thresholds based on historical performance"""
         try:
-            threshold_manager = self.production_components.get('threshold_manager')
+            threshold_manager = self.production_components.get(
+                'threshold_manager')
             if not threshold_manager:
                 return
 
             # Analyze recent performance to set initial thresholds
             recent_trades = self.get_recent_trades(limit=50)
             if recent_trades:
-                successful_trades = [t for t in recent_trades if t.get('profit_loss', 0) > 0]
+                successful_trades = [
+                    t for t in recent_trades if t.get('profit_loss', 0) > 0]
                 success_rate = len(successful_trades) / len(recent_trades)
 
                 # Adjust initial threshold based on success rate
@@ -1108,7 +1221,8 @@ class WebTradingBot:
                     initial_threshold = 0.35  # TESTING: Lower threshold to see ML model performance
 
                 threshold_manager.set_initial_threshold(initial_threshold)
-                logger.info(f"Adaptive thresholds initialized: {initial_threshold:.2f} (based on {success_rate:.1%} success rate)")
+                logger.info(
+                    f"Adaptive thresholds initialized: {initial_threshold:.2f} (based on {success_rate:.1%} success rate)")
         except Exception as e:
             logger.error(f"Error initializing adaptive thresholds: {e}")
 
@@ -1126,7 +1240,8 @@ class WebTradingBot:
                 signal_collector = self.production_components['signal_collector']
                 signals = await signal_collector.collect_signals_parallel(symbol, decision_context)
                 decision_context['signals'] = signals
-                decision_context['components_used'].append('AsyncSignalCollector')
+                decision_context['components_used'].append(
+                    'AsyncSignalCollector')
 
             # 2. Assess risk using IntegratedRiskManager
             risk_score = 0.5  # Default moderate risk
@@ -1136,19 +1251,24 @@ class WebTradingBot:
                 # risk_assessment = risk_manager.assess_trade_risk(symbol, decision_context)
                 # For now, we'll use a default risk score since we don't have the right method
                 risk_score = 0.5  # Default moderate risk
-                decision_context['components_used'].append('IntegratedRiskManager')
+                decision_context['components_used'].append(
+                    'IntegratedRiskManager')
 
             # 3. Get adaptive threshold
             confidence_threshold = 0.75  # Default threshold
             if 'threshold_manager' in self.production_components:
                 threshold_manager = self.production_components['threshold_manager']
-                confidence_threshold = threshold_manager.get_current_threshold(symbol)
+                confidence_threshold = threshold_manager.get_current_threshold(
+                    symbol)
                 decision_context['adaptive_threshold'] = confidence_threshold
-                decision_context['components_used'].append('AdaptiveThresholdManager')
+                decision_context['components_used'].append(
+                    'AdaptiveThresholdManager')
 
             # 4. Make final decision
-            overall_confidence = decision_context.get('signals', {}).get('overall_confidence', 0.5)
-            overall_signal = decision_context.get('signals', {}).get('overall_signal', 0.5)
+            overall_confidence = decision_context.get(
+                'signals', {}).get('overall_confidence', 0.5)
+            overall_signal = decision_context.get(
+                'signals', {}).get('overall_signal', 0.5)
 
             # Decision logic with production-level sophistication
             if overall_confidence >= confidence_threshold and risk_score <= 0.7:
@@ -1163,7 +1283,8 @@ class WebTradingBot:
                     confidence = overall_confidence * 0.8  # Reduce confidence for HOLD
             else:
                 action = 'HOLD'
-                confidence = max(overall_confidence * 0.5, 0.1)  # Low confidence hold
+                confidence = max(overall_confidence * 0.5,
+                                 0.1)  # Low confidence hold
 
             # 5. Log decision to audit trail
             if 'audit_trail' in self.production_components:
@@ -1177,7 +1298,8 @@ class WebTradingBot:
                     'signals': decision_context.get('signals', {}),
                     'timestamp': decision_context['timestamp']
                 })
-                decision_context['components_used'].append('DecisionAuditTrail')
+                decision_context['components_used'].append(
+                    'DecisionAuditTrail')
 
             # 6. Update learning engine
             if 'learning_engine' in self.production_components:
@@ -1188,7 +1310,8 @@ class WebTradingBot:
                     'confidence': confidence,
                     'context': decision_context
                 })
-                decision_context['components_used'].append('ContinuousLearningEngine')
+                decision_context['components_used'].append(
+                    'ContinuousLearningEngine')
 
             return {
                 'action': action,
@@ -1227,7 +1350,7 @@ class WebTradingBot:
             if not self.dhan_client.validate_connection():
                 logger.error("Failed to validate Dhan API connection")
                 return False
-                
+
             # Initialize live executor with database integration
             self.live_executor = LiveTradingExecutor(
                 portfolio_manager=self.portfolio_manager,  # Use database portfolio manager
@@ -1239,26 +1362,29 @@ class WebTradingBot:
                     "max_trade_limit": 150
                 }
             )
-            
+
             # Sync portfolio with Dhan account
             if not self.live_executor.sync_portfolio_with_dhan():
                 logger.error("Failed to sync portfolio with Dhan account")
                 return False
-                
+
             # Connect live executor to trading bot for database integration
             if hasattr(self.trading_bot, 'executor'):
                 self.trading_bot.executor.set_live_executor(self.live_executor)
                 logger.info("Connected database live executor to trading bot")
-                
-            logger.info("Successfully connected to Dhan account and synced portfolio")
+
+            logger.info(
+                "Successfully connected to Dhan account and synced portfolio")
 
             # Sync portfolio with Dhan account (using already initialized live_executor)
             if self.live_executor.sync_portfolio_with_dhan():
                 # Get account summary for startup logging
                 try:
                     funds = self.live_executor.dhan_client.get_funds()
-                    balance = funds.get('availabelBalance', 0.0) if funds else 0.0
-                    logger.info(f"🚀 Live trading initialized successfully - Account Balance: Rs.{balance:.2f}")
+                    balance = funds.get('availabelBalance',
+                                        0.0) if funds else 0.0
+                    logger.info(
+                        f"🚀 Live trading initialized successfully - Account Balance: Rs.{balance:.2f}")
                 except:
                     logger.info("🚀 Live trading initialized successfully")
                 return True
@@ -1298,12 +1424,14 @@ class WebTradingBot:
             # Initialize/deinitialize live trading components
             if new_mode == "live" and LIVE_TRADING_AVAILABLE:
                 if not self._initialize_live_trading():
-                    logger.error("Failed to initialize live trading, reverting to paper mode")
+                    logger.error(
+                        "Failed to initialize live trading, reverting to paper mode")
                     self.config["mode"] = "paper"
                     if self.portfolio_manager:
                         self.portfolio_manager.switch_mode("paper")
                     # Return True because we successfully handled the failure by reverting
-                    logger.info("Successfully reverted to paper mode after live trading failure")
+                    logger.info(
+                        "Successfully reverted to paper mode after live trading failure")
                     return True
                 # Force an immediate sync from Dhan after switching to live
                 if self.live_executor:
@@ -1324,7 +1452,8 @@ class WebTradingBot:
                 time.sleep(1)
                 self.start()
 
-            logger.info(f"Successfully switched from {old_mode} to {new_mode} mode")
+            logger.info(
+                f"Successfully switched from {old_mode} to {new_mode} mode")
             return True
 
         except Exception as e:
@@ -1336,17 +1465,23 @@ class WebTradingBot:
         if not self.is_running:
             self.is_running = True
             logger.info("Starting Indian Stock Trading Bot...")
-            logger.info(f"Trading Mode: {self.config.get('mode', 'paper').upper()}")
-            logger.info(f"Starting Balance: Rs.{self.config.get('starting_balance', 1000000):,.2f}")
+            logger.info(
+                f"Trading Mode: {self.config.get('mode', 'paper').upper()}")
+            logger.info(
+                f"Starting Balance: Rs.{self.config.get('starting_balance', 1000000):,.2f}")
             logger.info(f"Watchlist: {', '.join(self.config['tickers'])}")
 
             # Initialize production components if available
             if PRODUCTION_CORE_AVAILABLE and self.production_components:
-                logger.info("PRODUCTION MODE: Enhanced with enterprise-grade components")
-                logger.info("   Async Signal Collection: 55% faster processing")
+                logger.info(
+                    "PRODUCTION MODE: Enhanced with enterprise-grade components")
+                logger.info(
+                    "   Async Signal Collection: 55% faster processing")
                 logger.info("   Adaptive Thresholds: Dynamic optimization")
-                logger.info("   Integrated Risk Management: Real-time assessment")
-                logger.info("   Decision Audit Trail: Complete compliance logging")
+                logger.info(
+                    "   Integrated Risk Management: Real-time assessment")
+                logger.info(
+                    "   Decision Audit Trail: Complete compliance logging")
                 logger.info("   Continuous Learning: AI improvement engine")
 
                 # Load historical data for learning engine
@@ -1362,46 +1497,129 @@ class WebTradingBot:
             logger.info("=" * 60)
 
             # Start the actual trading bot in a separate thread
-            self.trading_thread = threading.Thread(target=self.trading_bot.run, daemon=True)
+            self.trading_thread = threading.Thread(
+                target=self.trading_bot.run, daemon=True)
             self.trading_thread.start()
-            logger.info("Web Trading Bot started successfully with production enhancements")
+            logger.info(
+                "Web Trading Bot started successfully with production enhancements")
         else:
             logger.info("Trading bot is already running")
 
     def stop(self):
-        """Stop the trading bot"""
+        """Stop the trading bot and all background processes"""
         if self.is_running:
             self.is_running = False
-            # Stop the actual trading bot
-            self.trading_bot.bot_running = False
-            logger.info("Stopping Trading Bot...")
+            logger.info("Stopping Trading Bot and all background processes...")
+
+            # Call the StockTradingBot's stop method for graceful shutdown
+            if hasattr(self.trading_bot, 'stop'):
+                try:
+                    self.trading_bot.stop()  # This will set bot_running = False and handle other cleanup
+                except Exception as e:
+                    logger.warning(
+                        f"Error calling StockTradingBot.stop(): {e}")
+                    # Fallback: manually set the flag
+                    self.trading_bot.bot_running = False
+            else:
+                # Fallback if the stop method doesn't exist
+                self.trading_bot.bot_running = False
+
+            # Stop Dhan sync service if running
+            if LIVE_TRADING_AVAILABLE:
+                try:
+                    from dhan_sync_service import stop_sync_service
+                    stop_sync_service()
+                    logger.info("[STOP] Dhan sync service stopped")
+                except Exception as e:
+                    logger.warning(f"Error stopping Dhan sync service: {e}")
+
+            # Stop real-time monitoring if running
+            if hasattr(self.trading_bot, 'stop_real_time_monitoring'):
+                try:
+                    self.trading_bot.stop_real_time_monitoring()
+                    logger.info("[STOP] Real-time monitoring stopped")
+                except Exception as e:
+                    logger.warning(f"Error stopping real-time monitoring: {e}")
+
+            # Stop ML training if running
+            if hasattr(self.trading_bot, 'stop_ml_training'):
+                try:
+                    self.trading_bot.stop_ml_training()
+                    logger.info("[STOP] ML training stopped")
+                except Exception as e:
+                    logger.warning(f"Error stopping ML training: {e}")
+
+            # Stop continuous learning if running
+            if hasattr(self.trading_bot, 'continuous_learning_engine'):
+                try:
+                    if hasattr(self.trading_bot.continuous_learning_engine, 'stop'):
+                        self.trading_bot.continuous_learning_engine.stop()
+                        logger.info("[STOP] Continuous learning stopped")
+                except Exception as e:
+                    logger.warning(f"Error stopping continuous learning: {e}")
+
+            # Disable data service operations when bot is stopped
+            if hasattr(self, 'data_client') and self.data_client:
+                try:
+                    # Set a flag to prevent data service calls
+                    if hasattr(self.data_client, 'is_healthy'):
+                        # Don't disable completely, but mark that bot is stopped
+                        logger.info(
+                            "[STOP] Data service operations will be limited while bot is stopped")
+                except Exception as e:
+                    logger.warning(f"Error configuring data service: {e}")
+
+            # Stop any production components if running
+            if hasattr(self, 'production_components') and self.production_components:
+                try:
+                    for comp_name, comp in self.production_components.items():
+                        if hasattr(comp, 'stop'):
+                            comp.stop()
+                            logger.info(f"[STOP] {comp_name} stopped")
+                except Exception as e:
+                    logger.warning(
+                        f"Error stopping production components: {e}")
+
+            # Wait for trading thread to finish
             if self.trading_thread and self.trading_thread.is_alive():
                 logger.info("Waiting for trading thread to finish...")
                 # Wait for the thread to finish with a timeout
                 self.trading_thread.join(timeout=10.0)
                 if self.trading_thread.is_alive():
-                    logger.warning("Trading thread did not stop within timeout, forcing stop...")
+                    logger.warning(
+                        "Trading thread did not stop within timeout, forcing stop...")
                 else:
                     logger.info("Trading thread stopped successfully")
+
             # Show final account summary if in live mode
             if hasattr(self, 'live_executor') and self.live_executor:
                 try:
                     funds = self.live_executor.dhan_client.get_funds()
-                    balance = funds.get('availabelBalance', 0.0) if funds else 0.0
-                    logger.info(f"🛑 Web Trading Bot stopped - Final Account Balance: Rs.{balance:.2f}")
+                    balance = funds.get('availabelBalance',
+                                        0.0) if funds else 0.0
+                    logger.info(
+                        f"[STOP] Web Trading Bot stopped - Final Account Balance: Rs.{balance:.2f}")
                 except:
-                    logger.info("🛑 Web Trading Bot stopped successfully")
+                    logger.info("[STOP] Web Trading Bot stopped successfully")
             else:
-                logger.info("🛑 Web Trading Bot stopped successfully")
+                logger.info("[STOP] Web Trading Bot stopped successfully")
         else:
             logger.info("Trading bot is already stopped")
 
-
-
     def get_status(self):
         """Get current bot status with data service health"""
-        # PRODUCTION FIX: Include data service status
-        data_service_status = self.data_client.get_service_status()
+        self.last_update = datetime.now()
+
+        # Only check data service if bot is running to avoid unnecessary operations
+        data_service_status = {}
+        if self.is_running and hasattr(self, 'data_client') and self.data_client:
+            try:
+                data_service_status = self.data_client.get_service_status()
+            except Exception as e:
+                logger.debug(f"Error getting data service status: {e}")
+                data_service_status = {"status": "unknown"}
+        else:
+            data_service_status = {"status": "bot_stopped"}
 
         return {
             "is_running": self.is_running,
@@ -1428,9 +1646,12 @@ class WebTradingBot:
                 # Normalize holdings to expected structure {ticker: {qty, avg_price}}
                 holdings = {}
                 for ticker, h in (raw_holdings.items() if isinstance(raw_holdings, dict) else []):
-                    qty = h.get("qty") if "qty" in h else h.get("quantity", h.get("Quantity", 0))
-                    avg_price = h.get("avg_price") if "avg_price" in h else h.get("avgPrice", h.get("avg_cost_price", h.get("avgCostPrice", 0)))
-                    current_price = h.get("current_price", h.get("currentPrice", avg_price))
+                    qty = h.get("qty") if "qty" in h else h.get(
+                        "quantity", h.get("Quantity", 0))
+                    avg_price = h.get("avg_price") if "avg_price" in h else h.get(
+                        "avgPrice", h.get("avg_cost_price", h.get("avgCostPrice", 0)))
+                    current_price = h.get(
+                        "current_price", h.get("currentPrice", avg_price))
                     if qty and avg_price is not None:
                         holdings[ticker] = {
                             "qty": float(qty),
@@ -1439,19 +1660,26 @@ class WebTradingBot:
                         }
 
                 # Compute market value and P&L
-                current_market_value = sum(data["qty"] * data.get("currentPrice", data["avg_price"]) for data in holdings.values())
-                total_exposure = sum(data["qty"] * data["avg_price"] for data in holdings.values())
+                current_market_value = sum(
+                    data["qty"] * data.get("currentPrice", data["avg_price"]) for data in holdings.values())
+                total_exposure = sum(data["qty"] * data["avg_price"]
+                                     for data in holdings.values())
                 unrealized_pnl = current_market_value - total_exposure
                 total_value = cash + current_market_value
 
                 total_invested = total_exposure
-                cash_percentage = (cash / total_value) * 100 if total_value > 0 else 100
-                invested_percentage = (total_invested / total_value) * 100 if total_value > 0 else 0
-                unrealized_pnl_pct = (unrealized_pnl / total_invested) * 100 if total_invested > 0 else 0
+                cash_percentage = (cash / total_value) * \
+                    100 if total_value > 0 else 100
+                invested_percentage = (
+                    total_invested / total_value) * 100 if total_value > 0 else 0
+                unrealized_pnl_pct = (
+                    unrealized_pnl / total_invested) * 100 if total_invested > 0 else 0
                 realized_pnl = float(getattr(pf, "realized_pnl", 0.0))
-                realized_pnl_pct = (realized_pnl / starting_balance) * 100 if starting_balance > 0 else 0
+                realized_pnl_pct = (
+                    realized_pnl / starting_balance) * 100 if starting_balance > 0 else 0
                 total_return = unrealized_pnl + realized_pnl
-                total_return_pct = (total_return / starting_balance) * 100 if starting_balance > 0 else 0
+                total_return_pct = (
+                    total_return / starting_balance) * 100 if starting_balance > 0 else 0
 
                 return {
                     "total_value": round(total_value, 2),
@@ -1482,13 +1710,15 @@ class WebTradingBot:
             project_root = os.path.dirname(current_dir)
             current_mode = self.config.get("mode", "paper")
             # Use Indian-specific portfolio files that the trading bot actually writes to
-            portfolio_file = os.path.join(project_root, "data", f"portfolio_india_{current_mode}.json")
+            portfolio_file = os.path.join(
+                project_root, "data", f"portfolio_india_{current_mode}.json")
             # Removed annoying log - file read is silent now
             if os.path.exists(portfolio_file):
                 with open(portfolio_file, 'r') as f:
                     portfolio_data = json.load(f)
 
-                starting_balance = portfolio_data.get('starting_balance', 10000)
+                starting_balance = portfolio_data.get(
+                    'starting_balance', 10000)
                 cash = portfolio_data.get('cash', starting_balance)
                 holdings = portfolio_data.get('holdings', {})
 
@@ -1496,8 +1726,6 @@ class WebTradingBot:
                 current_prices = {}
                 unrealized_pnl = 0  # Will be recalculated with current prices
                 price_fetch_success = False
-
-
 
                 if holdings:
                     try:
@@ -1513,7 +1741,8 @@ class WebTradingBot:
                                         price_fetch_success = True
                                         continue
                                 except Exception as e:
-                                    logger.warning(f"Data service failed for {ticker}: {e}")
+                                    logger.warning(
+                                        f"Data service failed for {ticker}: {e}")
 
                             # Fallback to Yahoo Finance
                             try:
@@ -1524,8 +1753,10 @@ class WebTradingBot:
                                     current_prices[ticker] = hist['Close'].iloc[-1]
                                     price_fetch_success = True
                             except Exception as e:
-                                logger.debug(f"Yahoo Finance failed for {ticker}: {e}")
-                                current_prices[ticker] = holdings[ticker]['avg_price']  # Fallback to avg price
+                                logger.debug(
+                                    f"Yahoo Finance failed for {ticker}: {e}")
+                                # Fallback to avg price
+                                current_prices[ticker] = holdings[ticker]['avg_price']
                     except Exception as e:
                         logger.warning(f"Error fetching current prices: {e}")
                         # Fallback: use average prices
@@ -1535,17 +1766,20 @@ class WebTradingBot:
                 # Always calculate unrealized P&L with current prices (or avg prices as fallback)
                 unrealized_pnl = 0
                 for ticker, data in holdings.items():
-                    current_price = current_prices.get(ticker, data['avg_price'])
-                    pnl_for_ticker = (current_price - data['avg_price']) * data['qty']
+                    current_price = current_prices.get(
+                        ticker, data['avg_price'])
+                    pnl_for_ticker = (
+                        current_price - data['avg_price']) * data['qty']
                     unrealized_pnl += pnl_for_ticker
 
                 # Calculate total exposure and total value with current prices
-                total_exposure = sum(data['qty'] * data['avg_price'] for data in holdings.values())
+                total_exposure = sum(data['qty'] * data['avg_price']
+                                     for data in holdings.values())
 
                 # If we successfully fetched current prices, use them
                 if price_fetch_success:
                     current_market_value = sum(data['qty'] * current_prices.get(ticker, data['avg_price'])
-                                             for ticker, data in holdings.items())
+                                               for ticker, data in holdings.items())
                 else:
                     # If we couldn't fetch current prices, calculate market value using unrealized P&L
                     current_market_value = total_exposure + unrealized_pnl
@@ -1559,7 +1793,8 @@ class WebTradingBot:
                 # Total return = unrealized P&L + realized P&L
                 realized_pnl = portfolio_data.get('realized_pnl', 0)
                 total_return = unrealized_pnl + realized_pnl
-                return_pct = (total_return / cash_invested) * 100 if cash_invested > 0 else 0
+                return_pct = (total_return / cash_invested) * \
+                    100 if cash_invested > 0 else 0
 
                 # Add current prices to holdings for frontend
                 enriched_holdings = {}
@@ -1570,15 +1805,22 @@ class WebTradingBot:
                     }
 
                 # Get trade log
-                trade_log = self.get_recent_trades(limit=100)  # Get all trades for portfolio
+                trade_log = self.get_recent_trades(
+                    limit=100)  # Get all trades for portfolio
 
                 # Professional calculations
-                total_invested = sum(data['qty'] * data['avg_price'] for data in holdings.values())
-                cash_percentage = (cash / total_value) * 100 if total_value > 0 else 100
-                invested_percentage = (total_invested / total_value) * 100 if total_value > 0 else 0
-                unrealized_pnl_pct = (unrealized_pnl / total_invested) * 100 if total_invested > 0 else 0
-                realized_pnl_pct = (realized_pnl / starting_balance) * 100 if starting_balance > 0 else 0
-                total_return_pct = (total_return / starting_balance) * 100 if starting_balance > 0 else 0
+                total_invested = sum(data['qty'] * data['avg_price']
+                                     for data in holdings.values())
+                cash_percentage = (cash / total_value) * \
+                    100 if total_value > 0 else 100
+                invested_percentage = (
+                    total_invested / total_value) * 100 if total_value > 0 else 0
+                unrealized_pnl_pct = (
+                    unrealized_pnl / total_invested) * 100 if total_invested > 0 else 0
+                realized_pnl_pct = (
+                    realized_pnl / starting_balance) * 100 if starting_balance > 0 else 0
+                total_return_pct = (
+                    total_return / starting_balance) * 100 if starting_balance > 0 else 0
 
                 return {
                     "total_value": round(total_value, 2),
@@ -1648,7 +1890,8 @@ class WebTradingBot:
             project_root = os.path.dirname(current_dir)
             current_mode = self.config.get("mode", "paper")
             # Use Indian-specific trade log files that the trading bot actually writes to
-            trade_log_file = os.path.join(project_root, "data", f"trade_log_india_{current_mode}.json")
+            trade_log_file = os.path.join(
+                project_root, "data", f"trade_log_india_{current_mode}.json")
             # Removed annoying log - file read is silent now
             if os.path.exists(trade_log_file):
                 with open(trade_log_file, 'r') as f:
@@ -1725,10 +1968,10 @@ class WebTradingBot:
         try:
             # Get latest portfolio data from database
             portfolio_data = self.portfolio_manager.get_portfolio_summary()
-            
+
             # Get recent trades
             recent_trades = self.portfolio_manager.get_recent_trades(limit=10)
-            
+
             # Prepare update message
             update = {
                 "type": "portfolio_update",
@@ -1738,16 +1981,16 @@ class WebTradingBot:
                     "timestamp": datetime.now().isoformat()
                 }
             }
-            
+
             # Convert to JSON
             message = json.dumps(update)
-            
+
             # Broadcast to all connected clients
             if hasattr(self, 'websocket_clients') and self.websocket_clients:
                 await asyncio.gather(
                     *[client.send_text(message) for client in self.websocket_clients]
                 )
-                
+
         except Exception as e:
             logger.error(f"Error broadcasting portfolio update: {e}")
         try:
@@ -1788,64 +2031,69 @@ class WebTradingBot:
             # FIXED: Use thread-safe queue approach to prevent deadlocks and memory leaks
             import threading
             import queue
-            
+
             # Use a bounded queue to prevent memory exhaustion
             if not hasattr(self, '_broadcast_queue'):
                 self._broadcast_queue = queue.Queue(maxsize=100)
                 self._broadcast_worker_active = True
-                
+
                 def broadcast_worker():
                     """Worker thread for processing broadcasts safely"""
                     import asyncio
                     while self._broadcast_worker_active:
                         try:
                             # Get update from queue with timeout
-                            update_data = self._broadcast_queue.get(timeout=1.0)
+                            update_data = self._broadcast_queue.get(
+                                timeout=1.0)
                             if update_data is None:  # Shutdown signal
                                 break
-                                
+
                             # Process the broadcast in a controlled manner
                             try:
                                 # Create isolated event loop for this thread
                                 loop = asyncio.new_event_loop()
                                 asyncio.set_event_loop(loop)
-                                
+
                                 async def safe_broadcast():
                                     try:
                                         await self.broadcast_trade_update(update_data)
                                         await self.broadcast_portfolio_update()
                                     except Exception as e:
-                                        logger.error(f"Error in safe broadcast: {e}")
-                                
+                                        logger.error(
+                                            f"Error in safe broadcast: {e}")
+
                                 loop.run_until_complete(safe_broadcast())
                                 loop.close()
-                                
+
                             except Exception as e:
                                 logger.error(f"Error in broadcast worker: {e}")
                             finally:
                                 self._broadcast_queue.task_done()
-                                
+
                         except queue.Empty:
                             continue  # Timeout, check if still active
                         except Exception as e:
-                            logger.error(f"Fatal error in broadcast worker: {e}")
+                            logger.error(
+                                f"Fatal error in broadcast worker: {e}")
                             break
-                
+
                 # Start worker thread as daemon
-                worker_thread = threading.Thread(target=broadcast_worker, daemon=True)
+                worker_thread = threading.Thread(
+                    target=broadcast_worker, daemon=True)
                 worker_thread.start()
-                
+
             # Queue the update safely
             try:
                 self._broadcast_queue.put_nowait(trade_data)
             except queue.Full:
                 logger.warning("Broadcast queue full, dropping trade update")
-                
+
         except Exception as e:
             logger.error(f"Error in trade callback: {e}")
 
-def apply_risk_level_settings(bot, risk_level, custom_stop_loss=None, custom_allocation=None, 
-                            custom_target_profit=None, custom_use_rr=None, custom_rr_ratio=None):
+
+def apply_risk_level_settings(bot, risk_level, custom_stop_loss=None, custom_allocation=None,
+                              custom_target_profit=None, custom_use_rr=None, custom_rr_ratio=None):
     """Apply risk level settings to the trading bot"""
     try:
         # Define risk level mappings
@@ -1860,14 +2108,16 @@ def apply_risk_level_settings(bot, risk_level, custom_stop_loss=None, custom_all
             "MEDIUM": {
                 "stop_loss": 0.05,         # 5% stop-loss
                 "allocation": 0.25,        # 25% allocation
-                "target_profit": 0.10,     # 10% target profit (2:1 risk-reward)
+                # 10% target profit (2:1 risk-reward)
+                "target_profit": 0.10,
                 "use_risk_reward": True,   # Use risk-reward ratio
                 "risk_reward_ratio": 2.0   # 2:1 risk-reward ratio
             },
             "HIGH": {
                 "stop_loss": 0.08,         # 8% stop-loss
                 "allocation": 0.35,        # 35% allocation
-                "target_profit": 0.16,     # 16% target profit (2:1 risk-reward)
+                # 16% target profit (2:1 risk-reward)
+                "target_profit": 0.16,
                 "use_risk_reward": True,   # Use risk-reward ratio
                 "risk_reward_ratio": 2.0   # 2:1 risk-reward ratio
             }
@@ -1879,27 +2129,27 @@ def apply_risk_level_settings(bot, risk_level, custom_stop_loss=None, custom_all
                 bot.config['stop_loss_pct'] = custom_stop_loss
                 if hasattr(bot, 'executor') and bot.executor:
                     bot.executor.stop_loss_pct = custom_stop_loss
-            
+
             if custom_allocation is not None:
                 bot.config['max_capital_per_trade'] = custom_allocation
                 if hasattr(bot, 'executor') and bot.executor:
                     bot.executor.max_capital_per_trade = custom_allocation
-            
+
             if custom_target_profit is not None:
                 bot.config['target_profit_pct'] = custom_target_profit
                 if hasattr(bot, 'executor') and bot.executor:
                     bot.executor.target_profit_pct = custom_target_profit
-            
+
             if custom_use_rr is not None:
                 bot.config['use_risk_reward'] = custom_use_rr
                 if hasattr(bot, 'executor') and bot.executor:
                     bot.executor.use_risk_reward = custom_use_rr
-            
+
             if custom_rr_ratio is not None:
                 bot.config['risk_reward_ratio'] = custom_rr_ratio
                 if hasattr(bot, 'executor') and bot.executor:
                     bot.executor.risk_reward_ratio = custom_rr_ratio
-        
+
         elif risk_level in risk_mappings:
             # Apply predefined risk level settings
             settings = risk_mappings[risk_level]
@@ -1920,29 +2170,30 @@ def apply_risk_level_settings(bot, risk_level, custom_stop_loss=None, custom_all
                 bot.executor.risk_reward_ratio = settings['risk_reward_ratio']
 
         logger.info(f"Applied {risk_level} risk settings: "
-                  f"Stop Loss={bot.config.get('stop_loss_pct')*100:.1f}%, "
-                  f"Target Profit={bot.config.get('target_profit_pct', 0)*100:.1f}%, "
-                  f"Use RR={bot.config.get('use_risk_reward', True)}, "
-                  f"RR Ratio={bot.config.get('risk_reward_ratio', 2.0):.1f}, "
-                  f"Max Allocation={bot.config.get('max_capital_per_trade')*100:.1f}%")
+                    f"Stop Loss={bot.config.get('stop_loss_pct')*100:.1f}%, "
+                    f"Target Profit={bot.config.get('target_profit_pct', 0)*100:.1f}%, "
+                    f"Use RR={bot.config.get('use_risk_reward', True)}, "
+                    f"RR Ratio={bot.config.get('risk_reward_ratio', 2.0):.1f}, "
+                    f"Max Allocation={bot.config.get('max_capital_per_trade')*100:.1f}%")
 
     except Exception as e:
         logger.error(f"Error applying risk level settings: {e}")
+
 
 def load_config_from_file(mode: str) -> dict:
     """Load configuration from the appropriate JSON file"""
     try:
         import os
         import json
-        
+
         # Get the data directory path
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(current_dir)
         data_dir = os.path.join(project_root, "data")
-        
+
         # Determine the config file path
         config_file = os.path.join(data_dir, f"{mode}_config.json")
-        
+
         if os.path.exists(config_file):
             with open(config_file, 'r') as f:
                 config_data = json.load(f)
@@ -1951,20 +2202,21 @@ def load_config_from_file(mode: str) -> dict:
         else:
             logger.info(f"Config file {config_file} not found, using defaults")
             return {}
-            
+
     except Exception as e:
         logger.error(f"Error loading config from file: {e}")
         return {}
 
+
 def initialize_bot():
     """Initialize the trading bot with default configuration"""
     global trading_bot
-    
+
     try:
         # Load environment variables
         from dotenv import load_dotenv
         load_dotenv()
-        
+
         # Default configuration
         default_mode = os.getenv("MODE", "paper")
         config = {
@@ -1985,7 +2237,7 @@ def initialize_bot():
             "max_capital_per_trade": 0.25,  # Default 25% (MEDIUM)
             "max_trade_limit": 150
         }
-        
+
         # Load saved configuration from file and merge with defaults
         saved_config = load_config_from_file(default_mode)
         if saved_config:
@@ -1998,27 +2250,29 @@ def initialize_bot():
                 "max_trade_limit": saved_config.get("max_trade_limit", config["max_trade_limit"])
             })
             logger.info(f"Merged saved config: Risk Level={config['riskLevel']}, "
-                       f"Stop Loss={config['stop_loss_pct']*100:.1f}%, "
-                       f"Max Allocation={config['max_capital_per_trade']*100:.1f}%")
-        
+                        f"Stop Loss={config['stop_loss_pct']*100:.1f}%, "
+                        f"Max Allocation={config['max_capital_per_trade']*100:.1f}%")
+
         trading_bot = WebTradingBot(config)
 
         # Apply risk level settings from loaded config
         apply_risk_level_settings(trading_bot, config["riskLevel"])
-        
+
         # Set the trading bot reference in the risk engine
         risk_engine.set_trading_bot(trading_bot)
 
         logger.info("Trading bot initialized successfully")
-        
+
     except Exception as e:
         logger.error(f"Error initializing trading bot: {e}")
         raise
+
 
 # Static file serving
 app.mount("/static", StaticFiles(directory="."), name="static")
 
 # API Routes
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
@@ -2027,7 +2281,9 @@ async def index():
         with open('web_interface.html', 'r', encoding='utf-8') as f:
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Web interface HTML file not found")
+        raise HTTPException(
+            status_code=404, detail="Web interface HTML file not found")
+
 
 @app.get("/styles.css")
 async def styles():
@@ -2037,13 +2293,16 @@ async def styles():
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="CSS file not found")
 
+
 @app.get("/app.js")
 async def app_js():
     """Serve the JavaScript file"""
     try:
         return FileResponse('app.js', media_type='application/javascript')
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="JavaScript file not found")
+        raise HTTPException(
+            status_code=404, detail="JavaScript file not found")
+
 
 @app.get("/api/status", response_model=BotStatus)
 async def get_status():
@@ -2058,6 +2317,7 @@ async def get_status():
         logger.error(f"Error getting status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/bot-data")
 async def get_bot_data():
     """Get complete bot data for React frontend"""
@@ -2069,6 +2329,7 @@ async def get_bot_data():
     except Exception as e:
         logger.error(f"Error getting bot data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/portfolio", response_model=PortfolioMetrics)
 async def get_portfolio():
@@ -2087,7 +2348,8 @@ async def get_portfolio():
                 "invested_percentage": metrics.get("invested_percentage", 0),
                 "current_holdings_value": metrics.get("current_holdings_value", 0),
                 "total_return": metrics.get("total_return", 0),
-                "return_percentage": metrics.get("total_return_pct", 0),  # Legacy field
+                # Legacy field
+                "return_percentage": metrics.get("total_return_pct", 0),
                 "total_return_pct": metrics.get("total_return_pct", 0),
                 "unrealized_pnl": metrics.get("unrealized_pnl", 0),
                 "unrealized_pnl_pct": metrics.get("unrealized_pnl_pct", 0),
@@ -2109,6 +2371,7 @@ async def get_portfolio():
         logger.error(f"Error getting portfolio: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/trades")
 async def get_trades(limit: int = 10):
     """Get recent trades"""
@@ -2122,6 +2385,7 @@ async def get_trades(limit: int = 10):
         logger.error(f"Error getting trades: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/portfolio/realtime")
 async def get_realtime_portfolio():
     """Get real-time portfolio updates with current prices and Dhan sync"""
@@ -2133,20 +2397,26 @@ async def get_realtime_portfolio():
                 if hasattr(trading_bot, 'live_executor') and trading_bot.live_executor:
                     sync_success = trading_bot.live_executor.sync_portfolio_with_dhan()
                     if sync_success:
-                        logger.debug("Successfully synced with Dhan account during realtime update")
+                        logger.debug(
+                            "Successfully synced with Dhan account during realtime update")
                     else:
-                        logger.warning("Failed to sync with Dhan account during realtime update")
+                        logger.warning(
+                            "Failed to sync with Dhan account during realtime update")
                 elif hasattr(trading_bot, 'dhan_client') and trading_bot.dhan_client:
                     # Fallback: manually sync using dhan_client
                     funds = trading_bot.dhan_client.get_funds()
                     if funds:
-                        available_cash = funds.get('availabelBalance', 0.0)
+                        available_cash = funds.get(
+                            'availableBalance', funds.get('availabelBalance', 0.0))
                         # Update portfolio manager if available
                         if hasattr(trading_bot, 'portfolio_manager'):
-                            trading_bot.portfolio_manager.update_cash_balance(available_cash)
-                        logger.debug(f"Manually synced cash balance: ₹{available_cash}")
+                            trading_bot.portfolio_manager.update_cash_balance(
+                                available_cash)
+                        logger.debug(
+                            f"Manually synced cash balance: ₹{available_cash}")
             except Exception as e:
-                logger.warning(f"Error during Dhan sync in realtime update: {e}")
+                logger.warning(
+                    f"Dhan sync failed during realtime update, using local data: {e}")
 
         if trading_bot:
             metrics = trading_bot.get_portfolio_metrics()
@@ -2168,7 +2438,8 @@ async def get_realtime_portfolio():
                                 "volume": symbol_data.get("volume", 0)
                             }
                 except Exception as e:
-                    logger.warning(f"Error fetching real-time price for {ticker}: {e}")
+                    logger.warning(
+                        f"Error fetching real-time price for {ticker}: {e}")
 
             return {
                 "portfolio_metrics": metrics,
@@ -2181,6 +2452,7 @@ async def get_realtime_portfolio():
     except Exception as e:
         logger.error(f"Error getting real-time portfolio: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 def _get_indian_market_status() -> str:
     """Get Indian market status based on NSE trading hours"""
@@ -2205,6 +2477,7 @@ def _get_indian_market_status() -> str:
         logger.error(f"Error determining market status: {e}")
         return "UNKNOWN"
 
+
 @app.get("/api/watchlist")
 async def get_watchlist():
     """Get current watchlist"""
@@ -2216,6 +2489,7 @@ async def get_watchlist():
     except Exception as e:
         logger.error(f"Error getting watchlist: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/watchlist", response_model=WatchlistResponse)
 async def update_watchlist(request: WatchlistRequest):
@@ -2243,7 +2517,8 @@ async def update_watchlist(request: WatchlistRequest):
                 else:
                     message = f"{ticker} is not in watchlist"
             else:
-                raise HTTPException(status_code=400, detail="Invalid action. Use ADD or REMOVE")
+                raise HTTPException(
+                    status_code=400, detail="Invalid action. Use ADD or REMOVE")
 
             return WatchlistResponse(message=message, tickers=current_tickers)
         else:
@@ -2255,16 +2530,19 @@ async def update_watchlist(request: WatchlistRequest):
         logger.error(f"Error updating watchlist: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/watchlist/bulk", response_model=BulkWatchlistResponse)
 async def bulk_update_watchlist(request: BulkWatchlistRequest):
     """Add or remove multiple tickers from watchlist"""
     try:
         if not trading_bot:
-            raise HTTPException(status_code=503, detail="Trading bot not initialized")
+            raise HTTPException(
+                status_code=503, detail="Trading bot not initialized")
 
         action = request.action.upper()
         if action not in ["ADD", "REMOVE"]:
-            raise HTTPException(status_code=400, detail="Action must be ADD or REMOVE")
+            raise HTTPException(
+                status_code=400, detail="Action must be ADD or REMOVE")
 
         successful_tickers = []
         failed_tickers = []
@@ -2289,13 +2567,15 @@ async def bulk_update_watchlist(request: BulkWatchlistRequest):
 
                 if action == "ADD":
                     if ticker in trading_bot.config["tickers"]:
-                        failed_tickers.append(f"{ticker}: Already in watchlist")
+                        failed_tickers.append(
+                            f"{ticker}: Already in watchlist")
                         continue
 
                     # Add ticker to config
                     trading_bot.config["tickers"].append(ticker)
                     successful_tickers.append(ticker)
-                    logger.info(f"Added ticker {ticker} to watchlist via bulk upload")
+                    logger.info(
+                        f"Added ticker {ticker} to watchlist via bulk upload")
 
                 elif action == "REMOVE":
                     if ticker not in trading_bot.config["tickers"]:
@@ -2305,7 +2585,8 @@ async def bulk_update_watchlist(request: BulkWatchlistRequest):
                     # Remove ticker from config
                     trading_bot.config["tickers"].remove(ticker)
                     successful_tickers.append(ticker)
-                    logger.info(f"Removed ticker {ticker} from watchlist via bulk upload")
+                    logger.info(
+                        f"Removed ticker {ticker} from watchlist via bulk upload")
 
             except Exception as e:
                 failed_tickers.append(f"{ticker}: {str(e)}")
@@ -2315,7 +2596,8 @@ async def bulk_update_watchlist(request: BulkWatchlistRequest):
         if successful_tickers and action == "ADD":
             try:
                 trading_bot.data_feed = DataFeed(trading_bot.config["tickers"])
-                logger.info(f"Updated data feed with {len(successful_tickers)} new tickers")
+                logger.info(
+                    f"Updated data feed with {len(successful_tickers)} new tickers")
             except Exception as e:
                 logger.error(f"Error updating data feed: {e}")
 
@@ -2344,12 +2626,15 @@ async def bulk_update_watchlist(request: BulkWatchlistRequest):
 
 # Priority 1: Remove duplicate validate_chat_input - now imported from utils
 
+
 async def process_market_query(message: str) -> Optional[str]:
     """Process market-related queries with real-time data"""
     try:
         # Performance: Use set for O(1) lookup instead of O(n) list search
-        market_keywords = {"volume", "stock", "price", "highest", "lowest", "market", "trading", "analysis"}
-        is_market_query = any(keyword in message.lower() for keyword in market_keywords)
+        market_keywords = {"volume", "stock", "price",
+                           "highest", "lowest", "market", "trading", "analysis"}
+        is_market_query = any(keyword in message.lower()
+                              for keyword in market_keywords)
 
         if is_market_query:
             logger.info(f"Market query detected: {message}")
@@ -2358,6 +2643,7 @@ async def process_market_query(message: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"Error processing market query: {e}")
         return None
+
 
 async def process_llama_query(message: str, enhanced_prompt: str) -> str:
     """Process query using Llama reasoning engine"""
@@ -2372,9 +2658,10 @@ async def process_llama_query(message: str, enhanced_prompt: str) -> str:
         logger.error(f"Error with Llama processing: {e}")
         return "I encountered an error while processing your request. Please try again."
 
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Process chat message with Advanced Market Agent (LangChain + LangGraph + Fyers)"""
+    """Process chat message - Forward to MCP Service"""
     try:
         # Performance: Validate and sanitize input
         try:
@@ -2388,20 +2675,53 @@ async def chat(request: ChatRequest):
                 timestamp=datetime.now().isoformat()
             )
 
-        # Enhanced Real-Time Dynamic Market Analysis
+        # Forward to MCP Service API
+        mcp_api_url = os.getenv("MCP_API_URL", "http://localhost:8003")
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{mcp_api_url}/api/chat",
+                    json={"message": message},
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        logger.info(
+                            f"[WEB] Chat request forwarded to MCP service - response received")
+                        return ChatResponse(
+                            response=result.get(
+                                "response", "No response from MCP service"),
+                            timestamp=result.get(
+                                "timestamp", datetime.now().isoformat()),
+                            metadata=result.get("metadata")
+                        )
+                    else:
+                        error_text = await response.text()
+                        logger.warning(
+                            f"[WEB] MCP service returned {response.status}: {error_text}")
+                        # Fall through to fallback
+        except Exception as e:
+            logger.warning(f"[WEB] Failed to forward to MCP service: {e}")
+            # Fall through to fallback
+
+        # Fallback: Enhanced Real-Time Dynamic Market Analysis (if MCP service unavailable)
         try:
             # Get current timestamp for real-time data
             current_time = datetime.now()
 
             # Performance: Use set for O(1) lookup instead of O(n) list search
-            market_keywords = {"volume", "stock", "price", "highest", "lowest", "market", "trading", "analysis"}
-            is_market_query = any(keyword in message.lower() for keyword in market_keywords)
+            market_keywords = {"volume", "stock", "price",
+                               "highest", "lowest", "market", "trading", "analysis"}
+            is_market_query = any(keyword in message.lower()
+                                  for keyword in market_keywords)
 
             if is_market_query:
                 # Get real-time market data
                 logger.info(f"Market query detected: {message}")
                 real_time_response = await get_real_time_market_response(message)
-                logger.info(f"Real-time response: {real_time_response is not None}")
+                logger.info(
+                    f"Real-time response: {real_time_response is not None}")
                 if real_time_response:
                     logger.info("Returning real-time market response")
                     return ChatResponse(
@@ -2514,6 +2834,7 @@ What would you like to analyze today?""",
             timestamp=datetime.now().isoformat()
         )
 
+
 @app.post("/api/start", response_model=MessageResponse)
 async def start_bot():
     """Start the trading bot"""
@@ -2527,7 +2848,8 @@ async def start_bot():
                 logger.info("Bot initialized before starting")
             except Exception as init_error:
                 logger.error(f"Failed to initialize bot: {init_error}")
-                raise HTTPException(status_code=500, detail=f"Failed to initialize bot: {str(init_error)}")
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to initialize bot: {str(init_error)}")
 
         if trading_bot:
             # Apply current risk level settings before starting
@@ -2536,7 +2858,8 @@ async def start_bot():
 
             trading_bot.start()
             stop_loss_pct = trading_bot.config.get('stop_loss_pct', 0.05) * 100
-            max_allocation_pct = trading_bot.config.get('max_capital_per_trade', 0.25) * 100
+            max_allocation_pct = trading_bot.config.get(
+                'max_capital_per_trade', 0.25) * 100
             logger.info(f"Trading bot started with {risk_level} risk level")
             return MessageResponse(message=f"Bot started successfully with {risk_level} risk level (Stop Loss: {stop_loss_pct}%, Max Allocation: {max_allocation_pct}%)")
         else:
@@ -2546,6 +2869,7 @@ async def start_bot():
     except Exception as e:
         logger.error(f"Error starting bot: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/init", response_model=MessageResponse)
 async def init_bot():
@@ -2557,6 +2881,7 @@ async def init_bot():
     except Exception as e:
         logger.error(f"Error initializing bot: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/stop", response_model=MessageResponse)
 async def stop_bot():
@@ -2572,6 +2897,7 @@ async def stop_bot():
     except Exception as e:
         logger.error(f"Error stopping bot: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/settings")
 async def get_settings():
@@ -2596,20 +2922,21 @@ async def get_settings():
         logger.error(f"Error getting settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 def save_config_to_file(mode: str, config_data: dict):
     """Save configuration to the appropriate JSON file"""
     try:
         import os
         import json
-        
+
         # Get the data directory path
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(current_dir)
         data_dir = os.path.join(project_root, "data")
-        
+
         # Determine the config file path
         config_file = os.path.join(data_dir, f"{mode}_config.json")
-        
+
         # Prepare config data for saving
         config_to_save = {
             "mode": mode,
@@ -2622,16 +2949,17 @@ def save_config_to_file(mode: str, config_data: dict):
             "max_trade_limit": config_data.get("max_trade_limit", 150),
             "created_at": datetime.now().isoformat()
         }
-        
+
         # Save to file
         with open(config_file, 'w') as f:
             json.dump(config_to_save, f, indent=2)
-            
+
         logger.info(f"Configuration saved to {config_file}")
-        
+
     except Exception as e:
         logger.error(f"Error saving config to file: {e}")
         raise
+
 
 @app.post("/api/settings", response_model=MessageResponse)
 async def update_settings(request: SettingsRequest):
@@ -2647,11 +2975,14 @@ async def update_settings(request: SettingsRequest):
                         # Check if the mode actually changed (could have reverted)
                         actual_mode = trading_bot.config.get('mode', 'paper')
                         if actual_mode != request.mode:
-                            logger.warning(f"Requested {request.mode} mode but reverted to {actual_mode} mode")
+                            logger.warning(
+                                f"Requested {request.mode} mode but reverted to {actual_mode} mode")
                         else:
-                            logger.info(f"Successfully switched from {old_mode} to {request.mode} mode")
+                            logger.info(
+                                f"Successfully switched from {old_mode} to {request.mode} mode")
                     else:
-                        raise HTTPException(status_code=400, detail=f"Failed to switch to {request.mode} mode")
+                        raise HTTPException(
+                            status_code=400, detail=f"Failed to switch to {request.mode} mode")
                 else:
                     trading_bot.config['mode'] = request.mode
             if request.riskLevel is not None:
@@ -2663,9 +2994,9 @@ async def update_settings(request: SettingsRequest):
                 else:
                     # For CUSTOM, use the provided values
                     apply_risk_level_settings(
-                        bot=trading_bot, 
-                        risk_level=request.riskLevel, 
-                        custom_stop_loss=request.stop_loss_pct, 
+                        bot=trading_bot,
+                        risk_level=request.riskLevel,
+                        custom_stop_loss=request.stop_loss_pct,
                         custom_allocation=request.max_capital_per_trade,
                         custom_target_profit=request.target_profit_pct,
                         custom_use_rr=request.use_risk_reward,
@@ -2688,19 +3019,19 @@ async def update_settings(request: SettingsRequest):
                 # Update executor if it exists
                 if hasattr(trading_bot, 'executor') and trading_bot.executor:
                     trading_bot.executor.stop_loss_pct = request.stop_loss_pct
-            
+
             # Handle target profit settings
             if request.target_profit_pct is not None:
                 trading_bot.config['target_profit_pct'] = request.target_profit_pct
                 if hasattr(trading_bot, 'executor') and trading_bot.executor:
                     trading_bot.executor.target_profit_pct = request.target_profit_pct
-            
+
             # Handle risk/reward settings
             if request.use_risk_reward is not None:
                 trading_bot.config['use_risk_reward'] = request.use_risk_reward
                 if hasattr(trading_bot, 'executor') and trading_bot.executor:
                     trading_bot.executor.use_risk_reward = request.use_risk_reward
-            
+
             if request.risk_reward_ratio is not None:
                 trading_bot.config['risk_reward_ratio'] = request.risk_reward_ratio
                 if hasattr(trading_bot, 'executor') and trading_bot.executor:
@@ -2711,12 +3042,12 @@ async def update_settings(request: SettingsRequest):
             save_config_to_file(current_mode, trading_bot.config)
 
             logger.info(f"Settings updated: Mode={trading_bot.config.get('mode')}, "
-                       f"Risk Level={trading_bot.config.get('riskLevel')}, "
-                       f"Stop Loss={trading_bot.config.get('stop_loss_pct', 0.05)*100:.1f}%, "
-                       f"Target Profit={trading_bot.config.get('target_profit_pct', 0.1)*100:.1f}%, "
-                       f"Use RR={trading_bot.config.get('use_risk_reward', True)}, "
-                       f"RR Ratio={trading_bot.config.get('risk_reward_ratio', 2.0):.1f}, "
-                       f"Max Allocation={trading_bot.config.get('max_capital_per_trade', 0.25)*100:.1f}%")
+                        f"Risk Level={trading_bot.config.get('riskLevel')}, "
+                        f"Stop Loss={trading_bot.config.get('stop_loss_pct', 0.05)*100:.1f}%, "
+                        f"Target Profit={trading_bot.config.get('target_profit_pct', 0.1)*100:.1f}%, "
+                        f"Use RR={trading_bot.config.get('use_risk_reward', True)}, "
+                        f"RR Ratio={trading_bot.config.get('risk_reward_ratio', 2.0):.1f}, "
+                        f"Max Allocation={trading_bot.config.get('max_capital_per_trade', 0.25)*100:.1f}%")
 
             return MessageResponse(message="Settings updated successfully")
         else:
@@ -2727,6 +3058,7 @@ async def update_settings(request: SettingsRequest):
     except Exception as e:
         logger.error(f"Error updating settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/live-status")
 async def get_live_trading_status():
@@ -2749,20 +3081,24 @@ async def get_live_trading_status():
                     dhan_connected = trading_bot.dhan_client.validate_connection()
                     if dhan_connected:
                         market_status_data = trading_bot.dhan_client.get_market_status()
-                        market_status = market_status_data.get("marketStatus", "UNKNOWN")
+                        market_status = market_status_data.get(
+                            "marketStatus", "UNKNOWN")
 
                         # Get account info
                         profile = trading_bot.dhan_client.get_profile()
                         funds = trading_bot.dhan_client.get_funds()
                         # Normalize funds keys across variants
+
                         def _funds_value(keys, default=0):
                             for k in keys:
                                 if k in funds and funds.get(k) is not None:
                                     return funds.get(k)
                             return default
 
-                        available_cash = _funds_value(["availablecash", "availabelBalance", "availableBalance", "netAvailableMargin", "netAvailableCash"], 0)
-                        sod_limit = _funds_value(["sodlimit", "sodLimit", "openingBalance", "collateralMargin"], 0)
+                        available_cash = _funds_value(
+                            ["availablecash", "availabelBalance", "availableBalance", "netAvailableMargin", "netAvailableCash"], 0)
+                        sod_limit = _funds_value(
+                            ["sodlimit", "sodLimit", "openingBalance", "collateralMargin"], 0)
 
                         account_info = {
                             "client_id": profile.get("clientId", ""),
@@ -2792,6 +3128,7 @@ async def get_live_trading_status():
         logger.error(f"Error getting live trading status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/live/sync")
 async def sync_live_portfolio():
     """Force a Dhan sync and return a brief snapshot"""
@@ -2804,7 +3141,8 @@ async def sync_live_portfolio():
         if sync_service:
             success = sync_service.sync_once()
             if not success:
-                raise HTTPException(status_code=502, detail="Failed to sync with Dhan using sync service")
+                raise HTTPException(
+                    status_code=502, detail="Failed to sync with Dhan using sync service")
 
             # Return updated portfolio data
             portfolio_data = trading_bot.get_portfolio_metrics() if trading_bot else {}
@@ -2818,15 +3156,18 @@ async def sync_live_portfolio():
 
         # Fallback to live executor if sync service not available
         if not trading_bot.live_executor:
-            raise HTTPException(status_code=503, detail="Live executor not initialized")
+            raise HTTPException(
+                status_code=503, detail="Live executor not initialized")
         ok = trading_bot.live_executor.sync_portfolio_with_dhan()
         if not ok:
-            raise HTTPException(status_code=502, detail="Failed to sync with Dhan")
+            raise HTTPException(
+                status_code=502, detail="Failed to sync with Dhan")
         pf = trading_bot.live_executor.portfolio
         holdings_value = 0.0
         try:
             if isinstance(pf.holdings, dict):
-                holdings_value = sum(h.get("total_value", 0.0) for h in pf.holdings.values())
+                holdings_value = sum(h.get("total_value", 0.0)
+                                     for h in pf.holdings.values())
         except Exception:
             holdings_value = 0.0
         total_value = float(getattr(pf, "cash", 0.0)) + float(holdings_value)
@@ -2846,18 +3187,21 @@ async def sync_live_portfolio():
 # MCP (Model Context Protocol) API Endpoints
 # ============================================================================
 
+
 @app.post("/api/mcp/analyze")
 async def mcp_analyze_market(request: MCPAnalysisRequest):
     """MCP-powered comprehensive market analysis with AI reasoning"""
     try:
         if not MCP_AVAILABLE:
-            raise HTTPException(status_code=503, detail="MCP server not available")
+            raise HTTPException(
+                status_code=503, detail="MCP server not available")
 
         # Initialize MCP components if needed
         await _ensure_mcp_initialized()
 
         if not mcp_trading_agent:
-            raise HTTPException(status_code=503, detail="MCP trading agent not initialized")
+            raise HTTPException(
+                status_code=503, detail="MCP trading agent not initialized")
 
         # Perform AI-powered analysis
         signal = await mcp_trading_agent.analyze_and_decide(
@@ -2888,17 +3232,20 @@ async def mcp_analyze_market(request: MCPAnalysisRequest):
         logger.error(f"MCP market analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/mcp/execute")
 async def mcp_execute_trade(request: MCPTradeRequest):
     """MCP-controlled trade execution with detailed explanation"""
     try:
         if not MCP_AVAILABLE:
-            raise HTTPException(status_code=503, detail="MCP server not available")
+            raise HTTPException(
+                status_code=503, detail="MCP server not available")
 
         await _ensure_mcp_initialized()
 
         if not mcp_trading_agent:
-            raise HTTPException(status_code=503, detail="MCP trading agent not initialized")
+            raise HTTPException(
+                status_code=503, detail="MCP trading agent not initialized")
 
         # Get AI analysis first
         signal = await mcp_trading_agent.analyze_and_decide(request.symbol)
@@ -2916,7 +3263,8 @@ async def mcp_execute_trade(request: MCPTradeRequest):
                     )
                 )
         else:
-            explanation = LlamaResponse(content="MCP analysis completed", reasoning=signal.reasoning)
+            explanation = LlamaResponse(
+                content="MCP analysis completed", reasoning=signal.reasoning)
 
         # Execute trade if confidence is high enough
         execution_result = None
@@ -2953,17 +3301,20 @@ async def mcp_execute_trade(request: MCPTradeRequest):
         logger.error(f"MCP trade execution error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/mcp/chat")
 async def mcp_chat(request: MCPChatRequest):
     """Advanced AI chat with market context and reasoning"""
     try:
         if not MCP_AVAILABLE:
-            raise HTTPException(status_code=503, detail="MCP server not available")
+            raise HTTPException(
+                status_code=503, detail="MCP server not available")
 
         await _ensure_mcp_initialized()
 
         if not llama_engine:
-            raise HTTPException(status_code=503, detail="Llama engine not available")
+            raise HTTPException(
+                status_code=503, detail="Llama engine not available")
 
         # Determine chat context
         message = request.message.lower()
@@ -2982,7 +3333,8 @@ async def mcp_chat(request: MCPChatRequest):
                         TradingContext(
                             symbol=symbol,
                             current_price=signal.entry_price,
-                            technical_signals=signal.metadata.get("technical_signals", {}),
+                            technical_signals=signal.metadata.get(
+                                "technical_signals", {}),
                             market_data=signal.metadata.get("market_data", {})
                         )
                     )
@@ -3057,12 +3409,14 @@ async def mcp_chat(request: MCPChatRequest):
         logger.error(f"MCP chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/mcp/predict")
 async def mcp_predict(request: PredictionRequest):
     """MCP-powered prediction ranking with natural language interpretation"""
     try:
         if not MCP_AVAILABLE:
-            raise HTTPException(status_code=503, detail="MCP server not available")
+            raise HTTPException(
+                status_code=503, detail="MCP server not available")
 
         # Initialize MCP components if needed
         await _ensure_mcp_initialized()
@@ -3107,12 +3461,14 @@ async def mcp_predict(request: PredictionRequest):
         logger.error(f"MCP prediction error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/mcp/scan")
 async def mcp_scan(request: ScanRequest):
     """MCP-powered stock scanning with filtered shortlists"""
     try:
         if not MCP_AVAILABLE:
-            raise HTTPException(status_code=503, detail="MCP server not available")
+            raise HTTPException(
+                status_code=503, detail="MCP server not available")
 
         # Initialize MCP components if needed
         await _ensure_mcp_initialized()
@@ -3156,6 +3512,7 @@ async def mcp_scan(request: ScanRequest):
         logger.error(f"MCP scan error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/mcp/status")
 async def get_mcp_status():
     """Get MCP server and agent status"""
@@ -3187,15 +3544,18 @@ async def get_mcp_status():
 # PRODUCTION-LEVEL API ENDPOINTS
 # ============================================================================
 
+
 @app.get("/api/production/signal-performance")
 async def get_signal_performance():
     """Get signal collection performance metrics"""
     try:
         if not trading_bot or not trading_bot.is_running:
-            raise HTTPException(status_code=503, detail="Trading bot not running")
+            raise HTTPException(
+                status_code=503, detail="Trading bot not running")
 
         if not PRODUCTION_CORE_AVAILABLE or 'signal_collector' not in trading_bot.production_components:
-            raise HTTPException(status_code=503, detail="Production signal collector not available")
+            raise HTTPException(
+                status_code=503, detail="Production signal collector not available")
 
         signal_collector = trading_bot.production_components['signal_collector']
         performance_metrics = signal_collector.get_performance_metrics()
@@ -3212,15 +3572,18 @@ async def get_signal_performance():
         logger.error(f"Error getting signal performance: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/production/risk-metrics")
 async def get_risk_metrics():
     """Get integrated risk management metrics"""
     try:
         if not trading_bot or not trading_bot.is_running:
-            raise HTTPException(status_code=503, detail="Trading bot not running")
+            raise HTTPException(
+                status_code=503, detail="Trading bot not running")
 
         if not PRODUCTION_CORE_AVAILABLE or 'risk_manager' not in trading_bot.production_components:
-            raise HTTPException(status_code=503, detail="Production risk manager not available")
+            raise HTTPException(
+                status_code=503, detail="Production risk manager not available")
 
         risk_manager = trading_bot.production_components['risk_manager']
         risk_metrics = risk_manager.get_risk_metrics()
@@ -3237,15 +3600,18 @@ async def get_risk_metrics():
         logger.error(f"Error getting risk metrics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/production/make-decision")
 async def make_production_decision(request: dict):
     """Make a production-level trading decision using all components"""
     try:
         if not trading_bot or not trading_bot.is_running:
-            raise HTTPException(status_code=503, detail="Trading bot not running")
+            raise HTTPException(
+                status_code=503, detail="Trading bot not running")
 
         if not PRODUCTION_CORE_AVAILABLE:
-            raise HTTPException(status_code=503, detail="Production components not available")
+            raise HTTPException(
+                status_code=503, detail="Production components not available")
 
         symbol = request.get('symbol', '')
         if not symbol:
@@ -3266,15 +3632,18 @@ async def make_production_decision(request: dict):
         logger.error(f"Error making production decision: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/production/learning-insights")
 async def get_learning_insights():
     """Get continuous learning engine insights"""
     try:
         if not trading_bot or not trading_bot.is_running:
-            raise HTTPException(status_code=503, detail="Trading bot not running")
+            raise HTTPException(
+                status_code=503, detail="Trading bot not running")
 
         if not PRODUCTION_CORE_AVAILABLE or 'learning_engine' not in trading_bot.production_components:
-            raise HTTPException(status_code=503, detail="Production learning engine not available")
+            raise HTTPException(
+                status_code=503, detail="Production learning engine not available")
 
         learning_engine = trading_bot.production_components['learning_engine']
         insights = learning_engine.get_learning_insights()
@@ -3291,15 +3660,18 @@ async def get_learning_insights():
         logger.error(f"Error getting learning insights: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/production/decision-history")
 async def get_decision_history(days: int = 7):
     """Get decision audit trail history"""
     try:
         if not trading_bot or not trading_bot.is_running:
-            raise HTTPException(status_code=503, detail="Trading bot not running")
+            raise HTTPException(
+                status_code=503, detail="Trading bot not running")
 
         if not PRODUCTION_CORE_AVAILABLE or 'audit_trail' not in trading_bot.production_components:
-            raise HTTPException(status_code=503, detail="Production audit trail not available")
+            raise HTTPException(
+                status_code=503, detail="Production audit trail not available")
 
         audit_trail = trading_bot.production_components['audit_trail']
         history = audit_trail.get_decision_history(days=days)
@@ -3315,6 +3687,7 @@ async def get_decision_history(days: int = 7):
     except Exception as e:
         logger.error(f"Error getting decision history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 async def _ensure_mcp_initialized():
     """Ensure MCP components are initialized"""
@@ -3332,7 +3705,8 @@ async def _ensure_mcp_initialized():
             # Security: Mask sensitive data in logs
             masked_token = f"{fyers_access_token[:8]}***{fyers_access_token[-4:]}" if fyers_access_token else "None"
             masked_client_id = f"{fyers_client_id[:8]}***{fyers_client_id[-4:]}" if fyers_client_id else "None"
-            logger.info(f"Initializing Fyers client with token: {masked_token}, client_id: {masked_client_id}")
+            logger.info(
+                f"Initializing Fyers client with token: {masked_token}, client_id: {masked_client_id}")
 
             fyers_config = {
                 "fyers_access_token": fyers_access_token,
@@ -3386,7 +3760,7 @@ async def _ensure_mcp_initialized():
             from mcp_server.tools.execution_tool import ExecutionTool
             from mcp_server.tools.portfolio_tool import PortfolioTool
             from mcp_server.tools.risk_management_tool import RiskManagementTool
-            
+
             # Initialize tools
             prediction_tool = PredictionTool({
                 "tool_id": "prediction_tool",
@@ -3394,14 +3768,14 @@ async def _ensure_mcp_initialized():
                 "ollama_host": "http://localhost:11434",
                 "ollama_model": "llama3.1:8b"
             })
-            
+
             scan_tool = ScanTool({
                 "tool_id": "scan_tool",
                 "ollama_enabled": True,
                 "ollama_host": "http://localhost:11434",
                 "ollama_model": "llama3.1:8b"
             })
-            
+
             execution_tool = ExecutionTool({
                 "tool_id": "execution_tool",
                 "trading_mode": "paper",
@@ -3409,13 +3783,13 @@ async def _ensure_mcp_initialized():
                 "max_position_size": 0.25,
                 "daily_loss_limit": 0.05
             })
-            
+
             portfolio_tool = PortfolioTool({
                 "tool_id": "portfolio_tool",
                 "portfolio_agent": {},
                 "risk_agent": {}
             })
-            
+
             risk_management_tool = RiskManagementTool({
                 "tool_id": "risk_management_tool",
                 "risk_agent": {},
@@ -3425,7 +3799,7 @@ async def _ensure_mcp_initialized():
                 "correlation_limit": 0.8,
                 "liquidity_threshold": 0.3
             })
-            
+
             # Register prediction tool
             mcp_server.register_tool(
                 name="predict",
@@ -3449,7 +3823,7 @@ async def _ensure_mcp_initialized():
                     "required": []
                 }
             )
-            
+
             # Register scan tool
             mcp_server.register_tool(
                 name="scan_all",
@@ -3486,7 +3860,7 @@ async def _ensure_mcp_initialized():
                     "required": []
                 }
             )
-            
+
             # Register execution tool
             mcp_server.register_tool(
                 name="execute_trade",
@@ -3506,7 +3880,7 @@ async def _ensure_mcp_initialized():
                     "required": ["symbol", "side", "quantity"]
                 }
             )
-            
+
             # Register portfolio analysis tool
             mcp_server.register_tool(
                 name="analyze_portfolio",
@@ -3524,7 +3898,7 @@ async def _ensure_mcp_initialized():
                     "required": ["portfolio_id"]
                 }
             )
-            
+
             # Register portfolio optimization tool
             mcp_server.register_tool(
                 name="optimize_portfolio",
@@ -3547,7 +3921,7 @@ async def _ensure_mcp_initialized():
                     "required": ["portfolio_id"]
                 }
             )
-            
+
             # Register risk assessment tool
             mcp_server.register_tool(
                 name="assess_portfolio_risk",
@@ -3568,7 +3942,7 @@ async def _ensure_mcp_initialized():
                     "required": ["portfolio_id"]
                 }
             )
-            
+
             # Register position risk assessment tool
             mcp_server.register_tool(
                 name="assess_position_risk",
@@ -3590,6 +3964,7 @@ async def _ensure_mcp_initialized():
     except Exception as e:
         logger.error(f"MCP initialization error: {e}")
         raise
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -3642,6 +4017,7 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception as cleanup_error:
             logger.error(f"Error during WebSocket cleanup: {cleanup_error}")
 
+
 def run_web_server(host='127.0.0.1', port=5000, debug=False):
     """Run the FastAPI web server with uvicorn"""
     try:
@@ -3670,6 +4046,7 @@ def run_web_server(host='127.0.0.1', port=5000, debug=False):
         logger.error(f"Error running web server: {e}")
         raise
 
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize the trading bot on startup with data service health check"""
@@ -3689,7 +4066,8 @@ async def startup_event():
             ]
             data_client.update_watchlist(comprehensive_watchlist)
         else:
-            logger.warning("*** DATA SERVICE NOT AVAILABLE - FALLBACK MODE ***")
+            logger.warning(
+                "*** DATA SERVICE NOT AVAILABLE - FALLBACK MODE ***")
             logger.info("Backend will use Yahoo Finance and mock data")
 
         initialize_bot()
@@ -3714,14 +4092,18 @@ async def startup_event():
                 # Check Dhan credentials before starting sync service
                 dhan_client_id = os.getenv("DHAN_CLIENT_ID")
                 dhan_access_token = os.getenv("DHAN_ACCESS_TOKEN")
-                
+
                 if not dhan_client_id or not dhan_access_token:
-                    logger.error("DHAN_CLIENT_ID or DHAN_ACCESS_TOKEN not found in environment variables")
-                    logger.error("Please set these in your .env file to enable live trading")
+                    logger.error(
+                        "DHAN_CLIENT_ID or DHAN_ACCESS_TOKEN not found in environment variables")
+                    logger.error(
+                        "Please set these in your .env file to enable live trading")
                 else:
-                    sync_service = start_sync_service(sync_interval=30)  # Sync every 30 seconds
+                    sync_service = start_sync_service(
+                        sync_interval=30)  # Sync every 30 seconds
                     if sync_service:
-                        logger.info("🚀 Dhan real-time sync service started (30s interval)")
+                        logger.info(
+                            "🚀 Dhan real-time sync service started (30s interval)")
                     else:
                         logger.warning("Failed to start Dhan sync service")
             except Exception as sync_error:
@@ -3751,11 +4133,14 @@ async def startup_event():
 
                 # Priority 3: Validate fallback config with integrated validator
                 try:
-                    validated_config = ConfigValidator.validate_config(minimal_config)
+                    validated_config = ConfigValidator.validate_config(
+                        minimal_config)
                     trading_bot = WebTradingBot(validated_config)
-                    logger.info("Level 1 fallback trading bot initialized successfully")
+                    logger.info(
+                        "Level 1 fallback trading bot initialized successfully")
                 except ConfigurationError as config_error:
-                    logger.error(f"Level 1 configuration validation failed: {config_error}")
+                    logger.error(
+                        f"Level 1 configuration validation failed: {config_error}")
 
                     # Level 2: Ultra-minimal configuration
                     try:
@@ -3767,19 +4152,24 @@ async def startup_event():
                             "max_capital_per_trade": 0.25,
                             "sleep_interval": 300
                         }
-                        validated_ultra_config = ConfigValidator.validate_config(ultra_minimal_config)
+                        validated_ultra_config = ConfigValidator.validate_config(
+                            ultra_minimal_config)
                         trading_bot = WebTradingBot(validated_ultra_config)
-                        logger.warning("Level 2 ultra-minimal fallback initialized - limited functionality")
+                        logger.warning(
+                            "Level 2 ultra-minimal fallback initialized - limited functionality")
                     except Exception as level2_error:
-                        logger.error(f"All fallback levels failed: {level2_error}")
+                        logger.error(
+                            f"All fallback levels failed: {level2_error}")
                         trading_bot = None
                 except Exception as level1_error:
                     logger.error(f"Level 1 fallback failed: {level1_error}")
                     trading_bot = None
 
         except Exception as fallback_error:
-            logger.error(f"Complete fallback initialization failed: {fallback_error}")
+            logger.error(
+                f"Complete fallback initialization failed: {fallback_error}")
             trading_bot = None
+
 
 @app.get("/api/monitoring")
 async def get_monitoring_stats():
@@ -3802,7 +4192,9 @@ async def get_monitoring_stats():
         return stats
     except Exception as e:
         logger.error(f"Error getting monitoring stats: {e}")
-        raise HTTPException(status_code=500, detail="Error retrieving monitoring data")
+        raise HTTPException(
+            status_code=500, detail="Error retrieving monitoring data")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -3857,10 +4249,14 @@ async def shutdown_event():
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Indian Stock Trading Bot Web Interface (FastAPI)")
-    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=5000, help="Port to bind to (default: 5000)")
-    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser = argparse.ArgumentParser(
+        description="Indian Stock Trading Bot Web Interface (FastAPI)")
+    parser.add_argument("--host", default="127.0.0.1",
+                        help="Host to bind to (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=5000,
+                        help="Port to bind to (default: 5000)")
+    parser.add_argument("--debug", action="store_true",
+                        help="Enable debug mode")
 
     args = parser.parse_args()
 
@@ -3873,6 +4269,8 @@ if __name__ == "__main__":
         sys.exit(1)
 
 # New API endpoints for RL scanning system
+
+
 @app.post("/api/scan_all")
 async def scan_all():
     """Trigger full market scan"""
@@ -3884,27 +4282,28 @@ async def scan_all():
         logger.error(f"Scan failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/analyze")
 async def analyze_stocks(request: AnalyzeRequest):
     """Analyze custom tickers and return entry/exit points with confidence"""
     try:
         from testindia import Stock  # Import your existing analysis logic
         results = {}
-        
+
         for ticker in request.tickers:
             try:
                 # Use existing Stock class for analysis
                 stock = Stock(ticker)
-                
+
                 # Get basic analysis (simplified - enhance based on your Stock class methods)
                 price_data = stock.get_current_price()
                 sentiment = stock.get_sentiment_score()
-                
+
                 # Calculate entry/exit based on current implementation
                 entry_price = price_data * 0.98  # 2% below current
                 exit_price = price_data * 1.05   # 5% above current
                 confidence = min(sentiment * 0.8, 0.95)  # Cap at 95%
-                
+
                 results[ticker] = {
                     "entry": round(entry_price, 2),
                     "exit": round(exit_price, 2),
@@ -3915,11 +4314,12 @@ async def analyze_stocks(request: AnalyzeRequest):
             except Exception as e:
                 logger.error(f"Analysis failed for {ticker}: {e}")
                 results[ticker] = {"error": str(e)}
-        
+
         return results
     except Exception as e:
         logger.error(f"Analyze endpoint error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/update_risk")
 async def update_risk(request: UpdateRiskRequest):
@@ -3931,13 +4331,14 @@ async def update_risk(request: UpdateRiskRequest):
             request.drawdown_limit_pct
         )
         return {
-            "status": "updated", 
+            "status": "updated",
             "message": "Risk profile updated in live_config.json",
             "new_settings": risk_engine.get_risk_settings()
         }
     except Exception as e:
         logger.error(f"Risk update failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/shortlist")
 async def get_shortlist():
@@ -3946,7 +4347,7 @@ async def get_shortlist():
         from datetime import datetime
         date_str = datetime.now().strftime("%Y%m%d")
         shortlist_file = f"logs/shortlist_{date_str}.json"
-        
+
         if os.path.exists(shortlist_file):
             with open(shortlist_file, 'r') as f:
                 data = json.load(f)
@@ -3956,6 +4357,7 @@ async def get_shortlist():
     except Exception as e:
         logger.error(f"Error getting shortlist: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/tracking_stats")
 async def get_tracking_stats():
