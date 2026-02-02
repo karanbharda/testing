@@ -108,6 +108,10 @@ class EnvironmentManager:
     def get_log_level(self) -> str:
         """Get configured log level"""
         return os.getenv('LOG_LEVEL', 'INFO').upper()
+    
+    def get_env(self, key: str, default: str = '') -> str:
+        """Get environment variable with default"""
+        return os.getenv(key, default)
 
 # Global instance
 _env_manager = None

@@ -3,18 +3,18 @@ LLM Integration Module
 =====================
 
 Provides LLM (Large Language Model) integration for the MCP service.
-Supports Ollama/Llama models for reasoning and decision-making.
+Supports Groq models for reasoning and decision-making.
 """
 
-from .llama_integration import (
-    LlamaReasoningEngine,
+from .groq_integration import (
+    GroqReasoningEngine,
     TradingContext,
-    LlamaResponse
+    GroqResponse
 )
 
 __all__ = [
-    "LlamaReasoningEngine",
+    "GroqReasoningEngine",
     "TradingContext",
-    "LlamaResponse"
+    "GroqResponse"
 ]
 

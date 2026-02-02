@@ -1,0 +1,29 @@
+{
+  "id": "EQ_INTRADAY_001",
+  "domain": "EQUITY",
+  "priority": 3,
+  "exchange": ["NSE", "BSE"],
+  "applicable_to": ["INTRADAY"],
+  "trigger_type": "TIME",
+
+  "explanation_blocks": {
+    "primary": [
+      "Intraday positions must be squared off before market close",
+      "Open positions cannot be carried forward"
+    ],
+    "secondary": [
+      "This is a standard broker RMS rule",
+      "Applies across all intraday trades"
+    ]
+  },
+
+  "allowed_language": [
+    "intraday square-off",
+    "broker RMS"
+  ],
+
+  "forbidden_language": [
+    "AI",
+    "system choice"
+  ]
+}

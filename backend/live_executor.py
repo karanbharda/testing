@@ -29,10 +29,18 @@ class LiveTradingExecutor:
 
     def __init__(self, portfolio_manager: DualPortfolioManager, config: Dict):
         self.portfolio_manager = portfolio_manager
+        # Ensure config is a dictionary
+        if config is None:
+            config = {}
+        elif not isinstance(config, dict):
+            logger.warning(f"Invalid config type: {type(config)}, converting to empty dict")
+            config = {}
+        
         self.config = config
-        self.stop_loss_pct = config.get("stop_loss_pct", 0.05)
-        self.max_capital_per_trade = config.get("max_capital_per_trade", 0.25)
-        self.max_trade_limit = config.get("max_trade_limit", 150)
+        self.stop_loss_pct = self.config.get("stop_loss_pct", 0.05)
+        self.max_capital_per_trade = self.config.get(
+            "max_capital_per_trade", 0.25)
+        self.max_trade_limit = self.config.get("max_trade_limit", 150)
 
         # Initialize all attributes before any method calls
         # Trading state
@@ -60,10 +68,17 @@ class LiveTradingExecutor:
         if self.portfolio_manager.current_mode != "live":
             self.portfolio_manager.switch_mode("live")
 
-        # Initialize Dhan client
+        # Initialize Dhan client - try config first, then environment variables
+        dhan_client_id = config.get("dhan_client_id") or os.getenv("DHAN_CLIENT_ID")
+        dhan_access_token = config.get("dhan_access_token") or os.getenv("DHAN_ACCESS_TOKEN")
+        
+        if not dhan_client_id or not dhan_access_token:
+            logger.error("Dhan credentials not found in config or environment variables")
+            raise ValueError("Dhan credentials required for live trading")
+        
         self.dhan_client = DhanAPIClient(
-            client_id=config.get("dhan_client_id"),
-            access_token=config.get("dhan_access_token")
+            client_id=dhan_client_id,
+            access_token=dhan_access_token
         )
 
         # Sync portfolio with Dhan account on initialization
@@ -369,6 +384,97 @@ class LiveTradingExecutor:
             if session:
                 session.close()
 
+    def _adjust_quantity_based_on_funds(self, symbol: str, price: float, requested_quantity: int) -> int:
+        """Adjust quantity based on available funds, using database as fallback when Dhan API fails"""
+        try:
+            # First, try to get funds from Dhan API
+            try:
+                funds = self.dhan_client.get_funds()
+                logger.debug(f"Raw Dhan funds response: {funds}")
+                
+                # Try multiple possible keys that Dhan API might return for available cash
+                possible_keys = [
+                    'availableBalance', 'availablebalance', 'available_balance',
+                    'sodLimit', 'sodlimit', 'sod_limit',
+                    'netBalance', 'netbalance', 'net_balance',
+                    'availablecash', 'available_cash', 'availableCash',
+                    'netAvailableMargin', 'netAvailableCash',
+                    'usableCash', 'usable_cash', 'UsableCash',
+                    'cash', 'Cash'
+                ]
+                
+                available_cash = 0
+                for key in possible_keys:
+                    if key in funds and funds[key] is not None:
+                        try:
+                            available_cash = float(funds[key])
+                            logger.debug(f"Found available cash in key '{key}': Rs.{available_cash:.2f}")
+                            break
+                        except (ValueError, TypeError):
+                            continue
+                
+                # If still zero, try to find any field containing 'cash' or 'balance' with a numeric value
+                if available_cash == 0:
+                    for key, value in funds.items():
+                        if ('cash' in key.lower() or 'balance' in key.lower() or 'margin' in key.lower()) and value is not None:
+                            try:
+                                available_cash = float(value)
+                                logger.debug(f"Found available cash in '{key}' (fallback): Rs.{available_cash:.2f}")
+                                break
+                            except (ValueError, TypeError):
+                                continue
+                
+                logger.debug(
+                    f"Dhan API funds available: Rs.{available_cash:.2f}")
+            except Exception as api_error:
+                logger.warning(
+                    f"Dhan API funds fetch failed: {api_error}. Falling back to database.")
+                # Fall back to database funds
+                available_cash = 0
+                session = self.portfolio_manager.db.Session()
+                try:
+                    portfolio = session.query(
+                        Portfolio).filter_by(mode='live').first()
+                    if portfolio:
+                        available_cash = portfolio.cash
+                        logger.debug(
+                            f"Database funds available: Rs.{available_cash:.2f}")
+                except Exception as db_error:
+                    logger.error(
+                        f"Failed to get funds from database: {db_error}")
+                finally:
+                    if session:
+                        session.close()
+
+            # Calculate required amount
+            required_amount = price * requested_quantity
+
+            logger.info(
+                f"Funds check - Available: Rs.{available_cash:.2f}, Required: Rs.{required_amount:.2f} for {requested_quantity} shares")
+
+            # If we have enough funds, return the requested quantity
+            if available_cash >= required_amount:
+                return requested_quantity
+
+            # Otherwise, calculate maximum affordable quantity
+            max_affordable_quantity = int(available_cash // price)
+
+            # Ensure we return at least 1 share if funds allow for it
+            if max_affordable_quantity >= 1:
+                logger.info(
+                    f"Adjusted quantity from {requested_quantity} to {max_affordable_quantity} based on available funds")
+                return max_affordable_quantity
+            else:
+                logger.warning(
+                    f"Insufficient funds to buy even 1 share of {symbol} at Rs.{price:.2f} (requires Rs.{price:.2f}, available Rs.{available_cash:.2f})")
+                return 0
+
+        except Exception as e:
+            logger.error(
+                f"Error adjusting quantity based on funds for {symbol}: {e}")
+            # In case of error, return the requested quantity (let the API handle the failure)
+            return requested_quantity
+
     def execute_buy_order(self, symbol: str, signal_data: Dict) -> Dict:
         """Execute a buy order through Dhan API with database recording"""
         try:
@@ -397,20 +503,27 @@ class LiveTradingExecutor:
                     f"Using trading signal price for {symbol}: Rs.{current_price:.2f}")
 
             # Use provided quantity if available, otherwise calculate
-            quantity = signal_data.get("quantity", 0)
-            if quantity <= 0:
+            requested_quantity = signal_data.get("quantity", 0)
+            if requested_quantity <= 0:
                 # Calculate position size if no quantity provided
                 signal_strength = signal_data.get("confidence", 0.5)
-                quantity = self.calculate_position_size(
+                requested_quantity = self.calculate_position_size(
                     symbol, current_price, signal_strength)
 
-            if quantity <= 0:
+            if requested_quantity <= 0:
                 return {"success": False, "message": "Insufficient funds or invalid quantity"}
+
+            # Check available funds and adjust quantity if needed
+            adjusted_quantity = self._adjust_quantity_based_on_funds(
+                symbol, current_price, requested_quantity)
+
+            if adjusted_quantity <= 0:
+                return {"success": False, "message": "Insufficient funds for purchase"}
 
             # Place market buy order
             order_response = self.dhan_client.place_order(
                 symbol=symbol,
-                quantity=quantity,
+                quantity=adjusted_quantity,
                 order_type="MARKET",
                 side="BUY"
             )
@@ -420,7 +533,7 @@ class LiveTradingExecutor:
                 # Track pending order
                 self.pending_orders[order_id] = {
                     "symbol": symbol,
-                    "quantity": quantity,
+                    "quantity": adjusted_quantity,
                     "side": "BUY",
                     "price": current_price,
                     "timestamp": datetime.now().isoformat(),
@@ -432,13 +545,13 @@ class LiveTradingExecutor:
                     self.portfolio_manager.record_trade(
                         ticker=symbol,
                         action="buy",
-                        quantity=quantity,
+                        quantity=adjusted_quantity,
                         price=current_price,
                         stop_loss=signal_data.get("stop_loss"),
                         take_profit=signal_data.get("take_profit")
                     )
                     logger.info(
-                        f"✅ Buy trade executed successfully: {quantity} {symbol} at Rs.{current_price:.2f}")
+                        f"✅ Buy trade executed successfully: {adjusted_quantity} {symbol} at Rs.{current_price:.2f}")
                 except Exception as db_error:
                     logger.error(
                         f"❌ Failed to record buy trade in database: {db_error}")
@@ -447,16 +560,16 @@ class LiveTradingExecutor:
                 self._update_daily_trade_count()
 
                 logger.info(
-                    f"Buy order placed: {quantity} {symbol} at Rs.{current_price:.2f}")
+                    f"Buy order placed: {adjusted_quantity} {symbol} at Rs.{current_price:.2f}")
                 logger.info(f"   Order ID: {order_id}")
 
                 return {
                     "success": True,
                     "order_id": order_id,
                     "symbol": symbol,
-                    "quantity": quantity,
+                    "quantity": adjusted_quantity,
                     "price": current_price,
-                    "message": f"Buy order placed for {quantity} shares of {symbol}"
+                    "message": f"Buy order placed for {adjusted_quantity} shares of {symbol}"
                 }
             else:
                 logger.error(

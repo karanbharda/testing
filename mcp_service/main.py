@@ -41,7 +41,7 @@ async def main():
         
         # Import MCP components
         from mcp_service.server.mcp_trading_server import MCPTradingServer
-        from mcp_service.llm import LlamaReasoningEngine
+        from mcp_service.llm import GroqReasoningEngine
         from mcp_service.chat import ChatHandler
         from mcp_service.agents import TradingAgent
         
@@ -51,11 +51,11 @@ async def main():
                 "monitoring_port": int(os.getenv("MCP_MONITORING_PORT", "8002")),
                 "max_sessions": int(os.getenv("MCP_MAX_SESSIONS", "100"))
             },
-            "llama": {
-                "llama_base_url": os.getenv("LLAMA_BASE_URL", "http://localhost:11434"),
-                "llama_model": os.getenv("LLAMA_MODEL", "llama3.1:8b"),
-                "max_tokens": int(os.getenv("LLAMA_MAX_TOKENS", "2048")),
-                "temperature": float(os.getenv("LLAMA_TEMPERATURE", "0.7"))
+            "groq": {
+                "groq_api_key": os.getenv("GROQ_API_KEY", ""),
+                "groq_model": os.getenv("GROQ_MODEL", "llama3-8b-8192"),
+                "max_tokens": int(os.getenv("GROQ_MAX_TOKENS", "2048")),
+                "temperature": float(os.getenv("GROQ_TEMPERATURE", "0.7"))
             },
             "chat": {
                 "max_history": int(os.getenv("CHAT_MAX_HISTORY", "50"))
@@ -71,13 +71,13 @@ async def main():
         
         # Initialize LLM engine
         logger.info("Initializing LLM Engine...")
-        llama_engine = LlamaReasoningEngine(config["llama"])
+        groq_engine = GroqReasoningEngine(config["groq"])
         
         # Initialize Chat Handler
         logger.info("Initializing Chat Handler...")
         chat_handler = ChatHandler({
             **config["chat"],
-            "llama": config["llama"],
+            "groq": config["groq"],
             "trading_agent": config["trading_agent"]
         })
         
@@ -85,14 +85,14 @@ async def main():
         logger.info("Initializing Trading Agent...")
         trading_agent = TradingAgent({
             **config["trading_agent"],
-            "llama": config["llama"]
+            "groq": config["groq"]
         })
         await trading_agent.initialize()
         
         logger.info("=" * 60)
         logger.info("MCP Service started successfully!")
         logger.info(f"Monitoring port: {config['mcp']['monitoring_port']}")
-        logger.info(f"LLM Model: {config['llama']['llama_model']}")
+        logger.info(f"LLM Model: {config['groq']['groq_model']}")
         logger.info("=" * 60)
         
         # Health check

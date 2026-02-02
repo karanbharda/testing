@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""
+Finance KB Requirements
+=======================
+
+Dependencies for the Finance Knowledge Base system.
+"""
+
+# Core dependencies
+numpy>=1.21.0
+pandas>=1.3.0
+
+# Semantic embeddings
+sentence-transformers>=2.2.0
+
+# Optional but recommended
+scikit-learn>=1.0.0  # For additional NLP features
+nltk>=3.6.0          # Natural language processing
+
+# Development dependencies (optional)
+pytest>=7.0.0        # Testing
+black>=22.0.0        # Code formatting
+pylint>=2.0.0        # Code linting

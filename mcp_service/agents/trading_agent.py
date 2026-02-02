@@ -26,8 +26,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 # Critical Fix: Use TYPE_CHECKING for type hints only
 if TYPE_CHECKING:
-    from ..llm import LlamaReasoningEngine, TradingContext, LlamaResponse
-    from fyers_client import FyersAPIClient
+    from ..llm import GroqReasoningEngine, TradingContext, GroqResponse
+    from backend.fyers_client import FyersAPIClient
     from ..tools.market_analysis_tool import MarketAnalysisTool
 
 # Runtime imports will be done lazily in methods
@@ -83,7 +83,7 @@ class TradingAgent:
     Intelligent Trading Agent with Advanced AI Capabilities
     
     Features:
-    - Multi-step reasoning with Llama AI
+    - Multi-step reasoning with Groq AI
     - Adaptive strategy selection
     - Continuous learning from trades
     - Risk-aware position sizing
@@ -97,7 +97,7 @@ class TradingAgent:
         self.state = AgentState.IDLE
         
         # Critical Fix: Initialize components with lazy loading
-        self._llama_engine = None
+        self._groq_engine = None
         self._fyers_client = None
         self._market_analyzer = None
         
@@ -129,30 +129,30 @@ class TradingAgent:
         
         logger.info(f"Trading Agent {self.agent_id} initialized with enhanced ML integration")
 
-    def _get_llama_engine(self):
+    def _get_groq_engine(self):
         """Critical Fix: Lazy import to prevent circular dependencies"""
-        if self._llama_engine is None:
+        if self._groq_engine is None:
             try:
-                from ..llm.llama_integration import LlamaReasoningEngine
-                llama_config = self.config.get("llama", {})
-                if llama_config:
-                    self._llama_engine = LlamaReasoningEngine(llama_config)
+                from ..llm import GroqReasoningEngine
+                groq_config = self.config.get("groq", {})
+                if groq_config:
+                    self._groq_engine = GroqReasoningEngine(groq_config)
                 else:
-                    logger.warning("No llama config provided")
-                    self._llama_engine = False
+                    logger.warning("No groq config provided")
+                    self._groq_engine = False
             except ImportError as e:
-                logger.error(f"Failed to import LlamaReasoningEngine: {e}")
-                self._llama_engine = False
+                logger.error(f"Failed to import GroqReasoningEngine: {e}")
+                self._groq_engine = False
             except Exception as e:
-                logger.error(f"Failed to initialize LlamaReasoningEngine: {e}")
-                self._llama_engine = False
-        return self._llama_engine if self._llama_engine is not False else None
+                logger.error(f"Failed to initialize GroqReasoningEngine: {e}")
+                self._groq_engine = False
+        return self._groq_engine if self._groq_engine is not False else None
 
     def _get_fyers_client(self):
         """Critical Fix: Lazy import to prevent circular dependencies"""
         if self._fyers_client is None:
             try:
-                from fyers_client import FyersAPIClient
+                from backend.fyers_client import FyersAPIClient
                 self._fyers_client = FyersAPIClient(self.config.get("fyers", {}))
             except ImportError as e:
                 logger.error(f"Failed to import FyersAPIClient: {e}")
@@ -173,12 +173,12 @@ class TradingAgent:
     async def initialize(self):
         """Initialize agent components"""
         try:
-            # Initialize Llama reasoning engine (lazy import)
-            llama_engine = self._get_llama_engine()
-            if llama_engine:
-                self.llama_engine = llama_engine
+            # Initialize Groq reasoning engine (lazy import)
+            groq_engine = self._get_groq_engine()
+            if groq_engine:
+                self.groq_engine = groq_engine
             else:
-                logger.warning("Llama engine not available - continuing without it")
+                logger.warning("Groq engine not available - continuing without it")
             
             # Initialize Fyers client (lazy import)
             fyers_client = self._get_fyers_client()
@@ -207,7 +207,7 @@ class TradingAgent:
         
         This is the main decision-making pipeline:
         1. Market analysis with technical indicators
-        2. AI-powered reasoning with Llama
+    - Multi-step reasoning with Groq AI
         3. Risk assessment and position sizing
         4. Final decision synthesis
         """
@@ -248,8 +248,8 @@ class TradingAgent:
                 )
             
             # Get AI decision
-            async with self.llama_engine:
-                ai_decision = await self.llama_engine.analyze_market_decision(trading_context)
+            async with self.groq_engine:
+                ai_decision = await self.groq_engine.analyze_market_decision(trading_context)
             
             # Step 4: ENHANCED ML Integration - Get ensemble predictions
             ensemble_predictions = await self._get_ensemble_ml_predictions(trading_context)
@@ -534,7 +534,7 @@ class TradingAgent:
             logger.error(f"RL prediction error: {e}")
             return None
     
-    async def _assess_trade_risk(self, context: "TradingContext", ai_decision: "LlamaResponse", ensemble_predictions: Dict[str, Any]) -> Dict[str, Any]:
+    async def _assess_trade_risk(self, context: "TradingContext", ai_decision: "GroqResponse", ensemble_predictions: Dict[str, Any]) -> Dict[str, Any]:
         """Assess comprehensive trade risk"""
         try:
             # Prepare risk assessment data
@@ -548,8 +548,8 @@ class TradingAgent:
             }
             
             # Get AI risk assessment
-            async with self.llama_engine:
-                risk_response = await self.llama_engine.assess_trade_risk(
+            async with self.groq_engine:
+                risk_response = await self.groq_engine.assess_trade_risk(
                     trade_details, context.portfolio_context
                 )
             
@@ -667,7 +667,7 @@ class TradingAgent:
             return 0.05  # Conservative 5% default
     
     def _synthesize_trading_signal(self, symbol: str, context: "TradingContext",
-                                 ai_decision: "LlamaResponse", risk_assessment: Dict[str, Any],
+                                 ai_decision: "GroqResponse", risk_assessment: Dict[str, Any],
                                  position_size: float, ensemble_predictions: Dict[str, Any]) -> TradingSignal:
         """Synthesize final trading signal from all analysis"""
         try:

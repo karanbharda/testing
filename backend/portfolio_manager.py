@@ -121,8 +121,19 @@ class DualPortfolioManager:
 
             session.commit()
             logger.info("Loading mode after database initialization")
-            self.load_mode(self.current_mode)
-            logger.info("Mode loaded successfully")
+            # Check if portfolio exists before attempting to load
+            portfolio_exists = session.query(Portfolio).filter_by(
+                mode=self.current_mode).first() is not None
+            if portfolio_exists:
+                self.load_mode(self.current_mode)
+                logger.info("Mode loaded successfully")
+            else:
+                logger.warning(
+                    f"Portfolio for {self.current_mode} mode does not exist yet, skipping load")
+                # Set up basic portfolio structure
+                self.current_portfolio = None
+                self.current_holdings_dict = {}
+                self.config_data = {}
 
         except Exception as e:
             session.rollback()
@@ -151,9 +162,29 @@ class DualPortfolioManager:
             # Load portfolio from database
             portfolio = session.query(Portfolio).filter_by(mode=mode).first()
             if not portfolio:
-                raise ValueError(f"Portfolio not found for mode: {mode}")
+                # Create portfolio if it doesn't exist
+                logger.info(f"Creating new {mode} portfolio")
+                initial_balance = 50000.0 if mode == "paper" else 100000.0  # Default balance
+                portfolio = Portfolio(
+                    mode=mode,
+                    cash=initial_balance,
+                    starting_balance=initial_balance,
+                    realized_pnl=0.0,
+                    unrealized_pnl=0.0,
+                    last_updated=datetime.now()
+                )
+                session.add(portfolio)
+                session.flush()  # Get the ID without committing everything
 
+            # Commit after setting the portfolio
+            session.commit()
+            
             self.current_portfolio = portfolio
+            
+            # Log message only if portfolio was newly created
+            if 'initial_balance' in locals():
+                logger.info(
+                    f"Created new {mode} portfolio with initial balance: {initial_balance}")
             self.current_holdings_dict = {}  # Initialize holdings dict
 
             # Load holdings from database into holdings dict for backward compatibility

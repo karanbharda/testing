@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 # Global references to MCP components
 chat_handler = None
-llama_engine = None
 trading_agent = None
 
 # Request/Response models
@@ -89,16 +88,14 @@ async def health_check():
     return {
         "status": "healthy" if chat_handler else "not_ready",
         "chat_handler": chat_handler is not None,
-        "llama_engine": llama_engine is not None,
         "trading_agent": trading_agent is not None,
         "timestamp": datetime.now().isoformat()
     }
 
-def initialize_api(chat_hdlr, llama_eng=None, trading_agt=None):
+def initialize_api(chat_hdlr, trading_agt=None):
     """Initialize API with MCP components"""
-    global chat_handler, llama_engine, trading_agent
+    global chat_handler, trading_agent
     chat_handler = chat_hdlr
-    llama_engine = llama_eng
     trading_agent = trading_agt
     logger.info("[MCP API] API server initialized with MCP components")
 
@@ -117,5 +114,6 @@ async def start_api_server(host: str = "0.0.0.0", port: int = 8003):
 if __name__ == "__main__":
     # For standalone testing
     asyncio.run(start_api_server())
+
 
 

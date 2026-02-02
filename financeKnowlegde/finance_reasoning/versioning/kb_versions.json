@@ -1,0 +1,13 @@
+{
+  "current_version": "1.0.0",
+  "history": [
+    {
+      "version": "1.0.0",
+      "date": "2026-01-19",
+      "changes": [
+        "Initial finance reasoning layer",
+        "Risk and derivatives contracts added"
+      ]
+    }
+  ]
+}

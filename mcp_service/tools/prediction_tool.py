@@ -55,11 +55,6 @@ class PredictionTool:
         # Initialize ensemble optimizer
         self.ensemble_optimizer = get_ensemble_optimizer()
         
-        # Ollama configuration for natural language processing
-        self.ollama_enabled = config.get("ollama_enabled", False)
-        self.ollama_host = config.get("ollama_host", "http://localhost:11434")
-        self.ollama_model = config.get("ollama_model", "llama2")
-        
         logger.info(f"Prediction Tool {self.tool_id} initialized")
     
     async def rank_predictions(self, arguments: Dict[str, Any], session_id: str) -> MCPToolResult:
@@ -82,10 +77,9 @@ class PredictionTool:
             include_explanations = arguments.get("include_explanations", True)
             natural_query = arguments.get("natural_query", "")
             
-            # Process natural language query if provided
-            if natural_query and self.ollama_enabled:
-                processed_query = await self._interpret_natural_query(natural_query)
-                logger.info(f"Interpreted query: {processed_query}")
+            # Note: Natural language query processing removed (Ollama dependency)
+            if natural_query:
+                logger.info(f"Natural language query provided but not processed: {natural_query}")
             
             # Get universe data for all symbols
             universe_data = await self._get_universe_data(symbols)
@@ -133,61 +127,7 @@ class PredictionTool:
                 error=str(e)
             )
     
-    async def _interpret_natural_query(self, query: str) -> Dict[str, Any]:
-        """Interpret natural language query using Ollama"""
-        try:
-            if not self.ollama_enabled:
-                return {"processed": False}
-            
-            # Import ollama
-            try:
-                import ollama
-            except ImportError:
-                logger.warning("Ollama not available for natural language processing")
-                return {"processed": False}
-            
-            # Prepare prompt for query interpretation
-            prompt = f"""
-            Interpret this natural language trading query and extract key parameters:
-            "{query}"
-            
-            Extract:
-            1. Time horizon (short-term, medium-term, long-term)
-            2. Risk preference (conservative, moderate, aggressive)
-            3. Sector preferences (if mentioned)
-            4. Investment style (growth, value, income)
-            
-            Response format as JSON:
-            {{
-                "time_horizon": "day|week|month",
-                "risk_preference": "low|medium|high",
-                "sectors": ["sector1", "sector2"],
-                "style": "growth|value|income"
-            }}
-            """
-            
-            # Generate response from LLM
-            response = ollama.generate(
-                model=self.ollama_model,
-                prompt=prompt,
-                options={
-                    "temperature": 0.3,
-                    "top_p": 0.9,
-                    "stop": ["\n\n"]
-                }
-            )
-            
-            # Parse response
-            result_text = response.get("response", "{}")
-            try:
-                parsed_result = json.loads(result_text)
-                return parsed_result
-            except json.JSONDecodeError:
-                return {"processed": True, "raw_response": result_text}
-                
-        except Exception as e:
-            logger.warning(f"Natural language interpretation failed: {e}")
-            return {"processed": False, "error": str(e)}
+
     
     async def _get_universe_data(self, symbols: List[str]) -> Dict[str, Any]:
         """Get universe data for symbols"""

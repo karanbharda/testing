@@ -1,0 +1,30 @@
+{
+  "id": "RISK_DRAWDOWN_003",
+  "domain": "RISK",
+  "priority": 1,
+  "exchange": ["NSE", "BSE"],
+  "applicable_to": ["ALL"],
+  "trigger_type": "CAPITAL",
+
+  "explanation_blocks": {
+    "primary": [
+      "Daily drawdown limit was reached",
+      "Further exposure was restricted"
+    ],
+    "secondary": [
+      "Drawdown control prevents large capital erosion",
+      "Trading discipline was enforced"
+    ]
+  },
+
+  "allowed_language": [
+    "drawdown control",
+    "capital discipline"
+  ],
+
+  "forbidden_language": [
+    "loss tolerance",
+    "AI",
+    "model"
+  ]
+}

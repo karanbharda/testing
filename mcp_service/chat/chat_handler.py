@@ -49,22 +49,22 @@ class ChatHandler:
         self.max_history = config.get("max_history", 50)
         
         # Lazy imports to avoid circular dependencies
-        self._llama_engine = None
+        self._groq_engine = None
         self._trading_agent = None
         
         logger.info("ChatHandler initialized")
     
-    def _get_llama_engine(self):
-        """Lazy import of Llama engine"""
-        if self._llama_engine is None:
+    def _get_groq_engine(self):
+        """Lazy import of Groq engine"""
+        if self._groq_engine is None:
             try:
-                from ..llm import LlamaReasoningEngine
-                llama_config = self.config.get("llama", {})
-                self._llama_engine = LlamaReasoningEngine(llama_config)
+                from ..llm import GroqReasoningEngine
+                groq_config = self.config.get("groq", {})
+                self._groq_engine = GroqReasoningEngine(groq_config)
             except ImportError as e:
-                logger.error(f"Failed to import LlamaReasoningEngine: {e}")
-                self._llama_engine = False
-        return self._llama_engine if self._llama_engine is not False else None
+                logger.error(f"Failed to import GroqReasoningEngine: {e}")
+                self._groq_engine = False
+        return self._groq_engine if self._groq_engine is not False else None
     
     def _get_trading_agent(self):
         """Lazy import of trading agent"""
@@ -165,15 +165,15 @@ class ChatHandler:
     async def _handle_general_chat(self, message: str) -> ChatResponse:
         """Handle general chat messages"""
         try:
-            llama_engine = self._get_llama_engine()
+            groq_engine = self._get_groq_engine()
             
-            if llama_engine:
+            if groq_engine:
                 # Build context from history
                 context = self._build_context()
                 
                 # Get response from LLM
-                async with llama_engine:
-                    result = await llama_engine.process_query(message, context)
+                async with groq_engine:
+                    result = await groq_engine.process_query(message, context)
                     response_text = result.get("response", "I couldn't generate a response.")
             else:
                 response_text = "LLM engine not available. Please check configuration."

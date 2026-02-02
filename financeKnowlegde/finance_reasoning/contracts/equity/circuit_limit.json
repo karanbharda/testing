@@ -1,0 +1,29 @@
+{
+  "id": "EQ_CIRCUIT_002",
+  "domain": "EQUITY",
+  "priority": 3,
+  "exchange": ["NSE", "BSE"],
+  "applicable_to": ["EQUITY"],
+  "trigger_type": "REGULATORY",
+
+  "explanation_blocks": {
+    "primary": [
+      "Price reached the circuit limit",
+      "Trading activity was restricted"
+    ],
+    "secondary": [
+      "Circuit limits are applied to control extreme volatility",
+      "They are mandated by the exchange"
+    ]
+  },
+
+  "allowed_language": [
+    "circuit limit",
+    "exchange restriction"
+  ],
+
+  "forbidden_language": [
+    "AI",
+    "prediction"
+  ]
+}

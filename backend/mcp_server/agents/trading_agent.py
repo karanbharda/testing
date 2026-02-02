@@ -26,7 +26,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 # Critical Fix: Use TYPE_CHECKING for type hints only
 if TYPE_CHECKING:
-    from llama_integration import LlamaReasoningEngine, TradingContext, LlamaResponse
+    from mcp_service.llm import GroqReasoningEngine, TradingContext, GroqResponse
     from fyers_client import FyersAPIClient
     from mcp_server.tools.market_analysis_tool import MarketAnalysisTool
 
@@ -83,7 +83,7 @@ class TradingAgent:
     Intelligent Trading Agent with Advanced AI Capabilities
     
     Features:
-    - Multi-step reasoning with Llama AI
+    - Multi-step reasoning with Groq AI
     - Adaptive strategy selection
     - Continuous learning from trades
     - Risk-aware position sizing
@@ -97,7 +97,7 @@ class TradingAgent:
         self.state = AgentState.IDLE
         
         # Critical Fix: Initialize components with lazy loading
-        self._llama_engine = None
+        self._groq_engine = None
         self._fyers_client = None
         self._market_analyzer = None
         
@@ -129,16 +129,16 @@ class TradingAgent:
         
         logger.info(f"Trading Agent {self.agent_id} initialized with enhanced ML integration")
 
-    def _get_llama_engine(self):
+    def _get_groq_engine(self):
         """Critical Fix: Lazy import to prevent circular dependencies"""
-        if self._llama_engine is None:
+        if self._groq_engine is None:
             try:
-                from llama_integration import LlamaReasoningEngine
-                self._llama_engine = LlamaReasoningEngine(self.config.get("llama", {}))
+                from mcp_service.llm import GroqReasoningEngine
+                self._groq_engine = GroqReasoningEngine(self.config.get("groq", {}))
             except ImportError as e:
-                logger.error(f"Failed to import LlamaReasoningEngine: {e}")
-                self._llama_engine = False
-        return self._llama_engine if self._llama_engine is not False else None
+                logger.error(f"Failed to import GroqReasoningEngine: {e}")
+                self._groq_engine = False
+        return self._groq_engine if self._groq_engine is not False else None
 
     def _get_fyers_client(self):
         """Critical Fix: Lazy import to prevent circular dependencies"""
@@ -165,9 +165,9 @@ class TradingAgent:
     async def initialize(self):
         """Initialize agent components"""
         try:
-            # Initialize Llama reasoning engine
-            llama_config = self.config.get("llama", {})
-            self.llama_engine = LlamaReasoningEngine(llama_config)
+            # Initialize Groq reasoning engine
+            groq_config = self.config.get("groq", {})
+            self.groq_engine = GroqReasoningEngine(groq_config)
             
             # Initialize Fyers client
             fyers_config = self.config.get("fyers", {})
@@ -207,7 +207,7 @@ class TradingAgent:
 
             # Runtime import to avoid circular dependency
             try:
-                from llama_integration import TradingContext
+                from mcp_service.llm import TradingContext
             except ImportError:
                 logger.error("TradingContext not available - using fallback")
                 # Create a simple dict as fallback
@@ -230,8 +230,8 @@ class TradingAgent:
                 )
             
             # Get AI decision
-            async with self.llama_engine:
-                ai_decision = await self.llama_engine.analyze_market_decision(trading_context)
+            async with self.groq_engine:
+                ai_decision = await self.groq_engine.analyze_market_decision(trading_context)
             
             # Step 4: ENHANCED ML Integration - Get ensemble predictions
             ensemble_predictions = await self._get_ensemble_ml_predictions(trading_context)
@@ -530,8 +530,8 @@ class TradingAgent:
             }
             
             # Get AI risk assessment
-            async with self.llama_engine:
-                risk_response = await self.llama_engine.assess_trade_risk(
+            async with self.groq_engine:
+                risk_response = await self.groq_engine.assess_trade_risk(
                     trade_details, context.portfolio_context
                 )
             

@@ -1,0 +1,152 @@
+[
+    {
+        "question": "What is NSE circuit breaker system?",
+        "expected_answer": "NSE circuit breakers halt trading at ±10%, ±15%, ±20% levels. Level 1 allows 15-minute cooling period, Level 3 stops trading for the day.",
+        "category": "nse_rules",
+        "difficulty": "basic"
+    },
+    {
+        "question": "Why was my F&O position banned?",
+        "expected_answer": "F&O ban triggers when stock moves ±20% with volume surge ≥500% of 60-day average and delivery <50%. Minimum 5 trading days ban duration.",
+        "category": "f&o_ban_logic",
+        "difficulty": "intermediate"
+    },
+    {
+        "question": "Why did my stop loss trigger?",
+        "expected_answer": "Stop loss activated when price moved against position beyond acceptable risk level, protecting capital from excessive losses.",
+        "category": "stop_loss_reasoning",
+        "difficulty": "basic"
+    },
+    {
+        "question": "What caused the market regime change?",
+        "expected_answer": "Market regime shifted due to changing volatility patterns and risk appetite, requiring position adjustments.",
+        "category": "market_regimes",
+        "difficulty": "advanced"
+    },
+    {
+        "question": "Why was my position liquidated?",
+        "expected_answer": "Position closed due to drawdown limit breach, preventing further capital erosion in adverse market conditions.",
+        "category": "risk_based_exits",
+        "difficulty": "intermediate"
+    },
+    {
+        "question": "What is T+2 settlement?",
+        "expected_answer": "T+2 settlement means transaction completes in 2 business days. Pay-in on T+1, pay-out on T+2 with dematerialized securities.",
+        "category": "nse_rules",
+        "difficulty": "basic"
+    },
+    {
+        "question": "Why can't I trade this derivative?",
+        "expected_answer": "Derivative trading restricted due to F&O ban from extreme price movement and volume surge exceeding regulatory thresholds.",
+        "category": "f&o_ban_logic",
+        "difficulty": "intermediate"
+    },
+    {
+        "question": "How does trailing stop loss work?",
+        "expected_answer": "Trailing stop loss moves with favorable price movement, locking profits while maintaining risk protection levels.",
+        "category": "stop_loss_reasoning",
+        "difficulty": "intermediate"
+    },
+    {
+        "question": "What indicates a bear market regime?",
+        "expected_answer": "Bear market regime characterized by sustained downward price trends, declining volume, and risk-off positioning.",
+        "category": "market_regimes",
+        "difficulty": "advanced"
+    },
+    {
+        "question": "Why was margin called?",
+        "expected_answer": "Margin call triggered when account equity fell below required maintenance margin due to adverse price movements.",
+        "category": "risk_based_exits",
+        "difficulty": "intermediate"
+    },
+    {
+        "question": "What is SPAN margin?",
+        "expected_answer": "SPAN margin calculates worst-case loss scenarios for derivatives positions, ensuring adequate risk coverage.",
+        "category": "nse_rules",
+        "difficulty": "intermediate"
+    },
+    {
+        "question": "When does F&O ban get removed?",
+        "expected_answer": "F&O ban automatically removed after minimum 5 trading days if price stabilizes and volume returns to normal levels.",
+        "category": "f&o_ban_logic",
+        "difficulty": "basic"
+    },
+    {
+        "question": "Why use volatility-based stops?",
+        "expected_answer": "Volatility-based stops adjust for market conditions, providing appropriate risk protection during different volatility regimes.",
+        "category": "stop_loss_reasoning",
+        "difficulty": "advanced"
+    },
+    {
+        "question": "What defines a bull market regime?",
+        "expected_answer": "Bull market regime features upward price trends, increasing volume, and risk-on positioning across sectors.",
+        "category": "market_regimes",
+        "difficulty": "intermediate"
+    },
+    {
+        "question": "Why was position size reduced?",
+        "expected_answer": "Position size decreased to maintain risk limits as market volatility increased, protecting portfolio from excessive exposure.",
+        "category": "risk_based_exits",
+        "difficulty": "intermediate"
+    },
+    {
+        "question": "What are NSE trading hours?",
+        "expected_answer": "NSE trading hours are 9:15 AM to 3:30 PM IST Monday to Friday, with pre-open and post-close sessions.",
+        "category": "nse_rules",
+        "difficulty": "basic"
+    },
+    {
+        "question": "Why ban only certain stocks?",
+        "expected_answer": "F&O ban applies to stocks showing extreme price movement with unusual volume patterns, indicating potential market manipulation concerns.",
+        "category": "f&o_ban_logic",
+        "difficulty": "advanced"
+    },
+    {
+        "question": "How does ATR stop loss work?",
+        "expected_answer": "ATR stop loss uses Average True Range to set dynamic stop levels based on recent market volatility patterns.",
+        "category": "stop_loss_reasoning",
+        "difficulty": "advanced"
+    },
+    {
+        "question": "What causes regime transitions?",
+        "expected_answer": "Regime transitions occur from fundamental changes in economic conditions, monetary policy, or investor sentiment shifts.",
+        "category": "market_regimes",
+        "difficulty": "advanced"
+    },
+    {
+        "question": "Why was exposure limit hit?",
+        "expected_answer": "Exposure limit exceeded due to concentrated positions in volatile market conditions, requiring risk reduction.",
+        "category": "risk_based_exits",
+        "difficulty": "intermediate"
+    },
+    {
+        "question": "What is MTM settlement?",
+        "expected_answer": "Mark-to-market settlement adjusts positions daily to current market prices, settling profits and losses each trading day.",
+        "category": "nse_rules",
+        "difficulty": "intermediate"
+    },
+    {
+        "question": "How long do F&O bans last?",
+        "expected_answer": "F&O bans last minimum 5 trading days, extendable based on continued unusual market behavior and regulatory assessment.",
+        "category": "f&o_ban_logic",
+        "difficulty": "basic"
+    },
+    {
+        "question": "Why mental stops don't work?",
+        "expected_answer": "Mental stops fail due to emotional interference, requiring automated stop loss orders for disciplined risk management.",
+        "category": "stop_loss_reasoning",
+        "difficulty": "intermediate"
+    },
+    {
+        "question": "What defines a sideways market?",
+        "expected_answer": "Sideways market shows price consolidation within range, low trend strength, and balanced buying-selling pressure.",
+        "category": "market_regimes",
+        "difficulty": "intermediate"
+    },
+    {
+        "question": "Why was sector exposure reduced?",
+        "expected_answer": "Sector exposure decreased due to deteriorating sector fundamentals and increased correlation risk in portfolio.",
+        "category": "risk_based_exits",
+        "difficulty": "advanced"
+    }
+]

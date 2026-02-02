@@ -13,6 +13,18 @@ import logging
 import threading
 import time
 import traceback
+import socket
+import subprocess
+import asyncio
+
+# Fix import paths permanently - MOVED TO TOP
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)  # Project root
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -34,18 +46,12 @@ try:
     from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 
     from pydantic import BaseModel
-    import asyncio
     import json
 except ImportError as e:
     print(f"Error importing FastAPI components: {e}")
     print("Please install FastAPI dependencies:")
     print("pip install fastapi uvicorn pydantic")
     sys.exit(1)
-
-# Fix import paths permanently
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
 
 # Import new components for live trading
 try:
@@ -102,19 +108,19 @@ except ImportError as e:
         def __init__(self, *args, **kwargs): pass
 
 try:
-    from mcp_service.llm import LlamaReasoningEngine, TradingContext, LlamaResponse
-    LLAMA_AVAILABLE = True
+    from mcp_service.llm import GroqReasoningEngine, TradingContext, GroqResponse
+    GROQ_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"Llama integration not available: {e}")
-    LLAMA_AVAILABLE = False
+    logger.warning(f"Groq integration not available: {e}")
+    GROQ_AVAILABLE = False
 
-    class LlamaReasoningEngine:
+    class GroqReasoningEngine:
         def __init__(self, *args, **kwargs): pass
 
     class TradingContext:
         def __init__(self, *args, **kwargs): pass
 
-    class LlamaResponse:
+    class GroqResponse:
         def __init__(self, *args, **kwargs): pass
 
 # PRODUCTION FIX: Import data service client instead of direct Fyers
@@ -167,7 +173,14 @@ try:
         ValidationError,
         NetworkError,
         AuthenticationError,
-        PerformanceMonitor
+        PerformanceMonitor,
+        retry_on_failure,
+        circuit_breaker,
+        api_retry,
+        data_service_retry,
+        log_api_call,
+        log_system_event,
+        log_system_health
     )
     UTILS_AVAILABLE = True
     logger.info("Utils modules imported successfully")
@@ -222,6 +235,15 @@ try:
 except ImportError as e:
     logger.error(f"Error importing production core components: {e}")
     PRODUCTION_CORE_AVAILABLE = False
+
+# Import Configuration Schema and Validation
+try:
+    from config.config_schema import ConfigValidator, load_and_validate_config
+    CONFIG_SCHEMA_AVAILABLE = True
+    logger.info("Configuration schema validation loaded successfully")
+except ImportError as e:
+    logger.error(f"Error importing configuration schema: {e}")
+    CONFIG_SCHEMA_AVAILABLE = False
 
 # Import the trading bot components
 try:
@@ -464,7 +486,7 @@ bot_running = False
 mcp_server = None
 mcp_trading_agent = None
 fyers_client = None
-llama_engine = None
+groq_engine = None
 
 # Real-time market data function
 
@@ -712,6 +734,7 @@ def get_realistic_mock_data():
     return market_data
 
 
+@data_service_retry
 def get_real_market_data_from_api():
     """PRODUCTION FIX: Get real market data from data service"""
     # Use data service instead of direct Fyers connection
@@ -756,6 +779,7 @@ def get_real_market_data_from_api():
     return get_yahoo_finance_fallback()
 
 
+@api_retry
 def get_yahoo_finance_fallback():
     """Fallback to Yahoo Finance data"""
     try:
@@ -874,6 +898,15 @@ class WebTradingBot:
 
     def __init__(self, config):
         self.config = config
+
+        # Debug logging for received config
+        logger.info(f"WebTradingBot received config:")
+        logger.info(f"  Mode: {self.config.get('mode')}")
+        logger.info(
+            f"  Dhan Client ID: {'SET' if self.config.get('dhan_client_id') else 'MISSING'} ({self.config.get('dhan_client_id', 'NONE')[:10] if self.config.get('dhan_client_id') else 'NONE'})")
+        logger.info(
+            f"  Dhan Access Token: {'SET' if self.config.get('dhan_access_token') else 'MISSING'} ({'PRESENT' if self.config.get('dhan_access_token') else 'NONE'})")
+        logger.info(f"  Full config keys in WebTradingBot: {list(self.config.keys())}")
 
         # Initialize dual portfolio manager
         if LIVE_TRADING_AVAILABLE:
@@ -1336,14 +1369,22 @@ class WebTradingBot:
     def _initialize_live_trading(self):
         """Initialize live trading components"""
         try:
-            if not self.config.get("dhan_client_id") or not self.config.get("dhan_access_token"):
-                logger.error("Dhan credentials not found in config")
+            # Get Dhan credentials from environment variables
+            dhan_client_id = os.getenv("DHAN_CLIENT_ID")
+            dhan_access_token = os.getenv("DHAN_ACCESS_TOKEN")
+
+            if not dhan_client_id or not dhan_access_token:
+                logger.error(
+                    "Dhan credentials not found in environment variables")
                 return False
+
+            logger.info(
+                f"Initializing live trading with Dhan client ID: {dhan_client_id[:4]}...{dhan_client_id[-4:] if len(dhan_client_id) > 8 else dhan_client_id}")
 
             # Initialize Dhan client with credentials from .env
             self.dhan_client = DhanAPIClient(
-                client_id=os.getenv("DHAN_CLIENT_ID"),
-                access_token=os.getenv("DHAN_ACCESS_TOKEN")
+                client_id=dhan_client_id,
+                access_token=dhan_access_token
             )
 
             # Validate connection and sync portfolio
@@ -2209,7 +2250,7 @@ def load_config_from_file(mode: str) -> dict:
 
 
 def initialize_bot():
-    """Initialize the trading bot with default configuration"""
+    """Initialize the trading bot with schema-validated configuration"""
     global trading_bot
 
     try:
@@ -2217,41 +2258,70 @@ def initialize_bot():
         from dotenv import load_dotenv
         load_dotenv()
 
-        # Default configuration
+        # Get trading mode from environment
         default_mode = os.getenv("MODE", "paper")
-        config = {
-            "tickers": [],  # Empty by default - users can add tickers manually
-            "starting_balance": 10000,  # Rs.10 thousand
-            "current_portfolio_value": 10000,
-            "current_pnl": 0,
-            "mode": default_mode,  # Default to paper mode for web interface
-            "riskLevel": "MEDIUM",  # Default risk level
-            "dhan_client_id": os.getenv("DHAN_CLIENT_ID"),
-            "dhan_access_token": os.getenv("DHAN_ACCESS_TOKEN"),
-            "period": "3y",
-            "prediction_days": 30,
-            "benchmark_tickers": ["^NSEI"],
-            "sleep_interval": 30,  # 30 seconds
-            # Risk management settings - will be set by risk level
-            "stop_loss_pct": 0.05,  # Default 5% (MEDIUM)
-            "max_capital_per_trade": 0.25,  # Default 25% (MEDIUM)
-            "max_trade_limit": 150
-        }
 
-        # Load saved configuration from file and merge with defaults
-        saved_config = load_config_from_file(default_mode)
-        if saved_config:
-            # Update config with saved values, keeping defaults for missing keys
-            config.update({
-                "mode": saved_config.get("mode", config["mode"]),
-                "riskLevel": saved_config.get("riskLevel", config["riskLevel"]),
-                "stop_loss_pct": saved_config.get("stop_loss_pct", config["stop_loss_pct"]),
-                "max_capital_per_trade": saved_config.get("max_capital_per_trade", config["max_capital_per_trade"]),
-                "max_trade_limit": saved_config.get("max_trade_limit", config["max_trade_limit"])
-            })
-            logger.info(f"Merged saved config: Risk Level={config['riskLevel']}, "
-                        f"Stop Loss={config['stop_loss_pct']*100:.1f}%, "
-                        f"Max Allocation={config['max_capital_per_trade']*100:.1f}%")
+        # Load and validate configuration using schema
+        if CONFIG_SCHEMA_AVAILABLE:
+            logger.info("Using schema-validated configuration loading")
+            config = load_and_validate_config(default_mode)
+        else:
+            logger.warning(
+                "Configuration schema not available, using legacy loading")
+            # Fallback to legacy configuration loading
+            config = {
+                "tickers": [],  # Empty by default - users can add tickers manually
+                "starting_balance": 10000,  # Rs.10 thousand
+                "current_portfolio_value": 10000,
+                "current_pnl": 0,
+                "mode": default_mode,  # Default to paper mode for web interface
+                "riskLevel": "MEDIUM",  # Default risk level
+                "dhan_client_id": os.getenv("DHAN_CLIENT_ID"),
+                "dhan_access_token": os.getenv("DHAN_ACCESS_TOKEN"),
+                "period": "3y",
+                "prediction_days": 30,
+                "benchmark_tickers": ["^NSEI"],
+                "sleep_interval": 30,  # 30 seconds
+                # Risk management settings - will be set by risk level
+                "stop_loss_pct": 0.05,  # Default 5% (MEDIUM)
+                "max_capital_per_trade": 0.25,  # Default 25% (MEDIUM)
+                "max_trade_limit": 150
+            }
+
+            # Load saved configuration from file and merge with defaults
+            saved_config = load_config_from_file(default_mode)
+            if saved_config:
+                # Update config with saved values, keeping defaults for missing keys
+                # Preserve Dhan credentials from environment variables
+                dhan_client_id = os.getenv("DHAN_CLIENT_ID")
+                dhan_access_token = os.getenv("DHAN_ACCESS_TOKEN")
+
+                config.update({
+                    "mode": saved_config.get("mode", config["mode"]),
+                    "riskLevel": saved_config.get("riskLevel", config["riskLevel"]),
+                    "stop_loss_pct": saved_config.get("stop_loss_pct", config["stop_loss_pct"]),
+                    "max_capital_per_trade": saved_config.get("max_capital_per_trade", config["max_capital_per_trade"]),
+                    "max_trade_limit": saved_config.get("max_trade_limit", config["max_trade_limit"])
+                })
+
+                # Ensure Dhan credentials are always set from environment variables
+                if dhan_client_id:
+                    config["dhan_client_id"] = dhan_client_id
+                if dhan_access_token:
+                    config["dhan_access_token"] = dhan_access_token
+                logger.info(f"Merged saved config: Risk Level={config['riskLevel']}, "
+                            f"Stop Loss={config['stop_loss_pct']*100:.1f}%, "
+                            f"Max Allocation={config['max_capital_per_trade']*100:.1f}%")
+
+        # Debug logging for config
+        logger.info(f"Config before WebTradingBot initialization:")
+        logger.info(f"  Mode: {config.get('mode')}")
+        logger.info(
+            f"  Dhan Client ID: {'SET' if config.get('dhan_client_id') else 'MISSING'} ({config.get('dhan_client_id', 'NONE')[:10] if config.get('dhan_client_id') else 'NONE'})")
+        logger.info(
+            f"  Dhan Access Token: {'SET' if config.get('dhan_access_token') else 'MISSING'} ({'PRESENT' if config.get('dhan_access_token') else 'NONE'})")
+        logger.info(f"  Full config keys: {list(config.keys())}")
+        logger.info(f"  DHAN_CLIENT_ID from env: {os.getenv('DHAN_CLIENT_ID', 'NOT_FOUND')[:10] if os.getenv('DHAN_CLIENT_ID') else 'NOT_FOUND'}")
 
         trading_bot = WebTradingBot(config)
 
@@ -2318,6 +2388,175 @@ async def get_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/health")
+@log_api_call("/api/health", "GET")
+async def health_check():
+    """Health check endpoint for monitoring system status"""
+    try:
+        import time
+        from datetime import datetime
+
+        health_status = {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "uptime": time.time() - getattr(app, 'start_time', time.time()),
+            "version": "1.0.0",
+            "services": {}
+        }
+
+        # Check trading bot status
+        if trading_bot:
+            try:
+                bot_status = trading_bot.get_status()
+                health_status["services"]["trading_bot"] = {
+                    "status": "healthy",
+                    "mode": bot_status.get("mode", "unknown"),
+                    "balance": bot_status.get("current_balance", 0)
+                }
+            except Exception as e:
+                health_status["services"]["trading_bot"] = {
+                    "status": "unhealthy",
+                    "error": str(e)
+                }
+        else:
+            health_status["services"]["trading_bot"] = {
+                "status": "not_initialized"
+            }
+
+        # Check data service client
+        try:
+            data_client = get_data_client()
+            if data_client.health_check():
+                health_status["services"]["data_service"] = {
+                    "status": "healthy"}
+            else:
+                health_status["services"]["data_service"] = {
+                    "status": "unhealthy"}
+        except Exception as e:
+            health_status["services"]["data_service"] = {
+                "status": "error",
+                "error": str(e)
+            }
+
+        # Check MCP service (if available)
+        try:
+            from mcp_service.api_server import MCP_API_AVAILABLE
+            if MCP_API_AVAILABLE:
+                health_status["services"]["mcp_service"] = {
+                    "status": "healthy"}
+            else:
+                health_status["services"]["mcp_service"] = {
+                    "status": "unavailable"}
+        except:
+            health_status["services"]["mcp_service"] = {
+                "status": "not_available"}
+
+        # Check configuration validation
+        try:
+            if CONFIG_SCHEMA_AVAILABLE:
+                # Validate current configuration
+                config_issues = ConfigValidator.validate_environment_variables()
+                if config_issues:
+                    health_status["services"]["configuration"] = {
+                        "status": "warning",
+                        "issues": config_issues
+                    }
+                else:
+                    health_status["services"]["configuration"] = {
+                        "status": "healthy"}
+            else:
+                health_status["services"]["configuration"] = {
+                    "status": "warning",
+                    "message": "Configuration schema validation not available"
+                }
+        except Exception as e:
+            health_status["services"]["configuration"] = {
+                "status": "error",
+                "error": str(e)
+            }
+
+        # Determine overall status
+        unhealthy_services = [
+            service for service in health_status["services"].values()
+            if isinstance(service, dict) and service.get("status") in ["unhealthy", "error"]
+        ]
+
+        if unhealthy_services:
+            health_status["status"] = "degraded"
+        elif not health_status["services"]:
+            health_status["status"] = "unknown"
+        else:
+            health_status["status"] = "healthy"
+
+        return health_status
+
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e)
+        }
+
+
+@app.get("/api/config/validate")
+async def validate_configuration():
+    """Validate current configuration against schema"""
+    try:
+        if not CONFIG_SCHEMA_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="Configuration schema validation not available"
+            )
+
+        # Get current configuration
+        if trading_bot and hasattr(trading_bot, 'config'):
+            current_config = trading_bot.config
+        else:
+            # Load default config for validation
+            current_config = ConfigValidator.get_default_config()
+
+        # Validate configuration
+        validation_result = {
+            "valid": True,
+            "config": current_config,
+            "schema": ConfigValidator.get_config_schema(),
+            "environment_issues": ConfigValidator.validate_environment_variables()
+        }
+
+        # Try to validate the config
+        try:
+            ConfigValidator.validate_config(current_config)
+            validation_result["validation_status"] = "passed"
+        except Exception as e:
+            validation_result["valid"] = False
+            validation_result["validation_status"] = "failed"
+            validation_result["validation_errors"] = str(e)
+
+        return validation_result
+
+    except Exception as e:
+        logger.error(f"Configuration validation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/config/schema")
+async def get_configuration_schema():
+    """Get the configuration JSON schema"""
+    try:
+        if not CONFIG_SCHEMA_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="Configuration schema not available"
+            )
+
+        return ConfigValidator.get_config_schema()
+
+    except Exception as e:
+        logger.error(f"Failed to get configuration schema: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/bot-data")
 async def get_bot_data():
     """Get complete bot data for React frontend"""
@@ -2332,6 +2571,7 @@ async def get_bot_data():
 
 
 @app.get("/api/portfolio", response_model=PortfolioMetrics)
+@log_api_call("/api/portfolio", "GET")
 async def get_portfolio():
     """Get comprehensive portfolio metrics with real-time calculations"""
     try:
@@ -2645,17 +2885,17 @@ async def process_market_query(message: str) -> Optional[str]:
         return None
 
 
-async def process_llama_query(message: str, enhanced_prompt: str) -> str:
-    """Process query using Llama reasoning engine"""
+async def process_groq_query(message: str, enhanced_prompt: str) -> str:
+    """Process query using Groq reasoning engine"""
     try:
-        global llama_engine
-        if not llama_engine:
-            return "Llama reasoning engine not available. Please try again later."
+        global groq_engine
+        if not groq_engine:
+            return "Groq reasoning engine not available. Please try again later."
 
-        response = await llama_engine.process_query(message, enhanced_prompt)
+        response = await groq_engine.process_query(message, enhanced_prompt)
         return response.get("response", "I apologize, but I couldn't process your request at the moment.")
     except Exception as e:
-        logger.error(f"Error with Llama processing: {e}")
+        logger.error(f"Error with Groq processing: {e}")
         return "I encountered an error while processing your request. Please try again."
 
 
@@ -3251,9 +3491,9 @@ async def mcp_execute_trade(request: MCPTradeRequest):
         signal = await mcp_trading_agent.analyze_and_decide(request.symbol)
 
         # Generate explanation for the trade
-        if llama_engine:
-            async with llama_engine:
-                explanation = await llama_engine.explain_trade_decision(
+        if groq_engine:
+            async with groq_engine:
+                explanation = await groq_engine.explain_trade_decision(
                     request.action,
                     TradingContext(
                         symbol=request.symbol,
@@ -3263,7 +3503,7 @@ async def mcp_execute_trade(request: MCPTradeRequest):
                     )
                 )
         else:
-            explanation = LlamaResponse(
+            explanation = GroqResponse(
                 content="MCP analysis completed", reasoning=signal.reasoning)
 
         # Execute trade if confidence is high enough
@@ -3312,9 +3552,9 @@ async def mcp_chat(request: MCPChatRequest):
 
         await _ensure_mcp_initialized()
 
-        if not llama_engine:
+        if not groq_engine:
             raise HTTPException(
-                status_code=503, detail="Llama engine not available")
+                status_code=503, detail="Groq engine not available")
 
         # Determine chat context
         message = request.message.lower()
@@ -3328,8 +3568,8 @@ async def mcp_chat(request: MCPChatRequest):
                 signal = await mcp_trading_agent.analyze_and_decide(symbol)
 
                 # Generate contextual response
-                async with llama_engine:
-                    response = await llama_engine.analyze_market_decision(
+                async with groq_engine:
+                    response = await groq_engine.analyze_market_decision(
                         TradingContext(
                             symbol=symbol,
                             current_price=signal.entry_price,
@@ -3367,8 +3607,8 @@ async def mcp_chat(request: MCPChatRequest):
                     "risk_profile": trading_bot.config.get("riskLevel", "MEDIUM")
                 }
 
-                async with llama_engine:
-                    response = await llama_engine.optimize_portfolio(portfolio_data)
+                async with groq_engine:
+                    response = await groq_engine.optimize_portfolio(portfolio_data)
 
                 return {
                     "response": response.content,
@@ -3392,8 +3632,8 @@ async def mcp_chat(request: MCPChatRequest):
             Provide practical, actionable advice based on sound trading principles.
             """
 
-            async with llama_engine:
-                response = await llama_engine.generate_response(general_prompt)
+            async with groq_engine:
+                response = await groq_engine.generate_response(general_prompt)
 
             return {
                 "response": response.content,
@@ -3522,7 +3762,7 @@ async def get_mcp_status():
             "server_initialized": mcp_server is not None,
             "agent_initialized": mcp_trading_agent is not None,
             "fyers_connected": fyers_client is not None,
-            "llama_available": llama_engine is not None
+            "groq_available": groq_engine is not None
         }
 
         if mcp_server:
@@ -3531,8 +3771,8 @@ async def get_mcp_status():
         if mcp_trading_agent:
             status["agent_status"] = mcp_trading_agent.get_agent_status()
 
-        if llama_engine:
-            status["llama_health"] = await llama_engine.health_check()
+        if groq_engine:
+            status["groq_health"] = await groq_engine.health_check()
 
         return status
 
@@ -3691,7 +3931,7 @@ async def get_decision_history(days: int = 7):
 
 async def _ensure_mcp_initialized():
     """Ensure MCP components are initialized"""
-    global mcp_server, mcp_trading_agent, fyers_client, llama_engine
+    global mcp_server, mcp_trading_agent, fyers_client, groq_engine
 
     try:
         if not MCP_AVAILABLE:
@@ -3714,16 +3954,16 @@ async def _ensure_mcp_initialized():
             }
             fyers_client = FyersAPIClient(fyers_config)
 
-        # Initialize Llama engine
-        if not llama_engine:
+        # Initialize Groq engine
+        if not groq_engine:
             # Code Quality: Move hardcoded values to configuration
-            llama_config = {
-                "llama_base_url": os.getenv("LLAMA_BASE_URL", "http://localhost:11434"),
-                "llama_model": os.getenv("LLAMA_MODEL", "llama3.1:8b"),
-                "max_tokens": int(os.getenv("LLAMA_MAX_TOKENS", str(DEFAULT_MAX_TOKENS))),
-                "temperature": float(os.getenv("LLAMA_TEMPERATURE", str(DEFAULT_TEMPERATURE)))
+            groq_config = {
+                "groq_api_key": os.getenv("GROQ_API_KEY", ""),
+                "groq_model": os.getenv("GROQ_MODEL", "llama3-8b-8192"),
+                "max_tokens": int(os.getenv("GROQ_MAX_TOKENS", str(DEFAULT_MAX_TOKENS))),
+                "temperature": float(os.getenv("GROQ_TEMPERATURE", str(DEFAULT_TEMPERATURE)))
             }
-            llama_engine = LlamaReasoningEngine(llama_config)
+            groq_engine = GroqReasoningEngine(groq_config)
 
         # Initialize MCP server
         if not mcp_server:
@@ -4018,9 +4258,32 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.error(f"Error during WebSocket cleanup: {cleanup_error}")
 
 
+def find_available_port(start_port=5000, max_attempts=10):
+    """Find an available port starting from start_port"""
+    for port in range(start_port, start_port + max_attempts):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('127.0.0.1', port))
+                return port
+        except OSError:
+            continue
+    raise RuntimeError(
+        f"No available ports found in range {start_port}-{start_port + max_attempts - 1}")
+
+
 def run_web_server(host='127.0.0.1', port=5000, debug=False):
     """Run the FastAPI web server with uvicorn"""
     try:
+        # Check if the requested port is available, if not find an available one
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind((host, port))
+        except OSError:
+            logger.warning(
+                f"Port {port} is already in use. Finding an available port...")
+            port = find_available_port(port + 1)
+            logger.info(f"Using available port: {port}")
+
         # Initialize the trading bot
         initialize_bot()
 
@@ -4199,7 +4462,7 @@ async def get_monitoring_stats():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Architectural Fix: Comprehensive resource cleanup on shutdown"""
-    global trading_bot, mcp_server, fyers_client, llama_engine
+    global trading_bot, mcp_server, fyers_client, groq_engine
 
     logger.info("Starting graceful shutdown...")
 
@@ -4233,13 +4496,13 @@ async def shutdown_event():
             except Exception as e:
                 logger.error(f"Error disconnecting Fyers client: {e}")
 
-        # Cleanup Llama engine
-        if llama_engine:
+        # Cleanup Groq engine
+        if groq_engine:
             try:
-                await llama_engine.cleanup()
-                logger.info("Llama engine cleaned up")
+                await groq_engine.cleanup()
+                logger.info("Groq engine cleaned up")
             except Exception as e:
-                logger.error(f"Error cleaning up Llama engine: {e}")
+                logger.error(f"Error cleaning up Groq engine: {e}")
 
         logger.info("Graceful shutdown completed")
 

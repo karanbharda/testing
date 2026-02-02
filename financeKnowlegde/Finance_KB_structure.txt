@@ -1,0 +1,43 @@
+Finance_KB/
+├── equities/
+│   ├── nse_basics.md
+│   ├── bse_mechanics.md
+│   ├── sebi_listings.md
+│   └── indian_equity_rules.md
+├── derivatives/
+│   ├── fno_basics.md
+│   ├── nse_ifo_rules.md
+│   ├── option_greeks.md
+│   └── margin_requirements.md
+├── commodities/
+│   ├── mcx_basics.md
+│   ├── commodity_futures.md
+│   └── spot_commodities.md
+├── crypto/
+│   ├── crypto_basics.md
+│   └── regulatory_status.md
+├── ta_indicators/
+│   ├── rsi_macd.md
+│   ├── moving_averages.md
+│   ├── volume_indicators.md
+│   └── support_resistance.md
+├── fa_basics/
+│   ├── balance_sheet.md
+│   ├── profit_loss.md
+│   ├── cash_flow.md
+│   └── ratio_analysis.md
+├── risk_models/
+│   ├── var_calculations.md
+│   ├── stop_loss_rules.md
+│   ├── position_sizing.md
+│   └── drawdown_limits.md
+├── strategies/
+│   ├── momentum_trading.md
+│   ├── mean_reversion.md
+│   ├── breakout_systems.md
+│   └── risk_parity.md
+└── macro/
+    ├── rbi_monetary_policy.md
+    ├── interest_rates.md
+    ├── inflation_indicators.md
+    └── economic_cycles.md

@@ -14,9 +14,10 @@ from typing import Dict, List, Any, Optional
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# Import from main trading bot
+# Import from main trading bot (Llama removed - using Groq only)
 try:
-    from testindia import LlamaLLM
+    # LlamaLLM removed - using Groq integration only
+    LlamaLLM = None
 except ImportError:
     LlamaLLM = None
 

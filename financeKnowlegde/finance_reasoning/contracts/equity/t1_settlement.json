@@ -1,0 +1,29 @@
+{
+  "id": "EQ_SETTLEMENT_003",
+  "domain": "EQUITY",
+  "priority": 3,
+  "exchange": ["NSE", "BSE"],
+  "applicable_to": ["DELIVERY"],
+  "trigger_type": "SETTLEMENT",
+
+  "explanation_blocks": {
+    "primary": [
+      "Equity delivery trades follow T+1 settlement cycle",
+      "Shares or funds are credited on the next trading day"
+    ],
+    "secondary": [
+      "Settlement timelines are defined by the exchange",
+      "This is not dependent on price movement"
+    ]
+  },
+
+  "allowed_language": [
+    "T+1 settlement",
+    "exchange settlement"
+  ],
+
+  "forbidden_language": [
+    "AI",
+    "model"
+  ]
+}

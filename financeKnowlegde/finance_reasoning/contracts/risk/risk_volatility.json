@@ -1,0 +1,70 @@
+{
+  "id": "RISK_VOLATILITY_002",
+  "domain": "RISK",
+  "priority": 1,
+  "exchange": [
+    "NSE",
+    "BSE",
+    "MCX"
+  ],
+  "applicable_to": [
+    "INTRADAY",
+    "FNO"
+  ],
+  "trigger_type": "VOLATILITY",
+  "explanation_blocks": {
+    "primary": [
+      "Sudden increase in volatility was observed",
+      "Price fluctuations became unstable"
+    ],
+    "secondary": [
+      "High volatility increases execution risk",
+      "Position was closed to protect capital"
+    ]
+  },
+  "allowed_language": [
+    "volatility",
+    "price instability",
+    "risk control"
+  ],
+  "forbidden_language": [
+    "AI",
+    "confidence",
+    "accuracy",
+    "model",
+    "prediction",
+    "guarantee",
+    "assured",
+    "certain",
+    "definite",
+    "recommend",
+    "suggest",
+    "advise",
+    "opportunity",
+    "potential",
+    "expected",
+    "likely",
+    "probably",
+    "should",
+    "will",
+    "future",
+    "forecast",
+    "projection",
+    "target",
+    "goal",
+    "objective",
+    "excellent",
+    "great",
+    "amazing",
+    "best",
+    "worst",
+    "good",
+    "bad",
+    "strong",
+    "weak",
+    "bullish",
+    "bearish",
+    "optimistic",
+    "pessimistic"
+  ]
+}

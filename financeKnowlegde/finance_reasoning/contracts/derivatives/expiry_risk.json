@@ -1,0 +1,29 @@
+{
+  "id": "DERIV_EXPIRY_003",
+  "domain": "DERIVATIVES",
+  "priority": 2,
+  "exchange": ["NSE"],
+  "applicable_to": ["FNO"],
+  "trigger_type": "EXPIRY",
+
+  "explanation_blocks": {
+    "primary": [
+      "Contract expiry was approaching",
+      "Liquidity typically reduces near expiry"
+    ],
+    "secondary": [
+      "Expiry risk can increase price volatility",
+      "Position was managed proactively"
+    ]
+  },
+
+  "allowed_language": [
+    "expiry risk",
+    "liquidity reduction"
+  ],
+
+  "forbidden_language": [
+    "AI",
+    "model"
+  ]
+}

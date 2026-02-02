@@ -49,7 +49,10 @@ redis>=4.5.0
 webdriver-manager>=4.0.0
 
 # LangChain for AI Chat
-langchain>=0.0.300
+langchain>=0.1.0
+langchain-core>=0.1.0
+langchain-openai>=0.0.1
+langchain-community>=0.0.1
 
 # MCP (Model Context Protocol) and Advanced AI
 aiohttp>=3.9.0
@@ -76,5 +79,5 @@ typing-extensions>=4.8.0
 # Optional: Additional ML libraries (install if needed)
 # mcp>=1.0.0  # Install when MCP SDK is available
 # tensorflow>=2.13.0
-# transformers>=4.30.0
+transformers>=4.30.0
 # optuna>=3.3.0

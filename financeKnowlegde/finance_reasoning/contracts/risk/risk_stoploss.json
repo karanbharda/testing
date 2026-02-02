@@ -1,0 +1,68 @@
+{
+  "id": "RISK_STOPLOSS_001",
+  "domain": "RISK",
+  "priority": 1,
+  "exchange": [
+    "NSE",
+    "BSE"
+  ],
+  "applicable_to": [
+    "INTRADAY",
+    "FNO"
+  ],
+  "trigger_type": "PRICE",
+  "explanation_blocks": {
+    "primary": [
+      "Price moved against the trade direction",
+      "Risk management rules triggered exit"
+    ],
+    "secondary": [
+      "Capital protection was prioritised"
+    ]
+  },
+  "allowed_language": [
+    "risk management",
+    "capital protection",
+    "market discipline"
+  ],
+  "forbidden_language": [
+    "AI",
+    "confidence",
+    "accuracy",
+    "model",
+    "prediction",
+    "guarantee",
+    "assured",
+    "certain",
+    "definite",
+    "recommend",
+    "suggest",
+    "advise",
+    "opportunity",
+    "potential",
+    "expected",
+    "likely",
+    "probably",
+    "should",
+    "will",
+    "future",
+    "forecast",
+    "projection",
+    "target",
+    "goal",
+    "objective",
+    "excellent",
+    "great",
+    "amazing",
+    "best",
+    "worst",
+    "good",
+    "bad",
+    "strong",
+    "weak",
+    "bullish",
+    "bearish",
+    "optimistic",
+    "pessimistic"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "RISK": {
+    "priority": 1,
+    "description": "Capital protection and RMS logic"
+  },
+  "SENTIMENT": {
+    "priority": 2,
+    "description": "Market and sector mood"
+  },
+  "DERIVATIVES": {
+    "priority": 3,
+    "description": "F&O market mechanics"
+  },
+  "EQUITY": {
+    "priority": 4,
+    "description": "Cash market rules"
+  },
+  "MACRO": {
+    "priority": 5,
+    "description": "Economic factors"
+  }
+}

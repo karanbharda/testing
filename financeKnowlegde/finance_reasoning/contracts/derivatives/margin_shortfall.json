@@ -1,0 +1,29 @@
+{
+  "id": "DERIV_MARGIN_002",
+  "domain": "DERIVATIVES",
+  "priority": 2,
+  "exchange": ["NSE", "BSE"],
+  "applicable_to": ["FNO"],
+  "trigger_type": "MARGIN",
+
+  "explanation_blocks": {
+    "primary": [
+      "Available margin was insufficient for the position",
+      "Margin shortfall was detected"
+    ],
+    "secondary": [
+      "Broker risk systems may square off positions",
+      "Margin compliance is mandatory"
+    ]
+  },
+
+  "allowed_language": [
+    "margin requirement",
+    "risk system"
+  ],
+
+  "forbidden_language": [
+    "AI",
+    "prediction"
+  ]
+}

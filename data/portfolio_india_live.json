@@ -1,15 +1,10 @@
 {
-    "cash": 907.11,
+    "cash": 4734.04,
     "holdings": {
         "BAJFINANCE": {
-            "qty": 11,
-            "avg_price": 993.14545,
-            "last_price": 993.14545
-        },
-        "NTPC": {
-            "qty": 63,
-            "avg_price": 324.86508,
-            "last_price": 324.86508
+            "qty": 20,
+            "avg_price": 967.205,
+            "last_price": 967.205
         },
         "GENUSPOWER": {
             "qty": 51,
@@ -17,8 +12,8 @@
             "last_price": 299.73038
         }
     },
-    "starting_balance": 907.11,
+    "starting_balance": 4734.04,
     "realized_pnl": 0.0,
     "unrealized_pnl": 0.0,
-    "last_updated": "2026-01-02T15:20:50.261205"
+    "last_updated": "2026-01-29T16:25:43.650506"
 }

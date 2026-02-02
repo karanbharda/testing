@@ -22,14 +22,29 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # Production monitoring
-from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import Counter, Histogram, Gauge, REGISTRY
 
 logger = logging.getLogger(__name__)
 
-# Metrics
-FYERS_API_CALLS = Counter('fyers_api_calls_total', 'Total Fyers API calls', ['endpoint', 'status'])
-FYERS_WS_MESSAGES = Counter('fyers_ws_messages_total', 'WebSocket messages', ['type'])
-FYERS_CONNECTION_STATUS = Gauge('fyers_connection_status', 'Connection status (1=connected, 0=disconnected)')
+# Metrics - avoid duplicate registration
+try:
+    # Check if metrics already exist in registry
+    FYERS_API_CALLS = Counter('fyers_api_calls_total', 'Total Fyers API calls', ['endpoint', 'status'])
+except ValueError:
+    # Metric already exists, get the existing one
+    FYERS_API_CALLS = REGISTRY._names_to_collectors['fyers_api_calls_total']
+
+try:
+    FYERS_WS_MESSAGES = Counter('fyers_ws_messages_total', 'WebSocket messages', ['type'])
+except ValueError:
+    # Metric already exists, get the existing one
+    FYERS_WS_MESSAGES = REGISTRY._names_to_collectors['fyers_ws_messages_total']
+
+try:
+    FYERS_CONNECTION_STATUS = Gauge('fyers_connection_status', 'Connection status (1=connected, 0=disconnected)')
+except ValueError:
+    # Metric already exists, get the existing one
+    FYERS_CONNECTION_STATUS = REGISTRY._names_to_collectors['fyers_connection_status']
 
 @dataclass
 class MarketData:

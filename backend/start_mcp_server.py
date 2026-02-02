@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 # Global references for graceful shutdown
 mcp_server = None
-llama_engine = None
+groq_engine = None
 chat_handler = None
 trading_agent = None
 all_agents = {}
@@ -71,11 +71,11 @@ def load_config() -> Dict[str, Any]:
             "monitoring_port": int(os.getenv("MCP_MONITORING_PORT", "8002")),
             "max_sessions": int(os.getenv("MCP_MAX_SESSIONS", "100"))
         },
-        "llama": {
-            "llama_base_url": os.getenv("LLAMA_BASE_URL", "http://localhost:11434"),
-            "llama_model": os.getenv("LLAMA_MODEL", "llama3.1:8b"),
-            "max_tokens": int(os.getenv("LLAMA_MAX_TOKENS", "2048")),
-            "temperature": float(os.getenv("LLAMA_TEMPERATURE", "0.7"))
+        "groq": {
+            "groq_api_key": os.getenv("GROQ_API_KEY", ""),
+            "groq_model": os.getenv("GROQ_MODEL", "llama3-8b-8192"),
+            "max_tokens": int(os.getenv("GROQ_MAX_TOKENS", "2048")),
+            "temperature": float(os.getenv("GROQ_TEMPERATURE", "0.7"))
         },
         "chat": {
             "max_history": int(os.getenv("CHAT_MAX_HISTORY", "50"))
@@ -98,20 +98,20 @@ async def initialize_llm_engine(config: Dict[str, Any]) -> Any:
     """Initialize LLM Engine"""
     try:
         logger.info("=" * 60)
-        logger.info("Initializing LLM Engine (Llama/Ollama)...")
+        logger.info("Initializing LLM Engine (Groq)...")
         logger.info("=" * 60)
         
-        from mcp_service.llm import LlamaReasoningEngine
+        from mcp_service.llm import GroqReasoningEngine
         
-        llama_config = config.get("llama", {})
-        engine = LlamaReasoningEngine(llama_config)
+        groq_config = config.get("groq", {})
+        engine = GroqReasoningEngine(groq_config)
         
         # Health check
         health = await engine.health_check()
         if health.get("status") == "healthy":
             logger.info(f"[OK] LLM Engine initialized successfully")
-            logger.info(f"   Model: {llama_config.get('llama_model')}")
-            logger.info(f"   Base URL: {llama_config.get('llama_base_url')}")
+            logger.info(f"   Model: {groq_config.get('groq_model')}")
+            logger.info(f"   API Key: {'*' * len(groq_config.get('groq_api_key', ''))}")
         else:
             logger.warning(f"[WARN] LLM Engine health check failed: {health.get('error')}")
             logger.warning("   Continuing with limited functionality...")
@@ -123,7 +123,7 @@ async def initialize_llm_engine(config: Dict[str, Any]) -> Any:
         logger.error(traceback.format_exc())
         return None
 
-async def initialize_chat_handler(config: Dict[str, Any], llama_engine: Any) -> Any:
+async def initialize_chat_handler(config: Dict[str, Any], groq_engine: Any) -> Any:
     """Initialize Chat Handler"""
     try:
         logger.info("=" * 60)
@@ -134,7 +134,7 @@ async def initialize_chat_handler(config: Dict[str, Any], llama_engine: Any) -> 
         
         chat_config = {
             **config.get("chat", {}),
-            "llama": config.get("llama", {}),
+            "groq": config.get("groq", {}),
             "trading_agent": config.get("trading_agent", {})
         }
         handler = ChatHandler(chat_config)
@@ -490,7 +490,7 @@ async def start_mcp_api_server(chat_hdlr, llama_eng, trading_agt, config: Dict[s
         from mcp_service.api_server import initialize_api, start_api_server
         
         # Initialize API with components
-        initialize_api(chat_hdlr, llama_eng, trading_agt)
+        initialize_api(chat_hdlr, trading_agt)
         
         # Get API server config
         api_host = os.getenv("MCP_API_HOST", "0.0.0.0")
@@ -530,7 +530,7 @@ def setup_signal_handlers():
 
 async def shutdown():
     """Graceful shutdown of all components"""
-    global mcp_server, llama_engine, chat_handler, trading_agent, all_agents, all_tools, api_task
+    global mcp_server, groq_engine, chat_handler, trading_agent, all_agents, all_tools, api_task
     
     logger.info("=" * 60)
     logger.info("Shutting down MCP Server components...")
@@ -548,9 +548,9 @@ async def shutdown():
                 logger.error(f"[ERROR] Error cancelling API server: {e}")
         
         # Cleanup LLM engine
-        if llama_engine:
+        if groq_engine:
             try:
-                await llama_engine.cleanup()
+                await groq_engine.cleanup()
                 logger.info("[OK] LLM Engine cleaned up")
             except Exception as e:
                 logger.error(f"[ERROR] Error cleaning up LLM Engine: {e}")
@@ -580,7 +580,7 @@ async def shutdown():
 
 async def main():
     """Main entry point - Initialize and run all MCP components"""
-    global mcp_server, llama_engine, chat_handler, trading_agent, all_agents, all_tools, api_task
+    global mcp_server, groq_engine, chat_handler, trading_agent, all_agents, all_tools, api_task
     
     try:
         logger.info("")
@@ -595,10 +595,10 @@ async def main():
         
         # Initialize components in order
         # 1. LLM Engine
-        llama_engine = await initialize_llm_engine(config)
+        groq_engine = await initialize_llm_engine(config)
         
         # 2. Chat Handler
-        chat_handler = await initialize_chat_handler(config, llama_engine)
+        chat_handler = await initialize_chat_handler(config, groq_engine)
         
         # 3. Trading Agents
         all_agents = await initialize_trading_agents(config)
@@ -611,7 +611,7 @@ async def main():
         mcp_server = await initialize_mcp_server(config, all_tools)
         
         # 6. Start API Server for chat requests
-        api_task = await start_mcp_api_server(chat_handler, llama_engine, trading_agent, config)
+        api_task = await start_mcp_api_server(chat_handler, groq_engine, trading_agent, config)
         
         # Setup signal handlers
         shutdown_event = setup_signal_handlers()
@@ -622,7 +622,7 @@ async def main():
         logger.info("[OK] MCP Server Started Successfully!")
         logger.info("=" * 60)
         logger.info(f"Components Initialized:")
-        logger.info(f"  - LLM Engine: {'[OK]' if llama_engine else '[FAIL]'}")
+        logger.info(f"  - LLM Engine: {'[OK]' if groq_engine else '[FAIL]'}")
         logger.info(f"  - Chat Handler: {'[OK]' if chat_handler else '[FAIL]'}")
         logger.info(f"  - Trading Agents: {len(all_agents)}")
         logger.info(f"  - Trading Tools: {len(all_tools)}")

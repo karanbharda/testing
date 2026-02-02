@@ -1,0 +1,12 @@
+{
+  "context": {
+    "stop_loss_hit": true,
+    "volatility_spike": false,
+    "fno_ban": false
+  },
+  "expected_rules": ["RISK_STOPLOSS_001"],
+  "expected_keywords": [
+    "risk management",
+    "capital protection"
+  ]
+}

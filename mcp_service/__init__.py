@@ -3,7 +3,7 @@ MCP Service - Model Context Protocol Service
 ============================================
 
 A standalone service for MCP (Model Context Protocol) operations including:
-- LLM integration (Llama/Ollama)
+- LLM integration (Groq)
 - Chat handling
 - Trading agents
 - Market analysis tools
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Import main components
 from .server.mcp_trading_server import MCPTradingServer, MCPToolResult, MCPToolStatus
-from .llm import LlamaReasoningEngine, TradingContext, LlamaResponse
+from .llm import GroqReasoningEngine, TradingContext, GroqResponse
 from .chat import ChatHandler, ChatMessage, ChatResponse
 
 # Import agents
@@ -31,9 +31,9 @@ __all__ = [
     "MCPTradingServer",
     "MCPToolResult",
     "MCPToolStatus",
-    "LlamaReasoningEngine",
+    "GroqReasoningEngine",
     "TradingContext",
-    "LlamaResponse",
+    "GroqResponse",
     "ChatHandler",
     "ChatMessage",
     "ChatResponse",

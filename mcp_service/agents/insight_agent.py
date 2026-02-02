@@ -49,11 +49,6 @@ class InsightAgent:
         self.config = config
         self.agent_id = config.get("agent_id", "insight_agent")
         
-        # Ollama configuration for enhanced insights
-        self.ollama_enabled = config.get("ollama_enabled", False)
-        self.ollama_host = config.get("ollama_host", "http://localhost:11434")
-        self.ollama_model = config.get("ollama_model", "llama2")
-        
         # Performance tracking
         self.insights_generated = 0
         self.reasoning_logs = []
@@ -95,20 +90,6 @@ class InsightAgent:
             risk_considerations = self._generate_prediction_risks(
                 top_predictions, reasoning_log
             )
-            
-            # Enhance with LLM if available
-            if self.ollama_enabled:
-                enhanced_insight = await self._enhance_with_llm(
-                    "prediction", 
-                    {
-                        "predictions": top_predictions,
-                        "models": models_used,
-                        "horizon": horizon
-                    },
-                    reasoning_log
-                )
-                if enhanced_insight:
-                    detailed_insight += f"\n\nEnhanced insight: {enhanced_insight}"
             
             self.insights_generated += 1
             
@@ -163,19 +144,6 @@ class InsightAgent:
             risk_considerations = self._generate_shortlist_risks(
                 shortlisted_stocks, reasoning_log
             )
-            
-            # Enhance with LLM if available
-            if self.ollama_enabled:
-                enhanced_insight = await self._enhance_with_llm(
-                    "shortlist", 
-                    {
-                        "stocks": shortlisted_stocks[:10],  # Top 10 for context
-                        "filters": filters_applied
-                    },
-                    reasoning_log
-                )
-                if enhanced_insight:
-                    detailed_insight += f"\n\nEnhanced insight: {enhanced_insight}"
             
             self.insights_generated += 1
             
@@ -369,12 +337,7 @@ class InsightAgent:
             if not self.ollama_enabled:
                 return None
             
-            # Import ollama
-            try:
-                import ollama
-            except ImportError:
-                logger.warning("Ollama not available for insight enhancement")
-                return None
+            
             
             # Prepare prompt for insight enhancement
             prompt = f"""

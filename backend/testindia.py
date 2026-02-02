@@ -1,7 +1,16 @@
+import threading
+import queue
+import signal
+import sys
+import argparse
+from dhanhq import dhanhq
+from dotenv import load_dotenv
+from requests.exceptions import HTTPError
+import pickle
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from urllib.parse import quote
 from core.professional_buy_integration import ProfessionalBuyIntegration
 from typing import Optional, List
-from langchain.memory import ConversationBufferMemory
-from langchain.llms.base import LLM
 from ta.volatility import AverageTrueRange
 from ta.volume import VolumeWeightedAveragePrice
 from ta.momentum import RSIIndicator, StochasticOscillator
@@ -44,11 +53,10 @@ from gymnasium import spaces
 import traceback
 import warnings
 import logging
-# PRODUCTION FIX: Add concurrent processing for speed
+# Set up basic logger for early use
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 # ThreadPoolExecutor and multiprocessing imports removed - not used in current implementation
-from urllib.parse import quote
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-import pickle
 
 # Advanced ML and sentiment analysis imports
 try:
@@ -56,16 +64,31 @@ try:
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
-    logger.warning("Transformers not available for advanced sentiment analysis")
+    logger.warning(
+        "Transformers not available for advanced sentiment analysis")
 
-from requests.exceptions import HTTPError
-from dotenv import load_dotenv
-from dhanhq import dhanhq
-import argparse
-import sys
-import signal
-import queue
-import threading
+
+# LangChain imports for LLM integration
+try:
+    from langchain.llms.base import LLM
+    from langchain.memory import ConversationBufferMemory
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    try:
+        from langchain_community.llms import LLM
+        from langchain_community.memory import ConversationBufferMemory
+        LANGCHAIN_AVAILABLE = True
+    except ImportError:
+        LANGCHAIN_AVAILABLE = False
+        logger.warning("LangChain not available for LLM integration")
+        # Define a dummy LLM class if not available
+
+        class LLM:
+            pass
+
+        class ConversationBufferMemory:
+            pass
+
 
 # Enhanced user agents to avoid detection
 USER_AGENTS = [
@@ -788,6 +811,7 @@ class FyersTickerMapper:
             "DABUR.NS": ["Dabur India", "Dabur"],
             "MARICO.NS": ["Marico"],
             "GODREJCP.NS": ["Godrej Consumer Products", "Godrej"],
+            "SIMPLEXINF.NS": ["Simplex Infrastructures", "Simplex Infrastructures Ltd", "Simplex"],
 
             # Infrastructure & Construction
             "LT.NS": ["Larsen & Toubro", "L&T", "Larsen Toubro"],
@@ -1014,10 +1038,11 @@ class ChatbotCommandHandler:
         self.trading_paused = False
         self.pause_until = None
 
-        # Initialize Llama LLM (always available with Ollama)
+        # Initialize Llama LLM (removed - using Groq instead)
         try:
-            self.llama_llm = LlamaLLM(model_name="llama3.2:latest")
-            logger.info("Llama LLM initialized successfully with Ollama")
+            # Llama/Ollama integration removed - using Groq only
+            self.llama_llm = None
+            logger.info("Llama LLM removed - using Groq integration only")
         except Exception as e:
             logger.error(f"Failed to initialize Llama LLM: {e}")
             self.llama_llm = None
@@ -1089,29 +1114,8 @@ class ChatbotCommandHandler:
             return f"Error executing command {cmd}: {str(e)}"
 
     def handle_general_query(self, query: str) -> str:
-        """Handle general queries using Llama LLM."""
-        if not self.llama_llm:
-            return "AI chat is not available. Please make sure Ollama is running locally."
-
-        try:
-            # Add context about the trading bot
-            context = f"""You are an AI assistant for an Indian stock trading bot. Current context:
-- Portfolio Value: Rs.{self.trading_bot.portfolio.get_metrics()['total_value']:,.2f}
-- Active Positions: {len(self.trading_bot.portfolio.holdings)}
-- Trading Mode: {self.trading_bot.portfolio.mode}
-- Available Commands: /start_bot, /set_risk, /get_pnl, /why_trade, /list_positions, /set_ticker, /get_signals, /pause_trading, /resume_trading, /get_performance, /set_allocation
-
-User Query: {query}
-
-Please provide a helpful response about trading, markets, or the user's portfolio. Keep responses concise and relevant."""
-
-            # Use direct LLM call instead of ConversationChain
-            response = self.llama_llm._call(context)
-            return response
-
-        except Exception as e:
-            logger.error(f"Error with Llama LLM: {e}")
-            return "Sorry, I'm having trouble with the local AI service. Please make sure Ollama is running."
+        """Handle general queries - Llama removed, using Groq integration only."""
+        return "AI chat via Llama/Ollama has been removed. The system now uses Groq integration only for AI-powered features."
 
     # Command Implementation Methods
     def start_bot(self) -> str:
@@ -1656,13 +1660,30 @@ class VirtualPortfolio:
         self.realized_pnl = 0  # P&L from completed trades
         self.unrealized_pnl = 0  # P&L from current holdings
         self.trade_callbacks = []  # Callbacks to notify when trades are executed
+        
+        # Debug logging for received config
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"VirtualPortfolio received config:")
+        logger.info(f"  Mode: {self.mode}")
+        logger.info(f"  Dhan Client ID: {'SET' if config.get('dhan_client_id') else 'MISSING'}")
+        logger.info(f"  Dhan Access Token: {'SET' if config.get('dhan_access_token') else 'MISSING'}")
 
-        # Initialize Dhan API only if we have credentials
-        if config.get("dhan_client_id") and config.get("dhan_access_token"):
+        # Initialize Dhan API - try config first, then environment variables
+        import os
+        dhan_client_id = config.get("dhan_client_id") or os.getenv("DHAN_CLIENT_ID")
+        dhan_access_token = config.get("dhan_access_token") or os.getenv("DHAN_ACCESS_TOKEN")
+
+        logger.info(
+            f"Dhan credentials check - Client ID: {'SET' if dhan_client_id else 'MISSING'}, Token: {'SET' if dhan_access_token else 'MISSING'}")
+
+        if dhan_client_id and dhan_access_token:
             try:
+                logger.info(
+                    f"Initializing Dhan API with client ID: {dhan_client_id[:4]}...{dhan_client_id[-4:] if len(dhan_client_id) > 8 else dhan_client_id}")
                 self.api = dhanhq(
-                    client_id=config["dhan_client_id"],
-                    access_token=config["dhan_access_token"]
+                    client_id=dhan_client_id,
+                    access_token=dhan_access_token
                 )
                 logger.info("Dhan API initialized successfully")
             except Exception as e:
@@ -1671,7 +1692,7 @@ class VirtualPortfolio:
         else:
             self.api = None
             logger.warning(
-                "Dhan API credentials not provided. Running in simulation mode.")
+                f"Dhan API credentials not provided. Running in simulation mode. Client ID: {'SET' if dhan_client_id else 'MISSING'}, Token: {'SET' if dhan_access_token else 'MISSING'}")
 
         self.config = config
 
@@ -2328,10 +2349,12 @@ class TradingExecutor:
         self.portfolio = portfolio
         self.mode = config.get("mode", "paper")
         self.dhanhq = portfolio.api  # Use the dhanhq client from VirtualPortfolio
-        self.stop_loss_pct = float(config.get("stop_loss_pct", 0.05))
+        self.stop_loss_pct = float(config.get(
+            "stop_loss_pct", 0.05) if config else 0.05)
         self.max_capital_per_trade = float(config.get(
-            "max_capital_per_trade", 0.40))  # Increased from 25% to 40%
-        self.max_trade_limit = int(config.get("max_trade_limit", 150))
+            "max_capital_per_trade", 0.40) if config else 0.40)  # Increased from 25% to 40%
+        self.max_trade_limit = int(config.get(
+            "max_trade_limit", 150) if config else 150)
 
         # Initialize live executor for database integration if available
         self.live_executor = None
@@ -2476,7 +2499,10 @@ class TradingExecutor:
                     logger.info(
                         f"Legacy live trade executed: {action} {qty} units of {ticker} at Rs.{price}")
                 else:
-                    return {"success": False, "message": "No live trading client available"}
+                    # More descriptive error message
+                    dhan_status = "available" if self.dhanhq else "NOT available"
+                    mode_status = self.mode
+                    return {"success": False, "message": f"No live trading client available - Dhan API status: {dhan_status}, Mode: {mode_status}"}
             else:
                 # Enhanced paper trading logging
                 signal_type = "ENTRY" if action.upper() == "BUY" else "EXIT"
@@ -2660,7 +2686,8 @@ class Stock:
         self.last_rate_fetch = None
         self.rate_cache = None
         self.cache_duration = 300
-        self.google_news = GNews()
+        # Configure for English language, Indian region
+        self.google_news = GNews(language='en', country='IN', max_results=10)
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
         warnings.filterwarnings('ignore')
@@ -2678,6 +2705,17 @@ class Stock:
 
         # Store advanced sentiment analyzer reference
         self.advanced_sentiment_analyzer = advanced_sentiment_analyzer
+
+        # Initialize adaptive model selector
+        self.adaptive_model_selector = {
+            'regime_model_mapping': {
+                'bull': ['LSTM', 'RandomForest', 'XGBoost'],
+                'bear': ['LinearRegression', 'ARIMA', 'ETS'],
+                'volatile': ['LSTM', 'Transformer', 'Ensemble'],
+                'sideways': ['SVM', 'RandomForest', 'XGBoost'],
+                'neutral': ['Ensemble', 'VotingRegressor', 'StackingRegressor']
+            }
+        }
 
     def get_company_names(self, ticker):
         """Get company names for news search using dynamic mapping"""
@@ -2840,6 +2878,38 @@ class Stock:
             "priority": "low"
         })
 
+        # Level 7: Broader industry/context search (final fallback)
+        if company_names:
+            # Try to determine industry from company name
+            industry_keywords = []
+            name_lower = company_names[0].lower()
+            if any(word in name_lower for word in ['infra', 'construc', 'build', 'cement', 'steel', 'engineering']):
+                industry_keywords = ['infrastructure',
+                                     'construction', 'cement', 'steel']
+            elif any(word in name_lower for word in ['bank', 'financ', 'loan', 'credit']):
+                industry_keywords = ['banking',
+                                     'finance', 'loans', 'nifty bank']
+            elif any(word in name_lower for word in ['tech', 'software', 'info', 'it']):
+                industry_keywords = [
+                    'information technology', 'software', 'it services']
+            elif any(word in name_lower for word in ['pharma', 'health', 'medic']):
+                industry_keywords = [
+                    'pharmaceuticals', 'healthcare', 'medicine']
+            elif any(word in name_lower for word in ['auto', 'motor', 'vehicle']):
+                industry_keywords = ['automotive', 'automobile', 'cars']
+            else:
+                # Generic Indian stock market terms
+                industry_keywords = ['nse', 'bse', 'indian stocks', 'bharat']
+
+            if industry_keywords:
+                industry_query = f'("{clean_ticker}" OR "{company_names[0]}") AND ({" OR ".join(industry_keywords[:3])})'
+                search_levels.append({
+                    "level": 7,
+                    "query": industry_query,
+                    "description": "Industry context search",
+                    "priority": "low"
+                })
+
         return search_levels
 
     def get_sector_keywords(self, ticker, company_names):
@@ -2866,7 +2936,8 @@ class Stock:
             'real_estate': ['real estate', 'property', 'housing', 'realty'],
             'insurance': ['insurance', 'life', 'general insurance'],
             'ports': ['port', 'shipping', 'logistics', 'cargo'],
-            'aviation': ['aviation', 'airline', 'airport', 'aircraft']
+            'aviation': ['aviation', 'airline', 'airport', 'aircraft'],
+            'infrastructure': ['infra', 'construc', 'build', 'engineering', 'roads', 'highways']
         }
 
         detected_sectors = []
@@ -2888,7 +2959,15 @@ class Stock:
             elif sector == 'automotive':
                 sector_keywords.extend(
                     ['auto sector India', 'Indian automobile', 'car manufacturers India'])
+            elif sector == 'infrastructure':
+                sector_keywords.extend(
+                    ['infrastructure sector India', 'construction companies India', 'building projects'])
             # Add more sector-specific terms as needed
+
+        # If no specific sector detected, use general Indian market terms
+        if not detected_sectors:
+            sector_keywords.extend(
+                ['nse', 'bse', 'indian stocks', 'bharat', 'market'])
 
         return sector_keywords[:5]  # Limit to top 5 keywords
 
@@ -3245,9 +3324,11 @@ class Stock:
                         total_confidence += confidence
 
                     except Exception as e:
-                        logger.warning(f"Advanced sentiment analysis failed, falling back to VADER: {e}")
+                        logger.warning(
+                            f"Advanced sentiment analysis failed, falling back to VADER: {e}")
                         # Fallback to VADER
-                        sentiment = self.sentiment_analyzer.polarity_scores(content)
+                        sentiment = self.sentiment_analyzer.polarity_scores(
+                            content)
                         score = sentiment.get("compound", 0)
                         confidence = abs(score)
 
@@ -3261,7 +3342,8 @@ class Stock:
                         total_confidence += confidence
                 else:
                     # Use VADER as fallback
-                    sentiment = self.sentiment_analyzer.polarity_scores(content)
+                    sentiment = self.sentiment_analyzer.polarity_scores(
+                        content)
                     score = sentiment.get("compound", 0)
                     confidence = abs(score)
 
@@ -3871,26 +3953,110 @@ class Stock:
             logger.error(f"Error fetching Reddit sentiment: {e}")
             return {"positive": 0, "negative": 0, "neutral": 1}
 
+    def _get_newsapi_news(self, query):
+        """Helper function to fetch news from NewsAPI as fallback"""
+        import requests
+        from urllib.parse import quote
+        from datetime import datetime, timedelta
+
+        try:
+            # Focus on last 24 hours for more actionable sentiment
+            yesterday = (datetime.now() - timedelta(days=1)
+                         ).strftime('%Y-%m-%d')
+
+            # Build URL for NewsAPI
+            url = f"https://newsapi.org/v2/everything?q={quote(query)}&from={yesterday}&apiKey={Stock.NEWSAPI_KEY}&language=en&sortBy=publishedAt&pageSize=10"
+
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            # Convert NewsAPI format to match GNews format
+            articles = data.get("articles", [])
+            converted_articles = []
+
+            for article in articles:
+                converted_article = {
+                    "title": article.get("title", ""),
+                    "description": article.get("description", ""),
+                    "url": article.get("url", ""),
+                    "published date": article.get("publishedAt", ""),
+                }
+                converted_articles.append(converted_article)
+
+            return converted_articles
+
+        except Exception as e:
+            logger.error(f"Error fetching NewsAPI news: {e}")
+            return []
+
     def google_news_sentiment(self, ticker):
         if self._is_sentiment_rate_limited('google_news'):
             logger.info(
                 "Skipping Google News sentiment due to rate limit cooldown")
             return {"positive": 0, "negative": 0, "neutral": 1}
         try:
-            # Use dynamic search query instead of raw ticker
-            search_query = self.build_search_query(ticker)
+            # Get multi-level search queries
+            search_levels = self.build_multi_level_search_queries(ticker)
             logger.info(
-                f"Google News search query for {ticker}: {search_query}")
+                f"Starting multi-level Google News search for {ticker} with {len(search_levels)} levels")
 
-            # Add delay to avoid rate limits
-            time.sleep(random.uniform(1, 2))
-
-            news = self.google_news.get_news(search_query)
+            news = []
             sentiments = {"positive": 0, "negative": 0, "neutral": 1}
+
+            # Try each search level in order
+            for search_level in search_levels:
+                level_num = search_level['level']
+                query = search_level['query']
+                description = search_level['description']
+
+                logger.info(
+                    f"Level {level_num} ({description}): trying query '{query}'")
+
+                try:
+                    # Add delay to avoid rate limits
+                    time.sleep(random.uniform(1, 2))
+
+                    level_news = self.google_news.get_news(query)
+
+                    if level_news:
+                        news = level_news
+                        logger.info(
+                            f"Level {level_num} successful: found {len(level_news)} articles")
+                        break
+                    else:
+                        logger.info(f"Level {level_num} returned no results")
+
+                except Exception as level_error:
+                    logger.warning(
+                        f"Level {level_num} failed with query '{query}': {level_error}")
+                    continue
+
+            # If all levels failed, try NewsAPI as final fallback
+            if not news:
+                logger.warning(
+                    f"All {len(search_levels)} search levels failed for {ticker}")
+
+                # Use NewsAPI as fallback
+                try:
+                    if hasattr(Stock, 'NEWSAPI_KEY') and Stock.NEWSAPI_KEY:
+                        # Try the best query from our multi-level search
+                        best_query = search_levels[0]['query'] if search_levels else ticker.replace(
+                            '.NS', '').replace('.BO', '')
+                        news = self._get_newsapi_news(best_query)
+                        if news:
+                            logger.info(
+                                f"Successfully fetched {len(news)} articles from NewsAPI")
+                    else:
+                        logger.warning(
+                            "NewsAPI key not available, unable to use fallback")
+                except Exception as fallback_error:
+                    logger.error(
+                        f"NewsAPI fallback also failed: {fallback_error}")
 
             if not news:
                 logger.warning(
-                    f"No Google News articles found for ticker {ticker}")
+                    f"No news articles found for ticker {ticker} after all search levels")
                 return sentiments
 
             logger.info(f"Found {len(news)} Google News articles for {ticker}")
@@ -3918,11 +4084,12 @@ class Stock:
         except Exception as e:
             # Check if this is a rate limiting error
             error_str = str(e).lower()
-            if 'rate limit' in error_str or 'too many requests' in error_str:
+            if 'rate limit' in error_str or 'too many requests' in error_str or '429' in str(e):
                 logger.warning(
                     "Rate limiting detected for Google News, setting cooldown")
                 self._set_sentiment_rate_limit('google_news')
-            logger.error(f"Error fetching Google News sentiment: {e}")
+            logger.error(
+                f"Error fetching Google News sentiment for {ticker}: {e}")
             return {"positive": 0, "negative": 0, "neutral": 1}
 
     def fetch_combined_sentiment(self, ticker):
@@ -5284,7 +5451,8 @@ class Stock:
 
             # New indicators: ADX, Stochastic, Ichimoku, ATR
             try:
-                adx_ind = ADXIndicator(high=history["High"], low=history["Low"], close=history["Close"], window=14)
+                adx_ind = ADXIndicator(
+                    high=history["High"], low=history["Low"], close=history["Close"], window=14)
                 history["ADX"] = adx_ind.adx()
                 history["PLUS_DI"] = adx_ind.adx_pos()
                 history["MINUS_DI"] = adx_ind.adx_neg()
@@ -5294,7 +5462,8 @@ class Stock:
                 history["MINUS_DI"] = np.nan
 
             try:
-                stoch = StochasticOscillator(high=history["High"], low=history["Low"], close=history["Close"], window=14, smooth_window=3)
+                stoch = StochasticOscillator(
+                    high=history["High"], low=history["Low"], close=history["Close"], window=14, smooth_window=3)
                 history["STOCH_K"] = stoch.stoch()
                 history["STOCH_D"] = stoch.stoch_signal()
             except Exception:
@@ -5302,7 +5471,8 @@ class Stock:
                 history["STOCH_D"] = np.nan
 
             try:
-                ichi = IchimokuIndicator(high=history["High"], low=history["Low"], window1=9, window2=26, window3=52)
+                ichi = IchimokuIndicator(
+                    high=history["High"], low=history["Low"], window1=9, window2=26, window3=52)
                 history["ICHIMOKU_CONV"] = ichi.ichimoku_conversion_line()
                 history["ICHIMOKU_BASE"] = ichi.ichimoku_base_line()
                 history["ICHIMOKU_A"] = ichi.ichimoku_a()
@@ -5314,7 +5484,8 @@ class Stock:
                 history["ICHIMOKU_B"] = np.nan
 
             try:
-                atr_ind = AverageTrueRange(high=history["High"], low=history["Low"], close=history["Close"], window=14)
+                atr_ind = AverageTrueRange(
+                    high=history["High"], low=history["Low"], close=history["Close"], window=14)
                 history["ATR"] = atr_ind.average_true_range()
             except Exception:
                 history["ATR"] = np.nan
@@ -5722,45 +5893,57 @@ class Stock:
 
                 # Ichimoku Cloud components
                 data['Ichimoku_Tenkan'] = (combined_history['High'].rolling(window=9).max() +
-                                          combined_history['Low'].rolling(window=9).min()) / 2
+                                           combined_history['Low'].rolling(window=9).min()) / 2
                 data['Ichimoku_Kijun'] = (combined_history['High'].rolling(window=26).max() +
-                                         combined_history['Low'].rolling(window=26).min()) / 2
-                data['Ichimoku_Senkou_A'] = (data['Ichimoku_Tenkan'] + data['Ichimoku_Kijun']) / 2
+                                          combined_history['Low'].rolling(window=26).min()) / 2
+                data['Ichimoku_Senkou_A'] = (
+                    data['Ichimoku_Tenkan'] + data['Ichimoku_Kijun']) / 2
                 data['Ichimoku_Senkou_B'] = (combined_history['High'].rolling(window=52).max() +
-                                            combined_history['Low'].rolling(window=52).min()) / 2
+                                             combined_history['Low'].rolling(window=52).min()) / 2
                 data['Ichimoku_Chikou'] = combined_history['Close'].shift(-26)
 
                 # Advanced momentum indicators
                 data['Williams_R'] = (combined_history['High'].rolling(window=14).max() - combined_history['Close']) / \
-                                    (combined_history['High'].rolling(window=14).max() - combined_history['Low'].rolling(window=14).min()) * -100
+                    (combined_history['High'].rolling(window=14).max(
+                    ) - combined_history['Low'].rolling(window=14).min()) * -100
                 data['Williams_R'] = data['Williams_R'].clip(-100, 0)
 
                 data['CCI'] = (combined_history['Close'] - combined_history['Close'].rolling(window=20).mean()) / \
-                             (0.015 * combined_history['Close'].rolling(window=20).std())
+                    (0.015 *
+                     combined_history['Close'].rolling(window=20).std())
                 data['CCI'] = data['CCI'].clip(-200, 200)
 
                 # Volume-based indicators
-                data['Volume_Price_Trend'] = (combined_history['Volume'] * (combined_history['Close'].pct_change())).cumsum()
+                data['Volume_Price_Trend'] = (
+                    combined_history['Volume'] * (combined_history['Close'].pct_change())).cumsum()
                 data['Volume_Weighted_MA'] = (combined_history['Close'] * combined_history['Volume']).rolling(window=20).sum() / \
-                                            combined_history['Volume'].rolling(window=20).sum()
+                    combined_history['Volume'].rolling(window=20).sum()
 
                 # Volatility-adjusted indicators
                 data['ATR_Normalized'] = atr / combined_history['Close'] * 100
-                data['Normalized_Volatility'] = data['Volatility_20d'] / data['SMA_20'] * 100
+                data['Normalized_Volatility'] = data['Volatility_20d'] / \
+                    data['SMA_20'] * 100
 
                 # Market regime indicators
-                data['Regime_Volatility'] = data['Volatility_20d'].rolling(window=60).mean()
-                data['Regime_Trend'] = (data['SMA_20'] - data['SMA_50']) / data['SMA_50']
-                data['Regime_Momentum'] = data['ROC_10'].rolling(window=20).mean()
+                data['Regime_Volatility'] = data['Volatility_20d'].rolling(
+                    window=60).mean()
+                data['Regime_Trend'] = (
+                    data['SMA_20'] - data['SMA_50']) / data['SMA_50']
+                data['Regime_Momentum'] = data['ROC_10'].rolling(
+                    window=20).mean()
 
                 # Inter-market features (if NIFTY data available - placeholder for future enhancement)
                 # These would be correlations with broader market indices
-                data['Market_Correlation_5d'] = data['Price_Change'].rolling(window=5).corr(data['SMA_20'])
-                data['Market_Correlation_20d'] = data['Price_Change'].rolling(window=20).corr(data['SMA_50'])
+                data['Market_Correlation_5d'] = data['Price_Change'].rolling(
+                    window=5).corr(data['SMA_20'])
+                data['Market_Correlation_20d'] = data['Price_Change'].rolling(
+                    window=20).corr(data['SMA_50'])
 
                 # Advanced pattern recognition features
-                data['Price_to_Resistance'] = combined_history['Close'] / combined_history['High'].rolling(window=20).max()
-                data['Price_to_Support'] = combined_history['Close'] / combined_history['Low'].rolling(window=20).min()
+                data['Price_to_Resistance'] = combined_history['Close'] / \
+                    combined_history['High'].rolling(window=20).max()
+                data['Price_to_Support'] = combined_history['Close'] / \
+                    combined_history['Low'].rolling(window=20).min()
 
                 # Fibonacci retracement levels (simplified)
                 high_20 = combined_history['High'].rolling(window=20).max()
@@ -5771,9 +5954,12 @@ class Stock:
                 data['Fib_618'] = high_20 - range_20 * 0.618
 
                 # Distance from Fibonacci levels
-                data['Distance_Fib_236'] = (combined_history['Close'] - data['Fib_236']) / data['Fib_236']
-                data['Distance_Fib_382'] = (combined_history['Close'] - data['Fib_382']) / data['Fib_382']
-                data['Distance_Fib_618'] = (combined_history['Close'] - data['Fib_618']) / data['Fib_618']
+                data['Distance_Fib_236'] = (
+                    combined_history['Close'] - data['Fib_236']) / data['Fib_236']
+                data['Distance_Fib_382'] = (
+                    combined_history['Close'] - data['Fib_382']) / data['Fib_382']
+                data['Distance_Fib_618'] = (
+                    combined_history['Close'] - data['Fib_618']) / data['Fib_618']
 
                 # Hurst exponent approximation (simplified)
                 def calculate_hurst_exponent(series, window=100):
@@ -5782,7 +5968,8 @@ class Stock:
                         return 0.5
                     try:
                         lags = range(2, min(window, len(series)//2))
-                        tau = [np.std(np.subtract(series[lag:], series[:-lag])) for lag in lags]
+                        tau = [np.std(np.subtract(series[lag:], series[:-lag]))
+                               for lag in lags]
                         if len(tau) < 2:
                             return 0.5
                         poly = np.polyfit(np.log(lags), np.log(tau), 1)
@@ -5790,7 +5977,8 @@ class Stock:
                     except:
                         return 0.5
 
-                data['Hurst_Exponent'] = combined_history['Close'].rolling(window=50).apply(calculate_hurst_exponent)
+                data['Hurst_Exponent'] = combined_history['Close'].rolling(
+                    window=50).apply(calculate_hurst_exponent)
 
                 data['Sentiment_Score'] = sentiment_score
                 data['Trend_Direction'] = 1 if trend_direction == "UPTREND" else -1
@@ -6183,49 +6371,62 @@ class Stock:
                             if model_scores and self.adaptive_model_selector:
                                 try:
                                     # Detect current market regime
-                                    market_regime = self.detect_market_regime(combined_history)
+                                    market_regime = self.stock_analyzer.detect_market_regime(
+                                            combined_history) 
 
                                     # Get preferred models for this regime
                                     preferred_models = self.adaptive_model_selector['regime_model_mapping'].get(
-                                        market_regime, list(model_scores.keys())
+                                        market_regime, list(
+                                            model_scores.keys())
                                     )
 
                                     # Filter available models by regime preference
-                                    regime_models = {k: v for k, v in model_scores.items() if k in preferred_models}
+                                    regime_models = {
+                                        k: v for k, v in model_scores.items() if k in preferred_models}
 
                                     if regime_models:
                                         # Select best model from preferred regime models
-                                        best_model_name = max(regime_models.keys(), key=lambda k: regime_models[k]['r2'])
-                                        logger.info(f"Market regime: {market_regime}, Preferred models: {preferred_models}")
+                                        best_model_name = max(
+                                            regime_models.keys(), key=lambda k: regime_models[k]['r2'])
+                                        logger.info(
+                                            f"Market regime: {market_regime}, Preferred models: {preferred_models}")
                                     else:
                                         # Fallback to best overall model
-                                        best_model_name = max(model_scores.keys(), key=lambda k: model_scores[k]['r2'])
-                                        logger.info(f"Market regime: {market_regime}, No preferred models available, using best overall")
+                                        best_model_name = max(
+                                            model_scores.keys(), key=lambda k: model_scores[k]['r2'])
+                                        logger.info(
+                                            f"Market regime: {market_regime}, No preferred models available, using best overall")
 
                                     predicted_price = model_scores[best_model_name]['prediction']
                                     mse = model_scores[best_model_name]['mse']
                                     mae = model_scores[best_model_name]['mae']
                                     r2 = model_scores[best_model_name]['r2']
 
-                                    logger.info(f"Adaptive ML model selection: {best_model_name} (R2: {r2:.4f}) for {market_regime} regime")
+                                    logger.info(
+                                        f"Adaptive ML model selection: {best_model_name} (R2: {r2:.4f}) for {market_regime} regime")
 
                                 except Exception as e:
-                                    logger.error(f"Error in adaptive model selection: {e}, falling back to standard selection")
-                                    best_model_name = max(model_scores.keys(), key=lambda k: model_scores[k]['r2'])
+                                    logger.error(
+                                        f"Error in adaptive model selection: {e}, falling back to standard selection")
+                                    best_model_name = max(
+                                        model_scores.keys(), key=lambda k: model_scores[k]['r2'])
                                     predicted_price = model_scores[best_model_name]['prediction']
                                     mse = model_scores[best_model_name]['mse']
                                     mae = model_scores[best_model_name]['mae']
                                     r2 = model_scores[best_model_name]['r2']
                             elif model_scores:
                                 # Standard model selection when adaptive selector not available
-                                best_model_name = max(model_scores.keys(), key=lambda k: model_scores[k]['r2'])
+                                best_model_name = max(
+                                    model_scores.keys(), key=lambda k: model_scores[k]['r2'])
                                 predicted_price = model_scores[best_model_name]['prediction']
                                 mse = model_scores[best_model_name]['mse']
                                 mae = model_scores[best_model_name]['mae']
                                 r2 = model_scores[best_model_name]['r2']
-                                logger.info(f"Best ML model: {best_model_name} (R2: {r2:.4f})")
+                                logger.info(
+                                    f"Best ML model: {best_model_name} (R2: {r2:.4f})")
                             else:
-                                logger.warning("No models successfully evaluated, using fallback")
+                                logger.warning(
+                                    "No models successfully evaluated, using fallback")
                                 predicted_price = current_price * 1.01
                                 mse = mae = r2 = 0.0
                                 best_model_name = "fallback"
@@ -6635,13 +6836,19 @@ class Stock:
 class StockTradingBot:
     def __init__(self, config):
         self.config = config
+        
+        # Debug logging for received config
+        logger.info(f"StockTradingBot received config:")
+        logger.info(f"  Mode: {self.config.get('mode')}")
+        logger.info(f"  Dhan Client ID: {'SET' if self.config.get('dhan_client_id') else 'MISSING'}")
+        logger.info(f"  Dhan Access Token: {'SET' if self.config.get('dhan_access_token') else 'MISSING'}")
 
         # Changed to India timezone
         self.timezone = pytz.timezone("Asia/Kolkata")
-        
+
         # Initialize advanced sentiment analyzer first (needed for Stock class)
         self.advanced_sentiment_analyzer = self._initialize_advanced_sentiment_analyzer()
-        
+
         self.data_feed = DataFeed(config["tickers"])
         self.portfolio = VirtualPortfolio(config)
         self.executor = TradingExecutor(self.portfolio, config)
@@ -6778,14 +6985,16 @@ class StockTradingBot:
     def _initialize_advanced_sentiment_analyzer(self):
         """Initialize advanced sentiment analyzer for prop-trading level analysis"""
         if not TRANSFORMERS_AVAILABLE:
-            logger.warning("Transformers not available, using fallback sentiment analysis")
+            logger.warning(
+                "Transformers not available, using fallback sentiment analysis")
             return None
 
         try:
             # Initialize FinBERT for financial sentiment analysis
             model_name = "ProsusAI/finbert"
             tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModelForSequenceClassification.from_pretrained(model_name)
+            model = AutoModelForSequenceClassification.from_pretrained(
+                model_name)
             sentiment_pipeline = pipeline(
                 "sentiment-analysis",
                 model=model,
@@ -6799,11 +7008,13 @@ class StockTradingBot:
                 'device': 'cuda' if torch.cuda.is_available() else 'cpu'
             }
 
-            logger.info(f"Advanced sentiment analyzer initialized with {model_name} on {analyzer['device']}")
+            logger.info(
+                f"Advanced sentiment analyzer initialized with {model_name} on {analyzer['device']}")
             return analyzer
 
         except Exception as e:
-            logger.error(f"Failed to initialize advanced sentiment analyzer: {e}")
+            logger.error(
+                f"Failed to initialize advanced sentiment analyzer: {e}")
             return None
 
     def _initialize_adaptive_model_selector(self):
@@ -6813,9 +7024,12 @@ class StockTradingBot:
                 'market_regime_detector': self._create_market_regime_detector(),
                 'model_performance_cache': {},
                 'regime_model_mapping': {
-                    'TRENDING': ['xgb', 'lgb', 'cb'],  # Tree-based models for trends
-                    'VOLATILE': ['mlp', 'svr', 'et'],   # Neural networks for volatility
-                    'RANGE_BOUND': ['ensemble', 'stacking', 'rf']  # Ensembles for ranges
+                    # Tree-based models for trends
+                    'TRENDING': ['xgb', 'lgb', 'cb'],
+                    # Neural networks for volatility
+                    'VOLATILE': ['mlp', 'svr', 'et'],
+                    # Ensembles for ranges
+                    'RANGE_BOUND': ['ensemble', 'stacking', 'rf']
                 },
                 'last_regime_update': None,
                 'performance_window_days': 30
@@ -6849,37 +7063,48 @@ class StockTradingBot:
         try:
             # Calculate volatility (20-day rolling std of returns)
             returns = price_history['Close'].pct_change().dropna()
-            volatility = returns.rolling(window=20).std().iloc[-1] if len(returns) >= 20 else returns.std()
+            volatility = returns.rolling(window=20).std(
+            ).iloc[-1] if len(returns) >= 20 else returns.std()
 
             # Calculate trend strength using ADX if available
             if 'ADX' in price_history.columns and not price_history['ADX'].empty:
-                trend_strength = price_history['ADX'].iloc[-1] / 100.0  # Normalize to 0-1
+                # Normalize to 0-1
+                trend_strength = price_history['ADX'].iloc[-1] / 100.0
             else:
                 # Fallback: calculate trend strength using price movement
-                ma_20 = price_history['Close'].rolling(window=20).mean().iloc[-1]
-                ma_50 = price_history['Close'].rolling(window=50).mean().iloc[-1] if len(price_history) >= 50 else price_history['Close'].iloc[0]
+                ma_20 = price_history['Close'].rolling(
+                    window=20).mean().iloc[-1]
+                ma_50 = price_history['Close'].rolling(window=50).mean(
+                ).iloc[-1] if len(price_history) >= 50 else price_history['Close'].iloc[0]
                 trend_strength = abs(ma_20 - ma_50) / ma_50 if ma_50 > 0 else 0
 
             # Calculate volume trend
             if 'Volume' in price_history.columns and not price_history['Volume'].empty:
-                volume_ma_20 = price_history['Volume'].rolling(window=20).mean().iloc[-1]
-                volume_ma_5 = price_history['Volume'].rolling(window=5).mean().iloc[-1]
-                volume_trend = (volume_ma_5 - volume_ma_20) / volume_ma_20 if volume_ma_20 > 0 else 0
+                volume_ma_20 = price_history['Volume'].rolling(
+                    window=20).mean().iloc[-1]
+                volume_ma_5 = price_history['Volume'].rolling(
+                    window=5).mean().iloc[-1]
+                volume_trend = (volume_ma_5 - volume_ma_20) / \
+                    volume_ma_20 if volume_ma_20 > 0 else 0
             else:
                 volume_trend = 0
 
             # Determine regime based on detector configuration
-            detector = self.adaptive_model_selector['market_regime_detector'] if self.adaptive_model_selector else self._create_market_regime_detector()
+            detector = self.adaptive_model_selector['market_regime_detector'] if self.adaptive_model_selector else self._create_market_regime_detector(
+            )
 
             # Calculate regime scores
             volatility_score = 1.0 if volatility > detector['volatility_threshold'] else 0.0
             trend_score = 1.0 if trend_strength > detector['trend_strength_threshold'] else 0.0
-            volume_score = 1.0 if volume_trend > 0.1 else (-1.0 if volume_trend < -0.1 else 0.0)
+            volume_score = 1.0 if volume_trend > 0.1 else (
+                -1.0 if volume_trend < -0.1 else 0.0)
 
             # Weighted regime determination
             weights = detector['regime_weights']
-            trending_score = weights['trend_strength'] * trend_score + weights['volatility'] * (1 - volatility_score)
-            volatile_score = weights['volatility'] * volatility_score + weights['volume_trend'] * abs(volume_score)
+            trending_score = weights['trend_strength'] * trend_score + \
+                weights['volatility'] * (1 - volatility_score)
+            volatile_score = weights['volatility'] * volatility_score + \
+                weights['volume_trend'] * abs(volume_score)
             range_score = 1.0 - max(trending_score, volatile_score)
 
             # Determine dominant regime
@@ -6890,7 +7115,8 @@ class StockTradingBot:
             else:
                 regime = "RANGE_BOUND"
 
-            logger.debug(f"Market regime detection: {regime} (volatility: {volatility:.4f}, trend: {trend_strength:.4f}, volume_trend: {volume_trend:.4f})")
+            logger.debug(
+                f"Market regime detection: {regime} (volatility: {volatility:.4f}, trend: {trend_strength:.4f}, volume_trend: {volume_trend:.4f})")
             return regime
 
         except Exception as e:
@@ -6957,46 +7183,60 @@ class StockTradingBot:
                 # ADX quality (higher values indicate stronger trends)
                 adx_quality = min(adx / 50.0, 1.0)
 
-                technical_quality = (rsi_quality + macd_quality + adx_quality) / 3.0
+                technical_quality = (
+                    rsi_quality + macd_quality + adx_quality) / 3.0
 
             # ML confidence adjustment
-            ml_confidence = ml_analysis.get("confidence", 0.5) if ml_analysis.get("success", False) else 0.3
+            ml_confidence = ml_analysis.get(
+                "confidence", 0.5) if ml_analysis.get("success", False) else 0.3
 
             # Sentiment consistency adjustment
             sentiment_confidence = 0.5
             if sentiment_analysis:
-                comprehensive = sentiment_analysis.get("comprehensive_analysis", {})
-                sentiment_confidence = comprehensive.get("confidence_score", 0.5)
+                comprehensive = sentiment_analysis.get(
+                    "comprehensive_analysis", {})
+                sentiment_confidence = comprehensive.get(
+                    "confidence_score", 0.5)
 
             # Performance-based adjustments
             if historical_performance:
                 # Increase weight for signals that have performed well recently
-                technical_win_rate = historical_performance.get("technical_win_rate", 0.5)
+                technical_win_rate = historical_performance.get(
+                    "technical_win_rate", 0.5)
                 ml_win_rate = historical_performance.get("ml_win_rate", 0.5)
-                sentiment_win_rate = historical_performance.get("sentiment_win_rate", 0.5)
+                sentiment_win_rate = historical_performance.get(
+                    "sentiment_win_rate", 0.5)
 
                 # Adjust weights based on recent performance (last 30 trades)
                 performance_multiplier = 0.1  # Maximum 10% adjustment
 
-                regime_weights['technical'] *= (1.0 + performance_multiplier * (technical_win_rate - 0.5))
-                regime_weights['ml'] *= (1.0 + performance_multiplier * (ml_win_rate - 0.5))
-                regime_weights['sentiment'] *= (1.0 + performance_multiplier * (sentiment_win_rate - 0.5))
+                regime_weights['technical'] *= (
+                    1.0 + performance_multiplier * (technical_win_rate - 0.5))
+                regime_weights['ml'] *= (1.0 +
+                                         performance_multiplier * (ml_win_rate - 0.5))
+                regime_weights['sentiment'] *= (
+                    1.0 + performance_multiplier * (sentiment_win_rate - 0.5))
 
             # Quality-based adjustments
             quality_multiplier = 0.15  # Maximum 15% adjustment based on signal quality
 
-            regime_weights['technical'] *= (1.0 + quality_multiplier * (technical_quality - 0.5))
-            regime_weights['ml'] *= (1.0 + quality_multiplier * (ml_confidence - 0.5))
-            regime_weights['sentiment'] *= (1.0 + quality_multiplier * (sentiment_confidence - 0.5))
+            regime_weights['technical'] *= (1.0 +
+                                            quality_multiplier * (technical_quality - 0.5))
+            regime_weights['ml'] *= (1.0 +
+                                     quality_multiplier * (ml_confidence - 0.5))
+            regime_weights['sentiment'] *= (1.0 + quality_multiplier *
+                                            (sentiment_confidence - 0.5))
 
             # Normalize weights to sum to 1.0
             total_weight = sum(regime_weights.values())
             if total_weight > 0:
-                normalized_weights = {k: v / total_weight for k, v in regime_weights.items()}
+                normalized_weights = {
+                    k: v / total_weight for k, v in regime_weights.items()}
             else:
                 normalized_weights = base_weights.copy()
 
-            logger.debug(f"Dynamic weights for {market_regime}: {normalized_weights}")
+            logger.debug(
+                f"Dynamic weights for {market_regime}: {normalized_weights}")
             return normalized_weights
 
         except Exception as e:
@@ -7006,7 +7246,8 @@ class StockTradingBot:
     def run_backtest(self, tickers, start_date, end_date, initial_capital=100000):
         """Run comprehensive backtest with walk-forward analysis"""
         try:
-            logger.info(f"Starting backtest for {tickers} from {start_date} to {end_date}")
+            logger.info(
+                f"Starting backtest for {tickers} from {start_date} to {end_date}")
 
             # Initialize backtest portfolio
             backtest_portfolio = VirtualPortfolio({
@@ -7023,9 +7264,11 @@ class StockTradingBot:
                     if data is not None and not data.empty:
                         # Filter date range
                         data.index = pd.to_datetime(data.index)
-                        data = data[(data.index >= start_date) & (data.index <= end_date)]
+                        data = data[(data.index >= start_date)
+                                    & (data.index <= end_date)]
                         historical_data[ticker] = data
-                        logger.info(f"Loaded {len(data)} days of data for {ticker}")
+                        logger.info(
+                            f"Loaded {len(data)} days of data for {ticker}")
                     else:
                         logger.warning(f"No data available for {ticker}")
                 except Exception as e:
@@ -7048,7 +7291,8 @@ class StockTradingBot:
             }
 
             # Walk-forward testing
-            current_date = pd.to_datetime(start_date) + pd.DateOffset(days=train_window)
+            current_date = pd.to_datetime(
+                start_date) + pd.DateOffset(days=train_window)
 
             while current_date <= pd.to_datetime(end_date):
                 logger.info(f"Backtesting period ending: {current_date}")
@@ -7059,7 +7303,8 @@ class StockTradingBot:
 
                 # Get test data
                 test_start = current_date
-                test_end = min(current_date + pd.DateOffset(days=test_window), pd.to_datetime(end_date))
+                test_end = min(
+                    current_date + pd.DateOffset(days=test_window), pd.to_datetime(end_date))
 
                 # Analyze each ticker for this period
                 for ticker in tickers:
@@ -7068,7 +7313,8 @@ class StockTradingBot:
 
                     ticker_data = historical_data[ticker]
                     period_data = ticker_data[
-                        (ticker_data.index >= train_start) & (ticker_data.index <= test_end)
+                        (ticker_data.index >= train_start) & (
+                            ticker_data.index <= test_end)
                     ]
 
                     if len(period_data) < 50:  # Minimum data requirement
@@ -7079,7 +7325,8 @@ class StockTradingBot:
                         regime = self.detect_market_regime(period_data)
 
                         # Get current price (last price in training period)
-                        current_price = period_data.loc[:train_end, 'Close'].iloc[-1]
+                        current_price = period_data.loc[:train_end,
+                                                        'Close'].iloc[-1]
 
                         # Analyze stock with training data
                         analysis = self.analyze_stock(
@@ -7111,11 +7358,13 @@ class StockTradingBot:
                                 # Update portfolio
                                 if decision['action'] == 'buy':
                                     # Simulate buy (simplified)
-                                    max_qty = int(backtest_portfolio.cash * 0.1 / current_price)
+                                    max_qty = int(
+                                        backtest_portfolio.cash * 0.1 / current_price)
                                     if max_qty > 0:
                                         backtest_portfolio.cash -= max_qty * current_price
                                         if ticker not in backtest_portfolio.holdings:
-                                            backtest_portfolio.holdings[ticker] = {'qty': 0, 'avg_price': 0}
+                                            backtest_portfolio.holdings[ticker] = {
+                                                'qty': 0, 'avg_price': 0}
                                         backtest_portfolio.holdings[ticker]['qty'] += max_qty
                                         backtest_portfolio.holdings[ticker]['avg_price'] = (
                                             (backtest_portfolio.holdings[ticker]['avg_price'] * (backtest_portfolio.holdings[ticker]['qty'] - max_qty)) +
@@ -7130,14 +7379,16 @@ class StockTradingBot:
                                         backtest_portfolio.holdings[ticker]['qty'] = 0
 
                     except Exception as e:
-                        logger.error(f"Error in backtest for {ticker} at {current_date}: {e}")
+                        logger.error(
+                            f"Error in backtest for {ticker} at {current_date}: {e}")
 
                 # Record portfolio value
                 portfolio_value = backtest_portfolio.cash
                 for holding in backtest_portfolio.holdings.values():
                     if holding['qty'] > 0:
                         # Use last available price as approximation
-                        portfolio_value += holding['qty'] * holding['avg_price']
+                        portfolio_value += holding['qty'] * \
+                            holding['avg_price']
 
                 backtest_results['portfolio_values'].append({
                     'date': current_date,
@@ -7151,12 +7402,16 @@ class StockTradingBot:
             if backtest_results['portfolio_values']:
                 initial_value = initial_capital
                 final_value = backtest_results['portfolio_values'][-1]['value']
-                total_return = (final_value - initial_value) / initial_value * 100
+                total_return = (final_value - initial_value) / \
+                    initial_value * 100
 
                 # Calculate Sharpe ratio (simplified)
-                values = [pv['value'] for pv in backtest_results['portfolio_values']]
+                values = [pv['value']
+                          for pv in backtest_results['portfolio_values']]
                 returns = pd.Series(values).pct_change().dropna()
-                sharpe_ratio = returns.mean() / returns.std() * np.sqrt(252) if len(returns) > 0 and returns.std() > 0 else 0
+                sharpe_ratio = returns.mean() / returns.std() * \
+                    np.sqrt(252) if len(
+                        returns) > 0 and returns.std() > 0 else 0
 
                 # Calculate maximum drawdown
                 cumulative = pd.Series(values)
@@ -7172,7 +7427,8 @@ class StockTradingBot:
                     'win_rate': len([t for t in backtest_results['trades'] if t['action'] == 'sell']) / max(len(backtest_results['trades']), 1) * 100
                 }
 
-            logger.info(f"Backtest completed. Total return: {backtest_results['performance_metrics'].get('total_return_pct', 0):.2f}%")
+            logger.info(
+                f"Backtest completed. Total return: {backtest_results['performance_metrics'].get('total_return_pct', 0):.2f}%")
             return backtest_results
 
         except Exception as e:
@@ -7380,8 +7636,10 @@ class StockTradingBot:
                 }
 
                 # Calculate dynamic weights for decision making
-                market_regime = self.detect_market_regime(history) if history is not None else "RANGE_BOUND"
-                dynamic_weights = self.calculate_dynamic_weights(analysis, market_regime)
+                market_regime = self.stock_analyzer.detect_market_regime(
+    history) if history is not None else "RANGE_BOUND"
+                dynamic_weights = self.calculate_dynamic_weights(
+                    analysis, market_regime)
 
                 # Pass dynamic weights to professional buy integration
                 analysis_data["dynamic_weights"] = dynamic_weights
@@ -7398,8 +7656,10 @@ class StockTradingBot:
                     buy_qty = buy_decision.get("qty", 0)
                     trade_value = buy_qty * current_price
                     if buy_qty > 0 and trade_value <= available_cash:
-                        logger.info(f"🟢 BUY SIGNAL CONFIRMED: {ticker} (Regime: {market_regime})")
-                        logger.info(f"   Dynamic Weights: Tech:{dynamic_weights['technical']:.2f}, ML:{dynamic_weights['ml']:.2f}, Sent:{dynamic_weights['sentiment']:.2f}")
+                        logger.info(
+                            f"🟢 BUY SIGNAL CONFIRMED: {ticker} (Regime: {market_regime})")
+                        logger.info(
+                            f"   Dynamic Weights: Tech:{dynamic_weights['technical']:.2f}, ML:{dynamic_weights['ml']:.2f}, Sent:{dynamic_weights['sentiment']:.2f}")
                         logger.info(f"   Quantity: {buy_qty} units")
                         logger.info(
                             f"   Current Price: Rs.{current_price:.2f}")
@@ -7442,7 +7702,8 @@ class StockTradingBot:
                 else:
                     logger.info(
                         f"🟡 NO BUY SIGNAL: Professional logic recommends holding {ticker} (Regime: {market_regime})")
-                    logger.info(f"   Dynamic Weights Applied: {dynamic_weights}")
+                    logger.info(
+                        f"   Dynamic Weights Applied: {dynamic_weights}")
                     logger.info(
                         f"   Reason: {buy_decision.get('reason', 'no_clear_signal')}")
                     professional_reasoning = buy_decision.get(
@@ -9628,6 +9889,7 @@ class StockTradingBot:
                     if self.chatbot.pause_until and datetime.now() >= self.chatbot.pause_until:
                         self.chatbot.trading_paused = False
                         self.chatbot.pause_until = None
+                        self.chatbot.save_state = None
                         logger.info(
                             "Trading pause expired, resuming trading...")
                     else:

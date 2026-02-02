@@ -58,11 +58,6 @@ class ScanTool:
         # Initialize ensemble optimizer
         self.ensemble_optimizer = get_ensemble_optimizer()
         
-        # Ollama configuration for natural language processing
-        self.ollama_enabled = config.get("ollama_enabled", False)
-        self.ollama_host = config.get("ollama_host", "http://localhost:11434")
-        self.ollama_model = config.get("ollama_model", "llama2")
-        
         logger.info(f"Scan Tool {self.tool_id} initialized")
     
     async def scan_all(self, arguments: Dict[str, Any], session_id: str) -> MCPToolResult:
@@ -91,13 +86,9 @@ class ScanTool:
             limit = arguments.get("limit", 50)
             natural_query = arguments.get("natural_query", "")
             
-            # Process natural language query if provided
-            if natural_query and self.ollama_enabled:
-                processed_query = await self._interpret_natural_query(natural_query)
-                # Merge with filters
-                if processed_query.get("processed", False):
-                    filters = self._merge_filters_with_query(filters, processed_query)
-                logger.info(f"Interpreted query: {processed_query}")
+            # Note: Natural language query processing removed (Ollama dependency)
+            if natural_query:
+                logger.info(f"Natural language query provided but not processed: {natural_query}")
             
             # Get universe data
             universe_data = await self._get_universe_data()
@@ -141,67 +132,7 @@ class ScanTool:
                 error=str(e)
             )
     
-    async def _interpret_natural_query(self, query: str) -> Dict[str, Any]:
-        """Interpret natural language query using Ollama"""
-        try:
-            if not self.ollama_enabled:
-                return {"processed": False}
-            
-            # Import ollama
-            try:
-                import ollama
-            except ImportError:
-                logger.warning("Ollama not available for natural language processing")
-                return {"processed": False}
-            
-            # Prepare prompt for query interpretation
-            prompt = f"""
-            Interpret this natural language stock scanning query and extract filtering criteria:
-            "{query}"
-            
-            Extract:
-            1. Sector preferences (BANKING, IT, AUTO, PHARMA, etc.)
-            2. Market capitalization (LARGE_CAP, MID_CAP, SMALL_CAP)
-            3. Price range (min, max)
-            4. Risk level (LOW, MEDIUM, HIGH)
-            5. Investment style (GROWTH, VALUE, INCOME)
-            6. Momentum preferences (STRONG, MODERATE, ANY)
-            
-            Response format as JSON:
-            {{
-                "sectors": ["IT", "BANKING"],
-                "market_caps": ["MID_CAP", "LARGE_CAP"],
-                "price_range": {{"min": 100, "max": 2000}},
-                "risk_levels": ["LOW", "MEDIUM"],
-                "style": "GROWTH",
-                "momentum": "STRONG"
-            }}
-            """
-            
-            # Generate response from LLM
-            response = ollama.generate(
-                model=self.ollama_model,
-                prompt=prompt,
-                options={
-                    "temperature": 0.3,
-                    "top_p": 0.9,
-                    "stop": ["\n\n"]
-                }
-            )
-            
-            # Parse response
-            result_text = response.get("response", "{}")
-            try:
-                parsed_result = json.loads(result_text)
-                return parsed_result
-            except json.JSONDecodeError:
-                return {"processed": True, "raw_response": result_text}
-                
-        except Exception as e:
-            logger.warning(f"Natural language interpretation failed: {e}")
-            return {"processed": False, "error": str(e)}
-    
-    def _merge_filters_with_query(self, filters: Dict, query_result: Dict) -> Dict:
+
         """Merge filters with natural language query results"""
         merged = filters.copy()
         
@@ -418,7 +349,5 @@ class ScanTool:
         """Get scan tool status"""
         return {
             "tool_id": self.tool_id,
-            "ollama_enabled": self.ollama_enabled,
-            "ollama_model": self.ollama_model,
             "status": "active"
         }

@@ -1,0 +1,10 @@
+{
+  "context": {
+    "fno_ban": true
+  },
+  "expected_rules": ["DERIV_FNO_BAN_001"],
+  "expected_keywords": [
+    "F&O ban",
+    "regulatory"
+  ]
+}
