@@ -33,9 +33,10 @@ class LiveTradingExecutor:
         if config is None:
             config = {}
         elif not isinstance(config, dict):
-            logger.warning(f"Invalid config type: {type(config)}, converting to empty dict")
+            logger.warning(
+                f"Invalid config type: {type(config)}, converting to empty dict")
             config = {}
-        
+
         self.config = config
         self.stop_loss_pct = self.config.get("stop_loss_pct", 0.05)
         self.max_capital_per_trade = self.config.get(
@@ -69,13 +70,16 @@ class LiveTradingExecutor:
             self.portfolio_manager.switch_mode("live")
 
         # Initialize Dhan client - try config first, then environment variables
-        dhan_client_id = config.get("dhan_client_id") or os.getenv("DHAN_CLIENT_ID")
-        dhan_access_token = config.get("dhan_access_token") or os.getenv("DHAN_ACCESS_TOKEN")
-        
+        dhan_client_id = config.get(
+            "dhan_client_id") or os.getenv("DHAN_CLIENT_ID")
+        dhan_access_token = config.get(
+            "dhan_access_token") or os.getenv("DHAN_ACCESS_TOKEN")
+
         if not dhan_client_id or not dhan_access_token:
-            logger.error("Dhan credentials not found in config or environment variables")
+            logger.error(
+                "Dhan credentials not found in config or environment variables")
             raise ValueError("Dhan credentials required for live trading")
-        
+
         self.dhan_client = DhanAPIClient(
             client_id=dhan_client_id,
             access_token=dhan_access_token
@@ -154,19 +158,31 @@ class LiveTradingExecutor:
                     Portfolio).filter_by(mode='live').first()
                 if not portfolio:
                     # Create live portfolio if it doesn't exist
+                    # Only use available_cash if it's valid and non-zero, otherwise use 0
+                    effective_cash = available_cash if available_cash > 0 else 0.0
+                    effective_starting_balance = available_cash if available_cash > 0 else 50000.0  # Default starting balance
                     portfolio = Portfolio(
                         mode='live',
-                        cash=available_cash,
-                        starting_balance=available_cash,
+                        cash=effective_cash,
+                        starting_balance=effective_starting_balance,
                         realized_pnl=0.0,
                         unrealized_pnl=0.0,
                         last_updated=datetime.now()
                     )
+                    if available_cash <= 0:
+                        logger.debug(f"Created new portfolio with default cash (API returned invalid balance: Rs.{available_cash:.2f})")
+                    else:
+                        logger.info(f"Created new portfolio with cash from Dhan: Rs.{effective_cash:.2f}")
                     session.add(portfolio)
                     session.flush()
                 else:
-                    # Update existing portfolio cash
-                    portfolio.cash = available_cash
+                    # Only update portfolio cash if we got a valid, non-zero balance
+                    # This prevents resetting balance to 0 when API fails
+                    if available_cash > 0:
+                        portfolio.cash = available_cash
+                        logger.info(f"Synced cash balance with Dhan: Rs.{available_cash:.2f}")
+                    else:
+                        logger.debug(f"Skipping cash balance update (funds appear to be zero or invalid: Rs.{available_cash:.2f})")
                     portfolio.last_updated = datetime.now()
 
                 # Clear existing holdings and add current ones from Dhan
@@ -192,12 +208,18 @@ class LiveTradingExecutor:
                         session.add(db_holding)
                         total_holdings_value += quantity * current_price
 
+                # Calculate cost basis for unrealized P&L
+                cost_basis = 0
+                for holding in holdings:
+                    symbol = holding.get("tradingSymbol", "")
+                    quantity = int(holding.get("totalQty", 0))
+                    avg_price = float(holding.get("avgCostPrice", 0))
+                    
+                    if quantity > 0 and symbol:
+                        cost_basis += quantity * avg_price
+                
                 # Update portfolio metrics
-                portfolio.unrealized_pnl = total_holdings_value - sum(
-                    h.quantity * h.avg_price for h in
-                    session.query(Holding).filter_by(
-                        portfolio_id=portfolio.id).all()
-                )
+                portfolio.unrealized_pnl = total_holdings_value - cost_basis
 
                 session.commit()
 
@@ -223,7 +245,7 @@ class LiveTradingExecutor:
         except Exception as e:
             logger.warning(
                 f"Failed to sync portfolio with Dhan: {e}, using local database values")
-            return True  # Return True to allow system to continue functioning
+            return False
 
     def _update_data_service_watchlist(self, session, portfolio):
         """Update data service watchlist with current portfolio holdings"""
@@ -298,10 +320,13 @@ class LiveTradingExecutor:
 
     def calculate_position_size(self, symbol: str, current_price: float,
                                 signal_strength: float) -> int:
-        """Calculate position size based on risk management using database portfolio"""
+        """
+        Calculate position size based on user configuration from live_config.json
+        Respects max_capital_per_trade setting (user input)
+        """
         session = None
         try:
-            # Get portfolio summary from database with fresh session
+            # Get portfolio summary from database
             session = self.portfolio_manager.db.Session()
             portfolio = session.query(Portfolio).filter_by(mode='live').first()
             if not portfolio:
@@ -309,71 +334,46 @@ class LiveTradingExecutor:
                 return 0
 
             available_cash = portfolio.cash
-            total_value = available_cash  # Simple calculation for now
-
             if available_cash <= 0:
                 logger.warning(
                     f"No available cash for {symbol}: Rs.{available_cash:.2f}")
                 return 0
 
-            # Standardize Position Sizing Usage: Use DynamicPositionSizer consistently
-            from utils.dynamic_position_sizer import get_position_sizer
-            import pandas as pd
-
-            position_sizer = get_position_sizer(initial_capital=available_cash)
-
-            # Determine market regime (simplified - in practice this would come from market analysis)
-            market_regime = "NORMAL"  # Default assumption
-
-            # Create mock historical data for the position sizer
-            # In a real implementation, this would come from actual historical data
-            historical_data = pd.DataFrame({
-                'Close': [current_price] * 50  # Mock data
-            })
-
-            portfolio_data = {
-                'total_value': total_value,
-                'cash': available_cash,
-                'holdings': {}  # Would be populated with actual holdings in a full implementation
-            }
-
-            # Calculate position size using the DynamicPositionSizer
-            position_result = position_sizer.calculate_position_size(
-                symbol=symbol,
-                signal_strength=signal_strength,
-                current_price=current_price,
-                volatility=0.20,  # Default volatility assumption
-                historical_data=historical_data,
-                portfolio_data=portfolio_data,
-                market_regime=market_regime
-            )
-
-            quantity = position_result['quantity']
-
-            # Add Position Sizing Logging
-            logger.info(
-                f"Position sizing for {symbol}: {quantity} shares (Rs.{quantity * current_price:.2f})")
-            logger.info(f"  Method used: {position_result['method_used']}")
-            logger.info(f"  Base size: {position_result['base_size']:.3f}")
-            logger.info(
-                f"  Constrained size: {position_result['constrained_size']:.3f}")
-            logger.info(
-                f"  Constraints applied: {position_result['constraints_applied']}")
-
-            # Enhance Cash Constraint Handling: Ensure position sizer always respects available cash constraints
-            if quantity * current_price > available_cash:
-                quantity = int(available_cash / current_price)
-                logger.info(
-                    f"  [CASH ADJUST] Reduced quantity to {quantity} shares to fit available cash")
-
-            # Minimum quantity check
-            if quantity < 1:
+            # Load user configuration from live_config.json
+            max_capital_per_trade = 0.25  # Default fallback
+            try:
+                import json
+                import os
+                config_path = os.path.join(os.path.dirname(
+                    __file__), '..', 'data', 'live_config.json')
+                if os.path.exists(config_path):
+                    with open(config_path, 'r') as f:
+                        live_config = json.load(f)
+                    max_capital_per_trade = float(
+                        live_config.get("max_capital_per_trade", 0.25))
+                    logger.info(
+                        f"Loaded max_capital_per_trade from config: {max_capital_per_trade:.1%}")
+            except Exception as config_error:
                 logger.warning(
-                    f"Calculated quantity too small for {symbol}: {quantity}")
-                return 0
+                    f"Failed to load config: {config_error}, using default 25%")
 
+            # Calculate position size based on user's configured allocation
+            position_value = available_cash * max_capital_per_trade
+            quantity = int(position_value / current_price)
+
+            # Ensure at least 1 share if we have enough cash for it
+            if quantity < 1 and available_cash >= current_price:
+                quantity = 1
+
+            logger.info(f"Position sizing for {symbol}:")
+            logger.info(f"  Available Cash: Rs.{available_cash:.2f}")
             logger.info(
-                f"Final position size for {symbol}: {quantity} shares (Rs.{quantity * current_price:.2f})")
+                f"  Max Capital Per Trade (user config): {max_capital_per_trade:.1%}")
+            logger.info(f"  Allocated Position Value: Rs.{position_value:.2f}")
+            logger.info(f"  Current Price: Rs.{current_price:.2f}")
+            logger.info(
+                f"  Calculated Quantity: {quantity} shares (Value: Rs.{quantity * current_price:.2f})")
+
             return quantity
 
         except Exception as e:
@@ -391,7 +391,7 @@ class LiveTradingExecutor:
             try:
                 funds = self.dhan_client.get_funds()
                 logger.debug(f"Raw Dhan funds response: {funds}")
-                
+
                 # Try multiple possible keys that Dhan API might return for available cash
                 possible_keys = [
                     'availableBalance', 'availablebalance', 'available_balance',
@@ -402,41 +402,79 @@ class LiveTradingExecutor:
                     'usableCash', 'usable_cash', 'UsableCash',
                     'cash', 'Cash'
                 ]
-                
-                available_cash = 0
+
+                # Helper to parse numeric values robustly
+                def _parse_numeric(v):
+                    try:
+                        if v is None:
+                            return None
+                        # If already numeric
+                        if isinstance(v, (int, float)):
+                            return float(v)
+                        # If string, strip common formatting
+                        s = str(v).strip()
+                        # Remove currency symbols and commas
+                        s = s.replace(',', '').replace(
+                            'Rs.', '').replace('₹', '').replace('INR', '')
+                        # Remove parentheses and plus signs
+                        s = s.replace('(', '').replace(')',
+                                                       '').replace('+', '')
+                        # If empty after cleanup
+                        if s == '':
+                            return None
+                        return float(s)
+                    except Exception:
+                        return None
+
+                available_cash = 0.0
+                # Try known keys first
                 for key in possible_keys:
                     if key in funds and funds[key] is not None:
-                        try:
-                            available_cash = float(funds[key])
-                            logger.debug(f"Found available cash in key '{key}': Rs.{available_cash:.2f}")
+                        parsed = _parse_numeric(funds[key])
+                        if parsed is not None:
+                            available_cash = parsed
+                            logger.info(
+                                f"✅ Found available cash in Dhan response key '{key}': Rs.{available_cash:.2f}")
                             break
-                        except (ValueError, TypeError):
+
+                # If still zero, search any nested or similarly named keys
+                if available_cash == 0.0:
+                    # Flatten nested dicts if present
+                    def _flatten(d):
+                        for k, v in d.items():
+                            if isinstance(v, dict):
+                                for kk, vv in _flatten(v):
+                                    yield kk, vv
+                            else:
+                                yield k, v
+
+                    for key, value in _flatten(funds):
+                        if value is None:
                             continue
-                
-                # If still zero, try to find any field containing 'cash' or 'balance' with a numeric value
-                if available_cash == 0:
-                    for key, value in funds.items():
-                        if ('cash' in key.lower() or 'balance' in key.lower() or 'margin' in key.lower()) and value is not None:
-                            try:
-                                available_cash = float(value)
-                                logger.debug(f"Found available cash in '{key}' (fallback): Rs.{available_cash:.2f}")
-                                break
-                            except (ValueError, TypeError):
-                                continue
-                
-                logger.debug(
-                    f"Dhan API funds available: Rs.{available_cash:.2f}")
+                        parsed = _parse_numeric(value)
+                        if parsed is not None:
+                            available_cash = parsed
+                            logger.info(
+                                f"✅ Found available cash in nested key '{key}': Rs.{available_cash:.2f}")
+                            break
+
+                if available_cash > 0:
+                    logger.info(
+                        f"🏦 Dhan API funds available: Rs.{available_cash:.2f}")
+                else:
+                    logger.warning(
+                        f"⚠️  Dhan API returned no parseable fund value. Raw response keys: {list(funds.keys())}")
             except Exception as api_error:
                 logger.warning(
                     f"Dhan API funds fetch failed: {api_error}. Falling back to database.")
                 # Fall back to database funds
-                available_cash = 0
+                available_cash = 0.0
                 session = self.portfolio_manager.db.Session()
                 try:
                     portfolio = session.query(
                         Portfolio).filter_by(mode='live').first()
                     if portfolio:
-                        available_cash = portfolio.cash
+                        available_cash = float(portfolio.cash or 0.0)
                         logger.debug(
                             f"Database funds available: Rs.{available_cash:.2f}")
                 except Exception as db_error:
@@ -446,6 +484,30 @@ class LiveTradingExecutor:
                     if session:
                         session.close()
 
+            # If available cash looks zero, try to force a sync with Dhan once (may refresh values)
+            if available_cash == 0.0:
+                try:
+                    logger.warning(
+                        "⚠️  Available cash appears zero, attempting forced sync with Dhan...")
+                    if self.sync_portfolio_with_dhan():
+                        # Read from database after successful sync
+                        session = self.portfolio_manager.db.Session()
+                        try:
+                            portfolio = session.query(
+                                Portfolio).filter_by(mode='live').first()
+                            if portfolio:
+                                available_cash = float(portfolio.cash or 0.0)
+                                logger.info(
+                                    f"✅ Post-sync database funds: Rs.{available_cash:.2f}")
+                        finally:
+                            if session:
+                                session.close()
+                    else:
+                        logger.warning(
+                            "Sync returned False - broker account may have no funds or connection issue")
+                except Exception as sync_err:
+                    logger.error(f"Forced sync failed: {sync_err}")
+
             # Calculate required amount
             required_amount = price * requested_quantity
 
@@ -454,6 +516,8 @@ class LiveTradingExecutor:
 
             # If we have enough funds, return the requested quantity
             if available_cash >= required_amount:
+                logger.info(
+                    f"✅ Sufficient funds available - returning {requested_quantity} shares")
                 return requested_quantity
 
             # Otherwise, calculate maximum affordable quantity
@@ -461,12 +525,12 @@ class LiveTradingExecutor:
 
             # Ensure we return at least 1 share if funds allow for it
             if max_affordable_quantity >= 1:
-                logger.info(
-                    f"Adjusted quantity from {requested_quantity} to {max_affordable_quantity} based on available funds")
+                logger.warning(
+                    f"⚠️  Insufficient funds - adjusted quantity from {requested_quantity} to {max_affordable_quantity} (Available: Rs.{available_cash:.2f}, Required: Rs.{required_amount:.2f})")
                 return max_affordable_quantity
             else:
-                logger.warning(
-                    f"Insufficient funds to buy even 1 share of {symbol} at Rs.{price:.2f} (requires Rs.{price:.2f}, available Rs.{available_cash:.2f})")
+                logger.error(
+                    f"❌ Insufficient funds to buy even 1 share of {symbol} (Price: Rs.{price:.2f}, Available: Rs.{available_cash:.2f})")
                 return 0
 
         except Exception as e:

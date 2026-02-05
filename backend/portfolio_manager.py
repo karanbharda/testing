@@ -178,9 +178,9 @@ class DualPortfolioManager:
 
             # Commit after setting the portfolio
             session.commit()
-            
+
             self.current_portfolio = portfolio
-            
+
             # Log message only if portfolio was newly created
             if 'initial_balance' in locals():
                 logger.info(
@@ -229,12 +229,13 @@ class DualPortfolioManager:
             try:
                 # Load holdings from database into holdings dict for backward compatibility
                 self.current_holdings_dict = {}
-                for holding in self.current_portfolio.holdings:
+                holdings_from_db = session.query(Holding).filter_by(portfolio_id=self.current_portfolio.id).all()
+                for holding in holdings_from_db:
                     if holding.quantity > 0:  # Only include active holdings
                         self.current_holdings_dict[holding.ticker] = {
-                            "qty": holding.quantity,
-                            "avg_price": holding.avg_price,
-                            "last_price": holding.last_price
+                            "qty": float(holding.quantity),
+                            "avg_price": float(holding.avg_price),
+                            "last_price": float(holding.last_price)
                         }
             except Exception as e:
                 logger.error(f"Error synchronizing portfolio holdings: {e}")
@@ -378,6 +379,9 @@ class DualPortfolioManager:
 
             # Update current portfolio reference to prevent detached instance issues
             self.current_portfolio = portfolio
+
+            # Refresh holdings dict from database to ensure consistency after trade
+            self.refresh_holdings_from_database()
 
             # Sync changes to JSON files
             try:
@@ -604,7 +608,7 @@ class DualPortfolioManager:
         """Update the cash balance in the current portfolio"""
         session = self.db.Session()
         try:
-            portfolio = self.get_current_portfolio()
+            portfolio = session.query(Portfolio).filter_by(mode=self.current_mode).first()
             if portfolio:
                 portfolio.cash = float(new_cash)
                 portfolio.last_updated = datetime.now()

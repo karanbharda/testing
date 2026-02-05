@@ -53,6 +53,14 @@ except ImportError as e:
     print("pip install fastapi uvicorn pydantic")
     sys.exit(1)
 
+# Load environment variables from .env early so config/env fallbacks work
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    logger.debug("Loaded .env into environment")
+except Exception:
+    logger.debug("python-dotenv not available or .env not loaded")
+
 # Import new components for live trading
 try:
     from portfolio_manager import DualPortfolioManager
@@ -897,6 +905,19 @@ class WebTradingBot:
     """Wrapper class for the actual trading bot to work with web interface"""
 
     def __init__(self, config):
+        # Normalize config and inject Dhan credentials from environment when missing
+        if config is None:
+            config = {}
+        elif not isinstance(config, dict):
+            try:
+                config = dict(config)
+            except Exception:
+                config = {}
+
+        # Prefer explicit config values, fallback to environment variables
+        config.setdefault('dhan_client_id', os.getenv('DHAN_CLIENT_ID'))
+        config.setdefault('dhan_access_token', os.getenv('DHAN_ACCESS_TOKEN'))
+
         self.config = config
 
         # Debug logging for received config
@@ -906,7 +927,8 @@ class WebTradingBot:
             f"  Dhan Client ID: {'SET' if self.config.get('dhan_client_id') else 'MISSING'} ({self.config.get('dhan_client_id', 'NONE')[:10] if self.config.get('dhan_client_id') else 'NONE'})")
         logger.info(
             f"  Dhan Access Token: {'SET' if self.config.get('dhan_access_token') else 'MISSING'} ({'PRESENT' if self.config.get('dhan_access_token') else 'NONE'})")
-        logger.info(f"  Full config keys in WebTradingBot: {list(self.config.keys())}")
+        logger.info(
+            f"  Full config keys in WebTradingBot: {list(self.config.keys())}")
 
         # Initialize dual portfolio manager
         if LIVE_TRADING_AVAILABLE:
@@ -1422,11 +1444,24 @@ class WebTradingBot:
                 # Get account summary for startup logging
                 try:
                     funds = self.live_executor.dhan_client.get_funds()
-                    balance = funds.get('availabelBalance',
-                                        0.0) if funds else 0.0
+                    balance = 0.0
+                    if funds:
+                        try:
+                            for key in ('availableBalance', 'availabelBalance', 'available_balance', 'available', 'availBalance', 'cash'):
+                                if isinstance(funds, dict) and key in funds:
+                                    balance = float(funds.get(key, 0.0) or 0.0)
+                                    break
+                            else:
+                                if isinstance(funds, dict):
+                                    for v in funds.values():
+                                        if isinstance(v, (int, float)):
+                                            balance = float(v)
+                                            break
+                        except Exception:
+                            balance = 0.0
                     logger.info(
                         f"🚀 Live trading initialized successfully - Account Balance: Rs.{balance:.2f}")
-                except:
+                except Exception:
                     logger.info("🚀 Live trading initialized successfully")
                 return True
             else:
@@ -1636,11 +1671,24 @@ class WebTradingBot:
             if hasattr(self, 'live_executor') and self.live_executor:
                 try:
                     funds = self.live_executor.dhan_client.get_funds()
-                    balance = funds.get('availabelBalance',
-                                        0.0) if funds else 0.0
+                    balance = 0.0
+                    if funds:
+                        try:
+                            for key in ('availableBalance', 'availabelBalance', 'available_balance', 'available', 'availBalance', 'cash'):
+                                if isinstance(funds, dict) and key in funds:
+                                    balance = float(funds.get(key, 0.0) or 0.0)
+                                    break
+                            else:
+                                if isinstance(funds, dict):
+                                    for v in funds.values():
+                                        if isinstance(v, (int, float)):
+                                            balance = float(v)
+                                            break
+                        except Exception:
+                            balance = 0.0
                     logger.info(
                         f"[STOP] Web Trading Bot stopped - Final Account Balance: Rs.{balance:.2f}")
-                except:
+                except Exception:
                     logger.info("[STOP] Web Trading Bot stopped successfully")
             else:
                 logger.info("[STOP] Web Trading Bot stopped successfully")
@@ -2321,7 +2369,8 @@ def initialize_bot():
         logger.info(
             f"  Dhan Access Token: {'SET' if config.get('dhan_access_token') else 'MISSING'} ({'PRESENT' if config.get('dhan_access_token') else 'NONE'})")
         logger.info(f"  Full config keys: {list(config.keys())}")
-        logger.info(f"  DHAN_CLIENT_ID from env: {os.getenv('DHAN_CLIENT_ID', 'NOT_FOUND')[:10] if os.getenv('DHAN_CLIENT_ID') else 'NOT_FOUND'}")
+        logger.info(
+            f"  DHAN_CLIENT_ID from env: {os.getenv('DHAN_CLIENT_ID', 'NOT_FOUND')[:10] if os.getenv('DHAN_CLIENT_ID') else 'NOT_FOUND'}")
 
         trading_bot = WebTradingBot(config)
 
@@ -2634,26 +2683,67 @@ async def get_realtime_portfolio():
         if trading_bot and trading_bot.config.get("mode") == "live":
             try:
                 # Force sync with Dhan account to get latest balance
+                sync_performed = False
+
+                # Try live executor sync first
                 if hasattr(trading_bot, 'live_executor') and trading_bot.live_executor:
                     sync_success = trading_bot.live_executor.sync_portfolio_with_dhan()
                     if sync_success:
                         logger.debug(
-                            "Successfully synced with Dhan account during realtime update")
+                            "Successfully synced with Dhan account using live executor")
+                        sync_performed = True
                     else:
                         logger.warning(
-                            "Failed to sync with Dhan account during realtime update")
+                            "Failed to sync with Dhan account using live executor")
+
+                # Also sync VirtualPortfolio if it exists
+                if hasattr(trading_bot, 'portfolio') and trading_bot.portfolio:
+                    portfolio_sync_result = trading_bot.portfolio.sync_with_dhan_account()
+                    if portfolio_sync_result:
+                        logger.debug(
+                            "Successfully synced VirtualPortfolio with Dhan account")
+                        sync_performed = True
+                    else:
+                        logger.warning(
+                            "Failed to sync VirtualPortfolio with Dhan account")
+
+                # Fallback: manually sync using dhan_client
                 elif hasattr(trading_bot, 'dhan_client') and trading_bot.dhan_client:
                     # Fallback: manually sync using dhan_client
                     funds = trading_bot.dhan_client.get_funds()
                     if funds:
-                        available_cash = funds.get(
-                            'availableBalance', funds.get('availabelBalance', 0.0))
-                        # Update portfolio manager if available
-                        if hasattr(trading_bot, 'portfolio_manager'):
+                        # tolerant extraction
+                        available_cash = 0.0
+                        try:
+                            for key in ('availableBalance', 'availabelBalance', 'available_balance', 'available', 'availBalance', 'cash'):
+                                if isinstance(funds, dict) and key in funds:
+                                    available_cash = float(
+                                        funds.get(key, 0.0) or 0.0)
+                                    break
+                            else:
+                                if isinstance(funds, dict):
+                                    for v in funds.values():
+                                        if isinstance(v, (int, float)):
+                                            available_cash = float(v)
+                                            break
+                        except Exception:
+                            available_cash = 0.0
+                        
+                        # Only update portfolio manager if we got a valid, non-zero balance
+                        # This prevents resetting balance to 0 when API fails
+                        if hasattr(trading_bot, 'portfolio_manager') and available_cash > 0:
                             trading_bot.portfolio_manager.update_cash_balance(
                                 available_cash)
-                        logger.debug(
-                            f"Manually synced cash balance: ₹{available_cash}")
+                            logger.debug(
+                                f"Manually synced cash balance: ₹{available_cash}")
+                        elif available_cash == 0.0:
+                            logger.debug(
+                                f"Skipping cash balance update (funds appear to be zero or invalid: ₹{available_cash})")
+                        sync_performed = True
+
+                if not sync_performed:
+                    logger.warning("No sync method available for Dhan account")
+
             except Exception as e:
                 logger.warning(
                     f"Dhan sync failed during realtime update, using local data: {e}")
@@ -4365,8 +4455,58 @@ async def startup_event():
                     sync_service = start_sync_service(
                         sync_interval=30)  # Sync every 30 seconds
                     if sync_service:
-                        logger.info(
-                            "🚀 Dhan real-time sync service started (30s interval)")
+                        try:
+                            # Prefer the richer DhanAPIClient if available on the trading bot
+                            current_balance = 0.0
+                            funds = None
+                            dhan_client = None
+                            try:
+                                if hasattr(trading_bot, 'live_executor') and getattr(trading_bot.live_executor, 'dhan_client', None):
+                                    dhan_client = trading_bot.live_executor.dhan_client
+                                elif getattr(trading_bot, 'dhan_client', None):
+                                    dhan_client = trading_bot.dhan_client
+                            except Exception:
+                                dhan_client = None
+
+                            if dhan_client:
+                                try:
+                                    funds = dhan_client.get_funds()
+                                except Exception as e:
+                                    logger.debug(
+                                        f"DhanAPIClient.get_funds() failed: {e}")
+
+                            # Fallback to sync service's method if DhanAPIClient not available
+                            if funds is None:
+                                funds = sync_service.get_dhan_funds()
+
+                            # Extract numeric balance for logging
+                            if isinstance(funds, dict):
+                                for key in ('availableBalance', 'availabelBalance', 'available_balance', 'available', 'availBalance', 'cash', 'netBalance', 'totalBalance'):
+                                    if key in funds:
+                                        try:
+                                            current_balance = float(
+                                                funds.get(key, 0.0) or 0.0)
+                                            break
+                                        except Exception:
+                                            continue
+                                else:
+                                    for v in funds.values():
+                                        if isinstance(v, (int, float)):
+                                            current_balance = float(v)
+                                            break
+
+                            # If balance is zero, log debug information to diagnose
+                            if abs(current_balance) < 0.01:
+                                logger.debug(
+                                    f"Dhan funds response on startup: {funds}")
+
+                            logger.info(
+                                f"🚀 Dhan real-time sync service started (30s interval) — Balance: ₹{current_balance:.2f}")
+                        except Exception as e:
+                            logger.info(
+                                "🚀 Dhan real-time sync service started (30s interval)")
+                            logger.debug(
+                                f"Failed to fetch initial Dhan funds: {e}")
                     else:
                         logger.warning("Failed to start Dhan sync service")
             except Exception as sync_error:

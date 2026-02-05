@@ -93,7 +93,7 @@
         "action": "buy",
         "qty": 3,
         "price": 396.1,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.500638",
@@ -101,7 +101,7 @@
         "action": "buy",
         "qty": 1,
         "price": 93.39,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.504027",
@@ -109,7 +109,7 @@
         "action": "buy",
         "qty": 11,
         "price": 54.57,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.506294",
@@ -117,7 +117,7 @@
         "action": "buy",
         "qty": 1,
         "price": 153.32,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.508453",
@@ -125,7 +125,7 @@
         "action": "buy",
         "qty": 3,
         "price": 126.9,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.510911",
@@ -133,7 +133,7 @@
         "action": "buy",
         "qty": 5,
         "price": 110.262,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.514173",
@@ -141,7 +141,7 @@
         "action": "buy",
         "qty": 11,
         "price": 43.75273,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.516869",
@@ -149,7 +149,7 @@
         "action": "buy",
         "qty": 1,
         "price": 552.4,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.519445",
@@ -157,7 +157,7 @@
         "action": "buy",
         "qty": 2,
         "price": 119.95,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.521792",
@@ -165,7 +165,7 @@
         "action": "buy",
         "qty": 101,
         "price": 20.41,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.524394",
@@ -173,7 +173,7 @@
         "action": "buy",
         "qty": 15,
         "price": 153.78467,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.527951",
@@ -181,7 +181,7 @@
         "action": "buy",
         "qty": 1,
         "price": 247.1,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.530903",
@@ -189,7 +189,7 @@
         "action": "buy",
         "qty": 1,
         "price": 397.0,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.533396",
@@ -197,7 +197,7 @@
         "action": "buy",
         "qty": 1,
         "price": 7669.5,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.536073",
@@ -205,7 +205,7 @@
         "action": "buy",
         "qty": 3,
         "price": 127.87,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.538481",
@@ -213,7 +213,7 @@
         "action": "buy",
         "qty": 1,
         "price": 225.05,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.541077",
@@ -221,7 +221,7 @@
         "action": "buy",
         "qty": 15,
         "price": 76.34933,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.543709",
@@ -229,7 +229,7 @@
         "action": "buy",
         "qty": 1,
         "price": 287.9,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.546346",
@@ -237,7 +237,7 @@
         "action": "buy",
         "qty": 1,
         "price": 263.55,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.548696",
@@ -245,7 +245,7 @@
         "action": "buy",
         "qty": 1,
         "price": 341.35,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.551069",
@@ -253,7 +253,7 @@
         "action": "buy",
         "qty": 10,
         "price": 162.6,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-29 15:43:51.554114",
@@ -261,7 +261,7 @@
         "action": "buy",
         "qty": 2,
         "price": 79.01,
-        "pnl": null
+        "pnl": 0.0
     },
     {
         "timestamp": "2025-10-31 10:58:03.391625",
@@ -318,5 +318,29 @@
         "qty": 1,
         "price": 194.77,
         "pnl": -30.28
+    },
+    {
+        "timestamp": "2026-02-05 11:49:57.635054",
+        "asset": "PETRONET.NS",
+        "action": "buy",
+        "qty": 3,
+        "price": 297.9,
+        "pnl": 0.0
+    },
+    {
+        "timestamp": "2026-02-05 11:58:22.500761",
+        "asset": "MRPL.NS",
+        "action": "buy",
+        "qty": 4,
+        "price": 187.34,
+        "pnl": 0.0
+    },
+    {
+        "timestamp": "2026-02-05 12:55:05.155402",
+        "asset": "PETRONET.NS",
+        "action": "buy",
+        "qty": 2,
+        "price": 298.5,
+        "pnl": 0.0
     }
 ]

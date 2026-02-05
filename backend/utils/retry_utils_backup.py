@@ -224,5 +224,4 @@ ml_service_retry = retry_on_failure(
     delay=2.0,
     backoff_factor=1.0,
     exceptions=(ConnectionError, TimeoutError)
-)</content>
-<parameter name="filePath">C:\Users\Admin\Desktop\backup\project\backend\utils\retry_utils.py
+)

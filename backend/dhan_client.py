@@ -410,38 +410,46 @@ class DhanAPIClient:
             }
 
     def get_funds(self) -> Dict:
-        """Get account funds and margin information"""
+        """Get account funds and margin information using the fundlimit endpoint"""
         try:
-            # Use profile endpoint as the most reliable source for account information
+            # Use fundlimit endpoint as it provides accurate real-time balance with zero parameters
+            # According to the memory, this is the correct endpoint for fetching real-time available cash balance
             try:
-                profile_response = self._make_request('GET', '/v2/profile')
+                # Call the fundlimit endpoint with zero parameters to avoid DH-905 errors
+                funds_response = self._make_request('GET', '/v2/fundlimit')
                 logger.debug(
-                    f"Dhan Profile Response: {json.dumps(profile_response, indent=2)}")
+                    f"Dhan Fundlimit Response: {json.dumps(funds_response, indent=2)}")
 
-                # Construct funds response from profile data
-                return {
-                    "availableBalance": profile_response.get("availableBalance", 0.0),
-                    "marginUsed": profile_response.get("marginUsed", 0.0),
-                    "totalBalance": profile_response.get("totalBalance", 0.0),
-                    "clientName": profile_response.get("clientName", "Unknown"),
-                    "clientId": profile_response.get("clientId", self.client_id),
-                    "status": "success"
-                }
-            except Exception as profile_error:
-                logger.debug(
-                    f"Profile-based funds request failed: {profile_error}")
-
-                # Fallback to minimal working structure
+                # The fundlimit response should contain the actual balance information
+                # Check if the response has the expected structure
+                if isinstance(funds_response, dict):
+                    # Ensure we have proper keys for balance information
+                    available_balance = funds_response.get("availableBalance", 
+                                                         funds_response.get("availabelBalance", 
+                                                                           funds_response.get("available_balance", 
+                                                                                             funds_response.get("sodLimit", 
+                                                                                                               funds_response.get("netBalance", 0.0)))))
+                    
+                    # Construct funds response with actual data
+                    return {
+                        "availableBalance": float(available_balance) if available_balance is not None else 0.0,
+                        "marginUsed": float(funds_response.get("marginUsed", 0.0)),
+                        "totalBalance": float(funds_response.get("totalBalance", 
+                                                              funds_response.get("netBalance", 0.0))),
+                        "clientName": funds_response.get("clientName", "Unknown"),
+                        "clientId": funds_response.get("clientId", self.client_id),
+                        "status": "success"
+                    }
+                else:
+                    # Unexpected response format
+                    logger.warning(f"Unexpected fundlimit response format: {funds_response}")
+                    # Fallback to profile endpoint
+                    return self._get_funds_from_profile()
+            except Exception as fundlimit_error:
                 logger.warning(
-                    "Using estimated funds structure due to API issues")
-                return {
-                    "availableBalance": 0.0,
-                    "marginUsed": 0.0,
-                    "totalBalance": 0.0,
-                    "clientName": "Unknown",
-                    "clientId": self.client_id,
-                    "status": "estimated"
-                }
+                    f"Fundlimit-based funds request failed: {fundlimit_error}, falling back to profile")
+                # Fallback to profile endpoint
+                return self._get_funds_from_profile()
         except Exception as e:
             logger.error(f"Failed to get funds: {e}")
             # Return minimal structure to prevent system crashes
@@ -454,14 +462,33 @@ class DhanAPIClient:
                 "status": "error",
                 "errorMessage": str(e)
             }
+    
+    def _get_funds_from_profile(self) -> Dict:
+        """Helper method to get funds from profile endpoint as fallback"""
+        try:
+            profile_response = self._make_request('GET', '/v2/profile')
+            logger.debug(
+                f"Dhan Profile Response: {json.dumps(profile_response, indent=2)}")
+
+            # Construct funds response from profile data
             return {
-                "availableBalance": 0,
-                "sodLimit": 0,
-                "marginUsed": 0,
-                "netBalance": 0,
-                "spanMargin": 0,
-                "exposureMargin": 0,
-                "totalMargin": 0
+                "availableBalance": profile_response.get("availableBalance", 0.0),
+                "marginUsed": profile_response.get("marginUsed", 0.0),
+                "totalBalance": profile_response.get("totalBalance", 0.0),
+                "clientName": profile_response.get("clientName", "Unknown"),
+                "clientId": profile_response.get("clientId", self.client_id),
+                "status": "success"
+            }
+        except Exception as profile_error:
+            logger.warning(f"Profile fallback also failed: {profile_error}")
+            # Final fallback to minimal structure
+            return {
+                "availableBalance": 0.0,
+                "marginUsed": 0.0,
+                "totalBalance": 0.0,
+                "clientName": "Unknown",
+                "clientId": self.client_id,
+                "status": "fallback_failed"
             }
 
     def get_holdings(self) -> List[Dict]:

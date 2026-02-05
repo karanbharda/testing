@@ -78,12 +78,18 @@ class DynamicPositionSizer:
                 with open(config_path, 'r') as f:
                     live_config = json.load(f)
                 
-                # Get dynamic values from frontend config
-                self.max_position_size = live_config.get("max_capital_per_trade", 0.25)  # Use frontend value or 25% default
-                self.max_total_exposure = live_config.get("max_total_exposure", 0.95)   # Use frontend value or 95% default
-                self.kelly_max_position = live_config.get("kelly_max_position", 0.20)   # Use frontend value or 20% default
+                # Get dynamic values from frontend config - these are user inputs that should be honored
+                # max_capital_per_trade: percentage of available capital to use per trade (set by user)
+                self.max_position_size = float(live_config.get("max_capital_per_trade", 0.25))
+                # max_total_exposure: maximum total portfolio exposure (safeguard)
+                self.max_total_exposure = float(live_config.get("max_total_exposure", 0.95))
+                # kelly_max_position: cap on Kelly Criterion fraction (safeguard)
+                self.kelly_max_position = float(live_config.get("kelly_max_position", 0.20))
                 
-                logger.info(f"📊 Loaded dynamic config - Max Position: {self.max_position_size:.1%}, Total Exposure: {self.max_total_exposure:.1%}, Kelly Max: {self.kelly_max_position:.1%}")
+                logger.info(f"📊 Loaded dynamic config from live_config.json:")
+                logger.info(f"   - Max Position Size (per trade): {self.max_position_size:.1%}")
+                logger.info(f"   - Max Total Exposure: {self.max_total_exposure:.1%}")
+                logger.info(f"   - Kelly Max Position: {self.kelly_max_position:.1%}")
             else:
                 logger.warning(f"live_config.json not found at {config_path}, using hardcoded defaults")
                 self.max_position_size = 0.25  # 25% max per position
@@ -277,7 +283,9 @@ class DynamicPositionSizer:
             negative_returns = returns[returns < 0]
             
             if len(positive_returns) == 0 or len(negative_returns) == 0:
-                return self.kelly_min_position
+                # If all returns are positive or negative, use a conservative default
+                logger.debug(f"Unusual return pattern for {symbol}, using conservative position size")
+                return min(0.10, self.kelly_max_position)  # 10% conservative position
             
             win_rate = len(positive_returns) / len(returns)
             avg_win = positive_returns.mean()
@@ -295,12 +303,12 @@ class DynamicPositionSizer:
             kelly_fraction = (win_rate * odds_ratio - (1 - win_rate)) / odds_ratio
             
             # Prevent negative Kelly fractions
-            kelly_fraction = max(0.0, kelly_fraction)
+            kelly_fraction = max(self.kelly_min_position, kelly_fraction)
             
-            # Adjust for signal strength
-            kelly_fraction *= signal_strength
+            # Adjust for signal strength (amplify if high confidence, reduce if low)
+            kelly_fraction = kelly_fraction * (0.5 + 0.5 * signal_strength)  # Range 0.5 to 1.0x
             
-            # Apply bounds with more conservative maximum
+            # Apply bounds with more reasonable maximums
             kelly_fraction = max(self.kelly_min_position, min(self.kelly_max_position, kelly_fraction))
             
             logger.debug(f"Kelly calculation: win_rate={win_rate:.3f}, avg_win={avg_win:.4f}, avg_loss={avg_loss:.4f}, kelly={kelly_fraction:.3f}")
@@ -326,10 +334,8 @@ class DynamicPositionSizer:
             
             # Target portfolio volatility approach
             target_position_vol = adjusted_volatility_target
-            volatility_size = target_position_vol / volatility
-            
-            # Bounds
-            volatility_size = max(0.01, min(0.30, volatility_size))
+            # Use 1/volatility but cap it at reasonable values
+            volatility_size = min(0.30, max(0.05, target_position_vol / volatility))
             
             logger.debug(f"Volatility size: {volatility_size:.3f} (vol: {volatility:.3f}, regime: {market_regime}, adj: {regime_adjustment})")
             return volatility_size
@@ -484,15 +490,16 @@ class DynamicPositionSizer:
             )
             constrained_size = min(constrained_size, max_size_by_correlation)
             
-            # 4. Minimum position size
-            if constrained_size < 0.005:  # Less than 0.5%
+            # 4. Minimum position size - lower threshold for practical trading
+            # Changed from 0.5% to 0.1% to allow for smaller positions when capital is limited
+            if constrained_size < 0.001:  # Less than 0.1%
                 constrained_size = 0.0  # Don't trade
             
             # 5. Cash constraint
             available_cash = portfolio_data.get('cash', 0)
             max_position_value = constrained_size * self.current_capital
             if max_position_value > available_cash:
-                constrained_size = available_cash / self.current_capital
+                constrained_size = available_cash / self.current_capital if self.current_capital > 0 else 0
             
             logger.debug(f"Size constraints applied: {base_size:.3f} → {constrained_size:.3f}")
             return max(0.0, constrained_size)

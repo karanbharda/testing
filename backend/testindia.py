@@ -3,7 +3,7 @@ import queue
 import signal
 import sys
 import argparse
-from dhanhq import dhanhq
+# from dhanhq import dhanhq  # Removed in favor of custom DhanAPIClient
 from dotenv import load_dotenv
 from requests.exceptions import HTTPError
 import pickle
@@ -1660,19 +1660,23 @@ class VirtualPortfolio:
         self.realized_pnl = 0  # P&L from completed trades
         self.unrealized_pnl = 0  # P&L from current holdings
         self.trade_callbacks = []  # Callbacks to notify when trades are executed
-        
+
         # Debug logging for received config
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"VirtualPortfolio received config:")
         logger.info(f"  Mode: {self.mode}")
-        logger.info(f"  Dhan Client ID: {'SET' if config.get('dhan_client_id') else 'MISSING'}")
-        logger.info(f"  Dhan Access Token: {'SET' if config.get('dhan_access_token') else 'MISSING'}")
+        logger.info(
+            f"  Dhan Client ID: {'SET' if config.get('dhan_client_id') else 'MISSING'}")
+        logger.info(
+            f"  Dhan Access Token: {'SET' if config.get('dhan_access_token') else 'MISSING'}")
 
         # Initialize Dhan API - try config first, then environment variables
         import os
-        dhan_client_id = config.get("dhan_client_id") or os.getenv("DHAN_CLIENT_ID")
-        dhan_access_token = config.get("dhan_access_token") or os.getenv("DHAN_ACCESS_TOKEN")
+        dhan_client_id = config.get(
+            "dhan_client_id") or os.getenv("DHAN_CLIENT_ID")
+        dhan_access_token = config.get(
+            "dhan_access_token") or os.getenv("DHAN_ACCESS_TOKEN")
 
         logger.info(
             f"Dhan credentials check - Client ID: {'SET' if dhan_client_id else 'MISSING'}, Token: {'SET' if dhan_access_token else 'MISSING'}")
@@ -1681,7 +1685,9 @@ class VirtualPortfolio:
             try:
                 logger.info(
                     f"Initializing Dhan API with client ID: {dhan_client_id[:4]}...{dhan_client_id[-4:] if len(dhan_client_id) > 8 else dhan_client_id}")
-                self.api = dhanhq(
+                # Use our custom DhanAPIClient which has proper get_funds implementation
+                from dhan_client import DhanAPIClient
+                self.api = DhanAPIClient(
                     client_id=dhan_client_id,
                     access_token=dhan_access_token
                 )
@@ -1745,6 +1751,131 @@ class VirtualPortfolio:
         except Exception as e:
             logger.error(f"Error loading portfolio data: {e}")
             # Keep default values if loading fails
+
+    def sync_with_dhan_account(self):
+        """Sync portfolio cash balance with Dhan account or updated JSON files"""
+        try:
+            # For live mode, try to sync with Dhan API first
+            if self.mode == "live" and self.api:
+                try:
+                    funds = self.api.get_funds()
+                    holdings_data = self.api.get_holdings()
+                    
+                    # Extract available cash from Dhan response
+                    available_cash = 0.0
+                    for key in ('availableBalance', 'availabelBalance', 'available_balance', 'available', 'availBalance', 'cash', 'netBalance', 'totalBalance'):
+                        if isinstance(funds, dict) and key in funds:
+                            try:
+                                available_cash = float(
+                                    funds.get(key, 0.0) or 0.0)
+                                logger.debug(
+                                    f"Found Dhan balance in key '{key}': Rs.{available_cash:.2f}")
+                                break
+                            except (ValueError, TypeError):
+                                continue
+
+                    # If we found a valid balance, update the portfolio
+                    if available_cash > 0:
+                        self.cash = available_cash
+                        logger.info(
+                            f"🔄 Synced cash balance with Dhan account: Rs.{self.cash:.2f}")
+                        
+                        # Also sync holdings from Dhan
+                        if holdings_data:
+                            old_holdings = self.holdings.copy()
+                            new_holdings = {}
+                            
+                            for holding in holdings_data:
+                                symbol = holding.get("tradingSymbol", "")
+                                quantity = int(holding.get("totalQty", 0))
+                                avg_price = float(holding.get("avgCostPrice", 0))
+                                current_price = float(holding.get("ltp", avg_price))
+                                
+                                if quantity > 0 and symbol:
+                                    new_holdings[symbol] = {
+                                        "qty": quantity,
+                                        "avg_price": avg_price,
+                                        "last_price": current_price
+                                    }
+                            
+                            self.holdings = new_holdings
+                            logger.info(
+                                f"🔄 Synced holdings with Dhan account: {len(old_holdings)} → {len(new_holdings)} positions")
+                            
+                            # Log any significant changes in holdings
+                            for symbol, old_data in old_holdings.items():
+                                if symbol not in new_holdings:
+                                    logger.info(f"📈 Position closed: {symbol} - {old_data['qty']} shares")
+                                elif old_data['qty'] != new_holdings[symbol]['qty']:
+                                    logger.info(f"📊 Position change: {symbol} - {old_data['qty']} → {new_holdings[symbol]['qty']} shares")
+                            
+                            for symbol, new_data in new_holdings.items():
+                                if symbol not in old_holdings:
+                                    logger.info(f"📈 New position: {symbol} - {new_data['qty']} shares")
+                        
+                        self.save_portfolio()  # Save the updated balance
+                        return True
+                    else:
+                        logger.warning(
+                            f"Dhan API returned zero or invalid balance: {funds}")
+                except Exception as e:
+                    logger.warning(f"Failed to sync with Dhan API: {e}")
+
+            # Fallback: Load from updated JSON file (synced by Dhan sync service)
+            if os.path.exists(self.portfolio_file):
+                try:
+                    with open(self.portfolio_file, 'r') as f:
+                        portfolio_data = json.load(f)
+                        
+                        # Sync cash balance
+                        synced_cash = portfolio_data.get('cash', self.cash)
+                        old_cash = self.cash
+                        if synced_cash != self.cash:
+                            self.cash = synced_cash
+                            logger.info(
+                                f"🔄 Synced cash balance from JSON file: Rs.{old_cash:.2f} → Rs.{self.cash:.2f}")
+                        else:
+                            logger.debug(
+                                f"Cash balance unchanged: Rs.{self.cash:.2f}")
+                        
+                        # Sync holdings from JSON file
+                        json_holdings = portfolio_data.get('holdings', {})
+                        old_holdings = self.holdings.copy()
+                        holdings_changed = False
+                        
+                        if json_holdings != old_holdings:
+                            self.holdings = json_holdings
+                            holdings_changed = True
+                            logger.info(
+                                f"🔄 Synced holdings from JSON file: {len(old_holdings)} → {len(json_holdings)} positions")
+                            
+                            # Log any significant changes in holdings
+                            for symbol, old_data in old_holdings.items():
+                                if symbol not in json_holdings:
+                                    logger.info(f"📈 Position closed (JSON): {symbol} - {old_data['qty']} shares")
+                                elif old_data.get('qty') != json_holdings[symbol].get('qty'):
+                                    old_qty = old_data.get('qty', 0)
+                                    new_qty = json_holdings[symbol].get('qty', 0)
+                                    logger.info(f"📊 Position change (JSON): {symbol} - {old_qty} → {new_qty} shares")
+                            
+                            for symbol, new_data in json_holdings.items():
+                                if symbol not in old_holdings:
+                                    new_qty = new_data.get('qty', 0)
+                                    logger.info(f"📈 New position (JSON): {symbol} - {new_qty} shares")
+                        else:
+                            logger.debug(
+                                f"Holdings unchanged: {len(self.holdings)} positions")
+                        
+                        # Return True if either cash or holdings were updated
+                        if synced_cash != old_cash or holdings_changed:
+                            return True
+                except Exception as e:
+                    logger.warning(f"Failed to sync from JSON file: {e}")
+
+            return False
+        except Exception as e:
+            logger.error(f"Error in sync_with_dhan_account: {e}")
+            return False
 
     def initialize_files(self):
         """Initialize portfolio and trade log JSON files if they don't exist."""
@@ -1856,15 +1987,15 @@ class VirtualPortfolio:
             # Update portfolio regardless of mode
             self.cash -= cost
             if asset in self.holdings:
-                current_qty = self.holdings[asset]["qty"]
-                current_avg_price = self.holdings[asset]["avg_price"]
+                current_qty = float(self.holdings[asset]["qty"])
+                current_avg_price = float(self.holdings[asset]["avg_price"])
                 new_qty = current_qty + qty
                 new_avg_price = (
                     (current_avg_price * current_qty) + (price * qty)) / new_qty
                 self.holdings[asset] = {
-                    "qty": new_qty, "avg_price": new_avg_price}
+                    "qty": int(new_qty) if new_qty == int(new_qty) else new_qty, "avg_price": new_avg_price}
             else:
-                self.holdings[asset] = {"qty": qty, "avg_price": price}
+                self.holdings[asset] = {"qty": int(qty) if qty == int(qty) else qty, "avg_price": price}
 
             trade_data = {
                 "asset": asset,
@@ -1935,11 +2066,12 @@ class VirtualPortfolio:
             realized_pnl_for_trade = (price - avg_price) * qty
             self.realized_pnl += realized_pnl_for_trade
 
-            current_qty = self.holdings[asset]["qty"]
+            current_qty = float(self.holdings[asset]["qty"])
             if current_qty == qty:
                 del self.holdings[asset]
             else:
-                self.holdings[asset]["qty"] -= qty
+                new_qty = current_qty - qty
+                self.holdings[asset]["qty"] = int(new_qty) if new_qty == int(new_qty) else new_qty
 
             trade_data = {
                 "asset": asset,
@@ -1967,20 +2099,16 @@ class VirtualPortfolio:
             return False
 
     def get_security_id(self, ticker):
-        """Fetch security ID for a ticker using dynamic resolution system."""
+        """Fetch security ID for a ticker using the existing Dhan API client."""
         try:
-            # Import the dynamic security ID method from dhan_client
-            from dhan_client import DhanAPIClient
-
-            # Create a temporary client instance for security ID lookup
-            # Use dummy credentials since we only need the mapping function
-            temp_client = DhanAPIClient("temp", "temp")
-
-            # Use the dynamic security ID resolution
-            security_id = temp_client.get_security_id(ticker)
-            logger.info(f"Found security ID for {ticker}: {security_id}")
-            return security_id
-
+            # Use the existing API client to get security ID
+            if hasattr(self, 'api') and self.api:
+                security_id = self.api.get_security_id(ticker)
+                logger.info(f"Found security ID for {ticker}: {security_id}")
+                return security_id
+            else:
+                logger.error(f"No Dhan API client available for security ID lookup: {ticker}")
+                return None
         except ValueError as e:
             logger.error(f"Security ID not found for {ticker}: {e}")
             return None
@@ -2348,7 +2476,7 @@ class TradingExecutor:
     def __init__(self, portfolio, config):
         self.portfolio = portfolio
         self.mode = config.get("mode", "paper")
-        self.dhanhq = portfolio.api  # Use the dhanhq client from VirtualPortfolio
+        self.dhan_client = portfolio.api  # Use the Dhan API client from VirtualPortfolio
         self.stop_loss_pct = float(config.get(
             "stop_loss_pct", 0.05) if config else 0.05)
         self.max_capital_per_trade = float(config.get(
@@ -2478,7 +2606,7 @@ class TradingExecutor:
                         return {"success": False, "message": result.get("message", "Live trade failed")}
 
                 # Fallback to original live trading logic if no database executor
-                elif self.dhanhq:
+                elif self.dhan_client:
                     # Fetch security ID for live trading
                     security_id = self.get_security_id(ticker)
                     if security_id is None:
@@ -2486,21 +2614,19 @@ class TradingExecutor:
                         logger.error(error_msg)
                         return {"success": False, "message": error_msg}
 
-                    # Place live order
-                    order = self.dhanhq.place_order(
-                        security_id=security_id,
-                        exchange_segment="NSE_EQ",
-                        transaction_type=action.upper(),
-                        order_type="MARKET",
+                    # Place live order using our custom DhanAPIClient
+                    order = self.dhan_client.place_order(
+                        symbol=ticker,
                         quantity=int(qty),
-                        price=0,  # Market order
-                        validity="DAY"
+                        order_type="MARKET",
+                        side=action.upper(),
+                        price=None  # Market order
                     )
                     logger.info(
                         f"Legacy live trade executed: {action} {qty} units of {ticker} at Rs.{price}")
                 else:
                     # More descriptive error message
-                    dhan_status = "available" if self.dhanhq else "NOT available"
+                    dhan_status = "available" if self.dhan_client else "NOT available"
                     mode_status = self.mode
                     return {"success": False, "message": f"No live trading client available - Dhan API status: {dhan_status}, Mode: {mode_status}"}
             else:
@@ -2552,27 +2678,21 @@ class TradingExecutor:
         return ticker
 
     def get_security_id(self, ticker):
-        """Fetch security ID for a ticker using dynamic resolution system."""
+        """Fetch security ID for a ticker using the existing Dhan API client."""
         try:
-            # Import the dynamic security ID method from dhan_client
-            from dhan_client import DhanAPIClient
-
-            # Create a temporary client instance for security ID lookup
-            # Use dummy credentials since we only need the mapping function
-            temp_client = DhanAPIClient("temp", "temp")
-
-            # Use the dynamic security ID resolution
-            security_id = temp_client.get_security_id(ticker)
-            logger.info(f"Found security ID for {ticker}: {security_id}")
-            return security_id
-
+            # Use the existing dhan_client from TradingExecutor
+            if hasattr(self, 'dhan_client') and self.dhan_client:
+                security_id = self.dhan_client.get_security_id(ticker)
+                logger.info(f"Found security ID for {ticker}: {security_id}")
+                return security_id
+            else:
+                logger.error(f"No Dhan API client available for security ID lookup: {ticker}")
+                return None
         except ValueError as e:
             logger.error(f"Security ID not found for {ticker}: {e}")
             return None
         except Exception as e:
             logger.error(f"Error fetching security ID for {ticker}: {e}")
-            return None
-
             return None
 
 
@@ -2716,6 +2836,42 @@ class Stock:
                 'neutral': ['Ensemble', 'VotingRegressor', 'StackingRegressor']
             }
         }
+
+    def detect_market_regime(self, price_history):
+        """Compatibility wrapper: detect market regime using canonical detector.
+
+        Returns one of the adaptive selector keys: 'bull','bear','volatile','sideways','neutral'.
+        """
+        try:
+            try:
+                from utils.market_regime_detector import get_regime_detector
+            except Exception:
+                from backend.utils.market_regime_detector import get_regime_detector
+
+            detector = get_regime_detector()
+            result = detector.detect_regime(price_history)
+
+            # detector may return a dict or a string
+            if isinstance(result, dict):
+                regime = result.get('regime', '')
+            else:
+                regime = result
+
+            if not isinstance(regime, str):
+                return 'neutral'
+
+            regime = regime.lower()
+            mapping = {
+                'bull': 'bull',
+                'bear': 'bear',
+                'sideways': 'sideways',
+                'volatile': 'volatile',
+                'unknown': 'neutral'
+            }
+            return mapping.get(regime, regime)
+        except Exception as e:
+            logger.error(f"Stock.detect_market_regime fallback: {e}")
+            return 'neutral'
 
     def get_company_names(self, ticker):
         """Get company names for news search using dynamic mapping"""
@@ -6370,9 +6526,13 @@ class Stock:
                             # Adaptive model selection based on market regime
                             if model_scores and self.adaptive_model_selector:
                                 try:
-                                    # Detect current market regime
-                                    market_regime = self.stock_analyzer.detect_market_regime(
-                                            combined_history) 
+                                    # Detect current market regime (safe)
+                                    try:
+                                        from backend.utils.regime_compat import safe_detect_market_regime
+                                    except Exception:
+                                        from utils.regime_compat import safe_detect_market_regime
+                                    market_regime = safe_detect_market_regime(
+                                        self, combined_history)
 
                                     # Get preferred models for this regime
                                     preferred_models = self.adaptive_model_selector['regime_model_mapping'].get(
@@ -6836,12 +6996,14 @@ class Stock:
 class StockTradingBot:
     def __init__(self, config):
         self.config = config
-        
+
         # Debug logging for received config
         logger.info(f"StockTradingBot received config:")
         logger.info(f"  Mode: {self.config.get('mode')}")
-        logger.info(f"  Dhan Client ID: {'SET' if self.config.get('dhan_client_id') else 'MISSING'}")
-        logger.info(f"  Dhan Access Token: {'SET' if self.config.get('dhan_access_token') else 'MISSING'}")
+        logger.info(
+            f"  Dhan Client ID: {'SET' if self.config.get('dhan_client_id') else 'MISSING'}")
+        logger.info(
+            f"  Dhan Access Token: {'SET' if self.config.get('dhan_access_token') else 'MISSING'}")
 
         # Changed to India timezone
         self.timezone = pytz.timezone("Asia/Kolkata")
@@ -7090,8 +7252,10 @@ class StockTradingBot:
                 volume_trend = 0
 
             # Determine regime based on detector configuration
-            detector = self.adaptive_model_selector['market_regime_detector'] if self.adaptive_model_selector else self._create_market_regime_detector(
-            )
+            detector = self.adaptive_model_selector.get(
+                'market_regime_detector') if self.adaptive_model_selector else None
+            if detector is None:
+                detector = self._create_market_regime_detector()
 
             # Calculate regime scores
             volatility_score = 1.0 if volatility > detector['volatility_threshold'] else 0.0
@@ -7321,8 +7485,12 @@ class StockTradingBot:
                         continue
 
                     try:
-                        # Detect market regime for this period
-                        regime = self.detect_market_regime(period_data)
+                        # Detect market regime for this period (safe)
+                        try:
+                            from backend.utils.regime_compat import safe_detect_market_regime
+                        except Exception:
+                            from utils.regime_compat import safe_detect_market_regime
+                        regime = safe_detect_market_regime(self, period_data)
 
                         # Get current price (last price in training period)
                         current_price = period_data.loc[:train_end,
@@ -7519,6 +7687,17 @@ class StockTradingBot:
         ml_analysis = analysis["ml_analysis"]
         technical_indicators = analysis["technical_indicators"]
         sentiment_data = analysis["sentiment_analysis"]
+
+        # Sync portfolio with Dhan account before making trading decisions
+        if self.portfolio.mode == "live":
+            sync_result = self.portfolio.sync_with_dhan_account()
+            if sync_result:
+                logger.info(
+                    "✅ Portfolio synced with Dhan account before trading decision")
+            else:
+                logger.warning(
+                    "⚠️  Failed to sync portfolio with Dhan account")
+
         metrics = self.portfolio.get_metrics()
         available_cash = metrics["cash"]
         total_value = metrics["total_value"]
@@ -7636,8 +7815,14 @@ class StockTradingBot:
                 }
 
                 # Calculate dynamic weights for decision making
-                market_regime = self.stock_analyzer.detect_market_regime(
-    history) if history is not None else "RANGE_BOUND"
+                if history is not None:
+                    try:
+                        from backend.utils.regime_compat import safe_detect_market_regime
+                    except Exception:
+                        from utils.regime_compat import safe_detect_market_regime
+                    market_regime = safe_detect_market_regime(self, history)
+                else:
+                    market_regime = "RANGE_BOUND"
                 dynamic_weights = self.calculate_dynamic_weights(
                     analysis, market_regime)
 
@@ -7679,12 +7864,21 @@ class StockTradingBot:
                             buy_decision.get(
                                 "take_profit", current_price * 1.15)
                         )
-                        # Update the logging to show both ticker and the actual security name from the result
-                        executed_ticker = success_result.get("ticker", ticker)
-                        order_id = success_result.get("order_id", "N/A")
-                        logger.info(
-                            f"✅ BUY ORDER EXECUTED: {buy_qty} {executed_ticker} at Rs.{current_price:.2f}")
-                        logger.info(f"   Order ID: {order_id}")
+                        # Check execution result before logging success
+                        if success_result.get("success"):
+                            executed_ticker = success_result.get(
+                                "ticker", ticker)
+                            order_id = success_result.get("order_id", "N/A")
+                            logger.info(
+                                f"✅ BUY ORDER EXECUTED: {buy_qty} {executed_ticker} at Rs.{current_price:.2f}")
+                            logger.info(f"   Order ID: {order_id}")
+                        else:
+                            # Log detailed failure reason
+                            failure_msg = success_result.get(
+                                "message", "Unknown error")
+                            logger.error(
+                                f"Database live trade failed: {failure_msg}")
+
                         return {
                             "action": "buy",
                             "ticker": ticker,

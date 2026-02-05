@@ -283,7 +283,22 @@ class ProfessionalSellIntegration:
                     
                     # Get funds (available cash)
                     funds_data = dhan_client.get_funds()
-                    available_cash = funds_data.get('availabelBalance', 0.0)  # Note: typo in Dhan API
+                    # Tolerant extraction for possible key names / typos
+                    available_cash = 0.0
+                    if funds_data:
+                        try:
+                            for key in ('availableBalance', 'availabelBalance', 'available_balance', 'available', 'availBalance', 'cash'):
+                                if isinstance(funds_data, dict) and key in funds_data:
+                                    available_cash = float(funds_data.get(key, 0.0) or 0.0)
+                                    break
+                            else:
+                                if isinstance(funds_data, dict):
+                                    for v in funds_data.values():
+                                        if isinstance(v, (int, float)):
+                                            available_cash = float(v)
+                                            break
+                        except Exception:
+                            available_cash = 0.0
                     
                     # Get holdings for P&L calculation
                     holdings = dhan_client.get_holdings()

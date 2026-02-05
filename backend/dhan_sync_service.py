@@ -56,7 +56,27 @@ class DhanSyncService:
                 'Accept': 'application/json'
             }
 
-            # Try profile endpoint first as it's more reliable
+            # First try fundlimit endpoint as it provides accurate real-time balance with zero parameters
+            try:
+                response = requests.get(
+                    "https://api.dhan.co/v2/fundlimit",
+                    headers=headers,
+                    timeout=10
+                )
+
+                if response.status_code == 200:
+                    funds_data = response.json()
+                    logger.debug(
+                        f"Fetched funds data from fundlimit: {funds_data}")
+                    return funds_data
+                else:
+                    logger.warning(
+                        f"Fundlimit endpoint returned status {response.status_code}: {response.text}")
+            except Exception as fundlimit_error:
+                logger.error(
+                    f"Fundlimit endpoint failed: {fundlimit_error}")
+
+            # Fallback to profile endpoint
             try:
                 response = requests.get(
                     "https://api.dhan.co/v2/profile",
@@ -66,6 +86,7 @@ class DhanSyncService:
 
                 if response.status_code == 200:
                     profile_data = response.json()
+                    logger.debug(f"Fetched profile data: {profile_data}")
                     # Convert profile data to funds-like structure
                     return {
                         "availableBalance": profile_data.get("availableBalance", 0.0),
@@ -75,22 +96,10 @@ class DhanSyncService:
                         "clientId": profile_data.get("clientId", self.client_id)
                     }
             except Exception as profile_error:
-                logger.debug(
+                logger.error(
                     f"Profile endpoint failed for funds: {profile_error}")
 
-                # Fallback to fundlimit endpoint
-                response = requests.get(
-                    "https://api.dhan.co/v2/fundlimit",
-                    headers=headers,
-                    timeout=10
-                )
-
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.warning(
-                    f"Dhan API returned status {response.status_code}: {response.text}")
-                return None
+            return None
 
         except Exception as e:
             logger.error(f"Error fetching funds from Dhan API: {e}")
@@ -142,20 +151,37 @@ class DhanSyncService:
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
 
-            # Update live portfolio
-            cursor.execute("""
-                UPDATE portfolios 
-                SET cash = ?, last_updated = ?
-                WHERE mode = 'live'
-            """, (cash_amount, datetime.now().isoformat()))
+            # Only update cash if it's a valid, non-zero amount
+            # This prevents resetting balance to 0 when API fails
+            effective_cash = cash_amount if cash_amount > 0 else None
+            
+            if effective_cash is not None:
+                cursor.execute("""
+                    UPDATE portfolios 
+                    SET cash = ?, last_updated = ?
+                    WHERE mode = 'live'
+                """, (effective_cash, datetime.now().isoformat()))
+            else:
+                # Don't update cash if it's zero or invalid - keep existing value
+                cursor.execute("""
+                    UPDATE portfolios 
+                    SET last_updated = ?
+                    WHERE mode = 'live'
+                """, (datetime.now().isoformat(),))
 
             if cursor.rowcount == 0:
                 # Insert new live portfolio if it doesn't exist
+                # Only use cash_amount if it's valid and non-zero, otherwise use default
+                effective_cash = cash_amount if cash_amount > 0 else 50000.0  # Default starting balance
+                effective_starting_balance = cash_amount if cash_amount > 0 else 50000.0  # Default starting balance
                 cursor.execute("""
                     INSERT INTO portfolios (mode, cash, starting_balance, realized_pnl, unrealized_pnl, last_updated)
                     VALUES ('live', ?, ?, 0.0, 0.0, ?)
-                """, (cash_amount, cash_amount, datetime.now().isoformat()))
-                logger.info("Created new live portfolio in database")
+                """, (effective_cash, effective_starting_balance, datetime.now().isoformat()))
+                if cash_amount <= 0:
+                    logger.info(f"Created new live portfolio with default cash (API returned invalid balance: Rs.{cash_amount:.2f})")
+                else:
+                    logger.info(f"Created new live portfolio with cash from Dhan: Rs.{effective_cash:.2f}")
 
             conn.commit()
             conn.close()
@@ -193,10 +219,13 @@ class DhanSyncService:
             data_dir = os.path.join(project_root, 'data')
 
             # Update portfolio_india_live.json
+            # Only use cash_amount if it's valid and non-zero, otherwise keep existing cash
+            effective_cash = cash_amount if cash_amount > 0 else self.last_known_balance
+            effective_starting_balance = max(cash_amount, self.last_known_balance) if cash_amount > 0 else self.last_known_balance
             portfolio_data = {
-                "cash": cash_amount,
+                "cash": effective_cash,
                 "holdings": holdings_dict,
-                "starting_balance": max(cash_amount, self.last_known_balance),
+                "starting_balance": effective_starting_balance,
                 "realized_pnl": 0.0,
                 "unrealized_pnl": 0.0,
                 "last_updated": datetime.now().isoformat()
@@ -208,10 +237,14 @@ class DhanSyncService:
                 json.dump(portfolio_data, f, indent=4)
 
             # Update live_portfolio.json
+            # Only use cash_amount if it's valid and non-zero, otherwise keep existing cash
+            effective_cash = cash_amount if cash_amount > 0 else self.last_known_balance
+            effective_total_value = (cash_amount + total_holdings_value) if cash_amount > 0 else (self.last_known_balance + total_holdings_value)
+            effective_starting_balance = max(cash_amount, self.last_known_balance) if cash_amount > 0 else self.last_known_balance
             live_portfolio_data = {
-                "cash": cash_amount,
-                "total_value": cash_amount + total_holdings_value,
-                "starting_balance": max(cash_amount, self.last_known_balance),
+                "cash": effective_cash,
+                "total_value": effective_total_value,
+                "starting_balance": effective_starting_balance,
                 "holdings": holdings_dict,
                 "unrealized_pnl": 0.0,
                 "realized_pnl": 0.0,
@@ -245,8 +278,55 @@ class DhanSyncService:
             if holdings_data is None:
                 holdings_data = []
 
-            # Extract cash balance
-            current_balance = funds_data.get('availabelBalance', 0.0)
+            # Extract cash balance (tolerant to different key names / typos)
+            current_balance = 0.0
+            try:
+                logger.debug(
+                    f"Dhan funds data keys: {list(funds_data.keys()) if isinstance(funds_data, dict) else 'Not a dict'}")
+
+                # Common keys returned by Dhan endpoints (with more comprehensive list)
+                possible_keys = [
+                    'availableBalance', 'availablebalance', 'available_balance',
+                    'sodLimit', 'sodlimit', 'sod_limit',
+                    'netBalance', 'netbalance', 'net_balance',
+                    'availablecash', 'available_cash', 'availableCash',
+                    'netAvailableMargin', 'netAvailableCash',
+                    'usableCash', 'usable_cash', 'UsableCash',
+                    'cash', 'Cash'
+                ]
+
+                for key in possible_keys:
+                    if isinstance(funds_data, dict) and key in funds_data:
+                        value = funds_data[key]
+                        if value is not None:
+                            try:
+                                current_balance = float(value)
+                                logger.debug(
+                                    f"Found balance in key '{key}': ₹{current_balance}")
+                                break
+                            except (ValueError, TypeError):
+                                continue
+
+                # If still no balance found, try to find the first numeric value in the dict
+                if current_balance == 0.0 and isinstance(funds_data, dict):
+                    for k, v in funds_data.items():
+                        if isinstance(v, (int, float)) and 'balance' in k.lower():
+                            current_balance = float(v)
+                            logger.debug(
+                                f"Found balance in '{k}' field: ₹{current_balance}")
+                            break
+
+                if current_balance == 0.0 and isinstance(funds_data, dict):
+                    for k, v in funds_data.items():
+                        if isinstance(v, (int, float)) and v > 100:  # Likely a balance amount
+                            current_balance = float(v)
+                            logger.debug(
+                                f"Using first large numeric value from '{k}' field: ₹{current_balance}")
+                            break
+
+            except Exception as e:
+                logger.error(f"Error extracting balance from funds data: {e}")
+                current_balance = 0.0
 
             # Check if balance changed
             balance_changed = abs(
