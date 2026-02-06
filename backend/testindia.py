@@ -7288,120 +7288,56 @@ class StockTradingBot:
             return "RANGE_BOUND"
 
     def calculate_dynamic_weights(self, analysis, market_regime, historical_performance=None):
-        """Calculate dynamic decision weights based on market conditions and historical performance"""
+        """Calculate dynamic decision weights using enhanced adaptive system"""
         try:
-            base_weights = {
-                'technical': 0.35,
-                'sentiment': 0.20,
-                'ml': 0.30,
-                'fundamental': 0.10,
-                'risk': 0.05
+            # Import the new adaptive weighting system
+            from backend.utils.adaptive_signal_weighting import AdaptiveSignalWeighter
+            
+            # Initialize adaptive weighter with proper configuration
+            weighter_config = {
+                "max_sentiment_weight": 0.25,  # Prevent sentiment over-weighting
+                "min_sentiment_weight": 0.05,  # Ensure minimum sentiment consideration
+                "confidence_threshold": 0.6,   # Only confident signals
+                "volatility_sensitivity": 0.3,
+                "correlation_threshold": 0.7,
+                "performance_window": 30,
+                "weight_update_frequency": 5
+            }
+            
+            weighter = AdaptiveSignalWeighter(weighter_config)
+            
+            # Extract analysis components
+            technical_indicators = analysis.get("technical_indicators", {})
+            sentiment_analysis = analysis.get("sentiment_analysis", {})
+            ml_analysis = analysis.get("ml_analysis", {})
+            fundamental_data = analysis.get("fundamental_analysis", {})
+            risk_metrics = analysis.get("risk_metrics", {})
+            
+            # Calculate adaptive weights
+            weights = weighter.calculate_weights(
+                technical_indicators=technical_indicators,
+                sentiment_analysis=sentiment_analysis,
+                ml_analysis=ml_analysis,
+                fundamental_data=fundamental_data,
+                risk_metrics=risk_metrics,
+                market_regime=market_regime,
+                historical_performance=historical_performance
+            )
+            
+            # Convert to dictionary format for backward compatibility
+            dynamic_weights = {
+                'technical': weights.technical,
+                'sentiment': weights.sentiment,
+                'ml': weights.ml,
+                'fundamental': weights.fundamental,
+                'risk': weights.risk
             }
 
-            # Adjust weights based on market regime
-            if market_regime == "TRENDING":
-                # In trending markets, emphasize technical and ML signals
-                regime_weights = {
-                    'technical': 0.40,
-                    'sentiment': 0.15,
-                    'ml': 0.35,
-                    'fundamental': 0.08,
-                    'risk': 0.02
-                }
-            elif market_regime == "VOLATILE":
-                # In volatile markets, emphasize risk management and reduce sentiment weight
-                regime_weights = {
-                    'technical': 0.30,
-                    'sentiment': 0.10,
-                    'ml': 0.25,
-                    'fundamental': 0.15,
-                    'risk': 0.20
-                }
-            else:  # RANGE_BOUND
-                # In range-bound markets, balanced approach with higher sentiment weight
-                regime_weights = {
-                    'technical': 0.30,
-                    'sentiment': 0.25,
-                    'ml': 0.25,
-                    'fundamental': 0.15,
-                    'risk': 0.05
-                }
-
-            # Adjust based on signal quality and historical performance
-            technical_indicators = analysis.get("technical_indicators", {})
-            ml_analysis = analysis.get("ml_analysis", {})
-            sentiment_analysis = analysis.get("sentiment_analysis", {})
-
-            # Technical signal quality adjustment
-            technical_quality = 0.0
-            if technical_indicators:
-                # Check for strong technical signals
-                rsi = technical_indicators.get("rsi", 50)
-                macd = technical_indicators.get("macd", 0)
-                adx = technical_indicators.get("adx", 25)
-
-                # RSI quality (extreme values indicate stronger signals)
-                rsi_quality = 1.0 if rsi < 30 or rsi > 70 else 0.5
-                # MACD quality (larger divergences are stronger)
-                macd_quality = min(abs(macd) / 2.0, 1.0)
-                # ADX quality (higher values indicate stronger trends)
-                adx_quality = min(adx / 50.0, 1.0)
-
-                technical_quality = (
-                    rsi_quality + macd_quality + adx_quality) / 3.0
-
-            # ML confidence adjustment
-            ml_confidence = ml_analysis.get(
-                "confidence", 0.5) if ml_analysis.get("success", False) else 0.3
-
-            # Sentiment consistency adjustment
-            sentiment_confidence = 0.5
-            if sentiment_analysis:
-                comprehensive = sentiment_analysis.get(
-                    "comprehensive_analysis", {})
-                sentiment_confidence = comprehensive.get(
-                    "confidence_score", 0.5)
-
-            # Performance-based adjustments
-            if historical_performance:
-                # Increase weight for signals that have performed well recently
-                technical_win_rate = historical_performance.get(
-                    "technical_win_rate", 0.5)
-                ml_win_rate = historical_performance.get("ml_win_rate", 0.5)
-                sentiment_win_rate = historical_performance.get(
-                    "sentiment_win_rate", 0.5)
-
-                # Adjust weights based on recent performance (last 30 trades)
-                performance_multiplier = 0.1  # Maximum 10% adjustment
-
-                regime_weights['technical'] *= (
-                    1.0 + performance_multiplier * (technical_win_rate - 0.5))
-                regime_weights['ml'] *= (1.0 +
-                                         performance_multiplier * (ml_win_rate - 0.5))
-                regime_weights['sentiment'] *= (
-                    1.0 + performance_multiplier * (sentiment_win_rate - 0.5))
-
-            # Quality-based adjustments
-            quality_multiplier = 0.15  # Maximum 15% adjustment based on signal quality
-
-            regime_weights['technical'] *= (1.0 +
-                                            quality_multiplier * (technical_quality - 0.5))
-            regime_weights['ml'] *= (1.0 +
-                                     quality_multiplier * (ml_confidence - 0.5))
-            regime_weights['sentiment'] *= (1.0 + quality_multiplier *
-                                            (sentiment_confidence - 0.5))
-
-            # Normalize weights to sum to 1.0
-            total_weight = sum(regime_weights.values())
-            if total_weight > 0:
-                normalized_weights = {
-                    k: v / total_weight for k, v in regime_weights.items()}
-            else:
-                normalized_weights = base_weights.copy()
-
-            logger.debug(
-                f"Dynamic weights for {market_regime}: {normalized_weights}")
-            return normalized_weights
+            # Log weight adjustment report
+            weight_report = weighter.get_weight_report()
+            logger.info(f"Dynamic Weighting Report: {json.dumps(weight_report, indent=2)}")
+            
+            return dynamic_weights
 
         except Exception as e:
             logger.error(f"Error calculating dynamic weights: {e}")

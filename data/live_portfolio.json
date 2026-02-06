@@ -1,8 +1,13 @@
 {
-  "cash": 4120.99,
-  "total_value": 53107.04064,
-  "starting_balance": 4120.99,
+  "cash": 780.08,
+  "total_value": 53102.920640000004,
+  "starting_balance": 780.08,
   "holdings": {
+    "MRPL": {
+      "qty": 10,
+      "avg_price": 184.624,
+      "last_price": 184.624
+    },
     "BEL": {
       "qty": 10,
       "avg_price": 449.0,
@@ -12,6 +17,11 @@
       "qty": 20,
       "avg_price": 967.205,
       "last_price": 967.205
+    },
+    "PETRONET": {
+      "qty": 5,
+      "avg_price": 298.11,
+      "last_price": 298.11
     },
     "UNIONBANK": {
       "qty": 30,
@@ -29,5 +39,5 @@
   "total_trades": 0,
   "winning_trades": 0,
   "losing_trades": 0,
-  "last_updated": "2026-02-05T14:41:25.719567"
+  "last_updated": "2026-02-06T11:33:04.111188"
 }

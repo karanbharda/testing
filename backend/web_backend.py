@@ -1048,6 +1048,19 @@ class WebTradingBot:
                 "max_portfolio_risk_pct": 0.02,
                 "max_single_stock_exposure": 0.05    # 5% max position risk
             })
+            
+            # 3.1 Initialize Centralized Risk Manager (NEW)
+            try:
+                from backend.utils.centralized_risk_manager import CentralizedRiskManager
+                centralized_risk_config = {
+                    "config_file": "config/centralized_risk_limits.json",
+                    "monitoring_frequency": 30
+                }
+                self.production_components['centralized_risk_manager'] = CentralizedRiskManager(centralized_risk_config)
+                logger.info("Centralized Risk Manager initialized successfully")
+            except Exception as e:
+                logger.warning(f"Centralized Risk Manager initialization failed: {e}")
+                self.production_components['centralized_risk_manager'] = None
 
             # 4. Initialize Decision Audit Trail
             audit_config = component_config.get('audit_trail', {})
@@ -1298,7 +1311,7 @@ class WebTradingBot:
                 decision_context['components_used'].append(
                     'AsyncSignalCollector')
 
-            # 2. Assess risk using IntegratedRiskManager
+            # 2. Assess risk using both Integrated and Centralized Risk Managers
             risk_score = 0.5  # Default moderate risk
             if 'risk_manager' in self.production_components:
                 risk_manager = self.production_components['risk_manager']
@@ -1308,6 +1321,32 @@ class WebTradingBot:
                 risk_score = 0.5  # Default moderate risk
                 decision_context['components_used'].append(
                     'IntegratedRiskManager')
+            
+            # NEW: Use Centralized Risk Manager for comprehensive risk assessment
+            if 'centralized_risk_manager' in self.production_components and self.production_components['centralized_risk_manager']:
+                centralized_risk_manager = self.production_components['centralized_risk_manager']
+                # Set integration points
+                centralized_risk_manager.trading_system = self.trading_bot
+                centralized_risk_manager.portfolio_manager = getattr(self.trading_bot, 'portfolio', None)
+                
+                # Perform pre-trade check
+                trade_quantity = decision_context.get('signals', {}).get('recommended_quantity', 100)
+                current_price = decision_context.get('signals', {}).get('current_price', 100.0)
+                approved, reason = centralized_risk_manager.pre_trade_check(symbol, trade_quantity, current_price)
+                
+                if not approved:
+                    logger.warning(f"Centralized risk manager rejected trade: {reason}")
+                    return {
+                        "action": "hold",
+                        "symbol": symbol,
+                        "confidence": 0.0,
+                        "reason": f"Risk check failed: {reason}",
+                        "risk_rejected": True
+                    }
+                
+                decision_context['components_used'].append('CentralizedRiskManager')
+                decision_context['centralized_risk_approved'] = True
+                decision_context['centralized_risk_reason'] = reason
 
             # 3. Get adaptive threshold
             confidence_threshold = 0.75  # Default threshold

@@ -229,7 +229,8 @@ class DualPortfolioManager:
             try:
                 # Load holdings from database into holdings dict for backward compatibility
                 self.current_holdings_dict = {}
-                holdings_from_db = session.query(Holding).filter_by(portfolio_id=self.current_portfolio.id).all()
+                holdings_from_db = session.query(Holding).filter_by(
+                    portfolio_id=self.current_portfolio.id).all()
                 for holding in holdings_from_db:
                     if holding.quantity > 0:  # Only include active holdings
                         self.current_holdings_dict[holding.ticker] = {
@@ -608,7 +609,8 @@ class DualPortfolioManager:
         """Update the cash balance in the current portfolio"""
         session = self.db.Session()
         try:
-            portfolio = session.query(Portfolio).filter_by(mode=self.current_mode).first()
+            portfolio = session.query(Portfolio).filter_by(
+                mode=self.current_mode).first()
             if portfolio:
                 portfolio.cash = float(new_cash)
                 portfolio.last_updated = datetime.now()
