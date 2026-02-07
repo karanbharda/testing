@@ -14,8 +14,10 @@ from .intraday import (
 )
 from .feature_pipeline import FeatureVector
 from .risk import RiskGate, RegimeThrottler
+from .risk.limits import RiskConfig
 from .shadow_execution import ShadowSimulator, ShadowOrder, Side, OrderStatus
 from .execution_router import ExecutionRouter, ExecutionMode
+from .reporting.karma import KarmaLogger
 
 class HFTPipeline:
     """
@@ -25,8 +27,11 @@ class HFTPipeline:
     def __init__(self, config: HFTConfig = default_config):
         self.config = config
         
+        # 0. Infrastructure
+        self.karma = KarmaLogger(output_dir="karma_logs")
+
         # 1. Data Ingestion
-        self.tick_buffer = TickBuffer()
+        self.tick_buffer = TickBuffer(max_size=20000, drop_strategy="DROP_OLDEST")
         
         # 2. Feature Trackers
         self.spread_tracker = SpreadTracker(alpha=config.strategy.spread_ema_alpha)
@@ -36,8 +41,19 @@ class HFTPipeline:
         
         # 3. Risk & Execution
         self.risk_gate = RiskGate(constraints=config.risk)
-        self.throttler = RegimeThrottler(config=None) # Configuring with None for now as placeholder
-        self.simulator = ShadowSimulator()
+        
+        # Risk Config (Day 1 Integration)
+        self.risk_config = RiskConfig(
+            max_loss_per_min=5000.0,
+            max_trades_per_min=20,
+            max_drawdown_session=10000.0,
+            max_order_qty=100
+        )
+        
+        # Initializing Throttler (Day 1) with None config for now as placeholder or could use new config
+        self.throttler = RegimeThrottler(config=None) 
+        
+        self.simulator = ShadowSimulator(risk_config=self.risk_config, karma_logger=self.karma)
         self.router = ExecutionRouter(simulator=self.simulator)
         
         # Ensure Router is in SHADOW_ONLY mode
@@ -53,7 +69,8 @@ class HFTPipeline:
         5. (Optional) Logic for Trade Generation (Placeholder)
         """
         # 1. Pipeline: Ingest
-        self.tick_buffer.add_tick(tick)
+        if self.tick_buffer.add_tick(tick):
+            self.karma.log_tick({"symbol": tick.symbol, "price": tick.price, "vol": tick.volume, "ts": tick.timestamp})
         
         # 2. Pipeline: Feature Update
         spread_metrics = self.spread_tracker.update(tick.timestamp, tick.bid, tick.ask)
