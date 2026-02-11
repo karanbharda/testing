@@ -3,7 +3,7 @@ import queue
 import signal
 import sys
 import argparse
-# from dhanhq import dhanhq  # Removed in favor of custom DhanAPIClient
+from dhanhq import dhanhq
 from dotenv import load_dotenv
 from requests.exceptions import HTTPError
 import pickle
@@ -130,14 +130,24 @@ logger.setLevel(logging.INFO)
 # threading removed - not used in current implementation
 
 
-# Add import for professional buy logic
+from utils.ticker_mapping import FyersTickerMapper
+from logging.handlers import RotatingFileHandler
+
+# Import unified ML interface
+try:
+    from ml_interface import get_ml_interface, get_unified_ml_analysis
+    ML_INTERFACE_AVAILABLE = True
+except ImportError:
+    logger.warning("ML interface not available, using individual components")
+    ML_INTERFACE_AVAILABLE = False
+
 
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('stock_bot_india.log'),
+        RotatingFileHandler('stock_bot_india.log', maxBytes=10*1024*1024, backupCount=5),
         logging.StreamHandler()
     ]
 )
@@ -153,763 +163,6 @@ try:
 except ImportError:
     logger.warning("ML interface not available, using individual components")
     ML_INTERFACE_AVAILABLE = False
-
-
-class FyersTickerMapper:
-    """Fyers API-based ticker-to-company name mapping for Indian stock market"""
-
-    def __init__(self, cache_file="data/fyers_ticker_mapping.pkl"):
-        self.cache_file = cache_file
-        self.ticker_mapping = {}
-        self.last_updated = None
-        self.update_frequency = timedelta(days=7)  # Update weekly
-        self.fyers_client = None
-
-        # Ensure data directory exists
-        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-
-        # Initialize Fyers client
-        self._initialize_fyers()
-
-        # Load cached data if available
-        self.load_cache()
-
-    def _initialize_fyers(self):
-        """Initialize Fyers API client"""
-        try:
-            if not FYERS_AVAILABLE:
-                logger.warning(
-                    "Fyers API not available - falling back to cached data")
-                return
-
-            app_id = os.getenv("FYERS_APP_ID")
-            access_token = os.getenv("FYERS_ACCESS_TOKEN")
-
-            if app_id and access_token:
-                self.fyers_client = fyersModel.FyersModel(
-                    client_id=app_id,
-                    token=access_token,
-                    log_path=""
-                )
-                logger.info(
-                    "Fyers API initialized successfully for ticker mapping")
-            else:
-                logger.warning(
-                    "Fyers credentials not found - using cached data only")
-        except Exception as e:
-            logger.error(f"Error initializing Fyers for ticker mapping: {e}")
-
-    def get_ticker_mapping(self, force_update=False):
-        """Get ticker mapping with automatic updates"""
-        if self.should_update() or force_update:
-            logger.info("Updating ticker mapping from Fyers API...")
-            self.update_mapping()
-            self.save_cache()
-
-        return self.ticker_mapping
-
-    def should_update(self):
-        """Check if mapping needs update"""
-        if not self.last_updated:
-            return True
-        return datetime.now() - self.last_updated > self.update_frequency
-
-    def fetch_fyers_stock_list(self):
-        """Fetch all Indian stocks using Fyers API - more reliable than NSE scraping"""
-        try:
-            stock_mapping = {}
-
-            if not self.fyers_client:
-                logger.warning(
-                    "Fyers client not available - cannot fetch stock list")
-                return stock_mapping
-
-            logger.info("Fetching comprehensive stock list from Fyers API...")
-
-            # Get master data for NSE equity instruments
-            try:
-                # Fyers doesn't have master_data() method - skip this approach
-                logger.info(
-                    "Skipping Fyers master data - method not available")
-                master_data = None
-
-                if False:  # Disable this block since master_data() doesn't exist
-                    instruments = master_data.get('d', [])
-                    logger.info(
-                        f"Received {len(instruments)} instruments from Fyers")
-
-                    # Filter for NSE equity instruments
-                    nse_equities = [
-                        inst for inst in instruments
-                        if inst.get('exchange') == 'NSE' and
-                        inst.get('segment') == 'EQ' and
-                        inst.get('symbol_details', {}).get(
-                            'symbol_type') == 'EQ'
-                    ]
-
-                    logger.info(
-                        f"Found {len(nse_equities)} NSE equity instruments")
-
-                    for instrument in nse_equities:
-                        try:
-                            symbol = instrument.get(
-                                'symbol_details', {}).get('symbol', '')
-                            company_name = instrument.get(
-                                'symbol_details', {}).get('long_name', '')
-
-                            if symbol and company_name:
-                                # Convert to Yahoo Finance format
-                                ticker = f"{symbol}.NS"
-                                variations = self.create_name_variations(
-                                    company_name)
-                                stock_mapping[ticker] = variations
-
-                        except Exception as e:
-                            logger.debug(f"Error processing instrument: {e}")
-                            continue
-
-                    logger.info(
-                        f"Successfully mapped {len(stock_mapping)} stocks from Fyers")
-
-                else:
-                    logger.error(
-                        f"Fyers master data request failed: {master_data}")
-
-            except Exception as e:
-                logger.error(f"Error fetching Fyers master data: {e}")
-                logger.info(
-                    "Fyers master data not available - using fallback approach")
-
-                # Fallback: Try to get quotes for known major stocks to build partial mapping
-                logger.info(
-                    "Attempting fallback approach with major stock quotes...")
-                major_stocks = [
-                    "NSE:RELIANCE-EQ", "NSE:TCS-EQ", "NSE:HDFCBANK-EQ", "NSE:INFY-EQ",
-                    "NSE:ICICIBANK-EQ", "NSE:SBIN-EQ", "NSE:BHARTIARTL-EQ", "NSE:ITC-EQ",
-                    "NSE:KOTAKBANK-EQ", "NSE:LT-EQ", "NSE:HCLTECH-EQ", "NSE:ASIANPAINT-EQ",
-                    "NSE:MARUTI-EQ", "NSE:AXISBANK-EQ", "NSE:TITAN-EQ", "NSE:SUNPHARMA-EQ",
-                    "NSE:ULTRACEMCO-EQ", "NSE:WIPRO-EQ", "NSE:NESTLEIND-EQ", "NSE:POWERGRID-EQ"
-                ]
-
-                try:
-                    quotes_response = self.fyers_client.quotes(
-                        {"symbols": ",".join(major_stocks)})
-                    if quotes_response and quotes_response.get('s') == 'ok':
-                        quotes_data = quotes_response.get('d', [])
-                        for quote in quotes_data:
-                            symbol_info = quote.get('n', '')
-                            if symbol_info:
-                                # Extract symbol from Fyers format
-                                symbol = symbol_info.split(':')[1].split(
-                                    '-')[0] if ':' in symbol_info else ''
-                                if symbol:
-                                    ticker = f"{symbol}.NS"
-                                    # Use symbol as company name for fallback
-                                    variations = self.create_name_variations(
-                                        symbol)
-                                    stock_mapping[ticker] = variations
-
-                        logger.info(
-                            f"Fallback approach yielded {len(stock_mapping)} stocks")
-                except Exception as fallback_error:
-                    logger.error(
-                        f"Fallback approach also failed: {fallback_error}")
-
-            return stock_mapping
-
-        except Exception as e:
-            logger.error(f"Error in fetch_fyers_stock_list: {e}")
-            return {}
-
-    def fetch_yahoo_major_stocks(self):
-        """Fetch major Indian stocks using Yahoo Finance as fallback"""
-        try:
-            stock_mapping = {}
-
-            # Major Indian stocks that are reliably available on Yahoo Finance
-            major_tickers = [
-                "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
-                "KOTAKBANK.NS", "BHARTIARTL.NS", "ITC.NS", "SBIN.NS", "HINDUNILVR.NS",
-                "BAJFINANCE.NS", "AXISBANK.NS", "HDFCLIFE.NS", "SBILIFE.NS", "BAJAJFINSV.NS",
-                "HCLTECH.NS", "WIPRO.NS", "TECHM.NS", "ASIANPAINT.NS", "MARUTI.NS",
-                "TITAN.NS", "NESTLEIND.NS", "BRITANNIA.NS", "LT.NS", "ULTRACEMCO.NS",
-                "ONGC.NS", "BPCL.NS", "IOC.NS", "COALINDIA.NS", "NTPC.NS", "POWERGRID.NS",
-                "SUNPHARMA.NS", "DRREDDY.NS", "CIPLA.NS", "DIVISLAB.NS", "APOLLOHOSP.NS"
-            ]
-
-            logger.info(
-                f"Fetching info for {len(major_tickers)} major stocks from Yahoo Finance...")
-
-            for ticker in major_tickers:
-                try:
-                    # Get stock info from Yahoo Finance
-                    stock = yf.Ticker(ticker)
-                    info = stock.info
-
-                    if info and 'longName' in info:
-                        company_name = info['longName']
-                        variations = self.create_name_variations(company_name)
-                        stock_mapping[ticker] = variations
-                    else:
-                        # Fallback to symbol-based name
-                        symbol = ticker.replace('.NS', '')
-                        variations = self.create_name_variations(symbol)
-                        stock_mapping[ticker] = variations
-
-                    # Small delay to be respectful to Yahoo Finance
-                    time.sleep(0.1)
-
-                except Exception as e:
-                    logger.debug(
-                        f"Error fetching {ticker} from Yahoo Finance: {e}")
-                    continue
-
-            logger.info(
-                f"Successfully fetched {len(stock_mapping)} stocks from Yahoo Finance")
-            return stock_mapping
-
-        except Exception as e:
-            logger.error(f"Error in fetch_yahoo_major_stocks: {e}")
-            return {}
-
-    def fetch_bse_stock_list(self):
-        """Fetch BSE stocks using multiple alternative methods"""
-        try:
-            stock_mapping = {}
-
-            # Method 1: Try BSE official API with enhanced headers
-            try:
-                url = "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w"
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'application/json, text/plain, */*',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'Connection': 'keep-alive',
-                    'Referer': 'https://www.bseindia.com/',
-                    'Origin': 'https://www.bseindia.com',
-                    'Sec-Fetch-Dest': 'empty',
-                    'Sec-Fetch-Mode': 'cors',
-                    'Sec-Fetch-Site': 'same-site'
-                }
-
-                logger.info(f"Trying BSE API: {url}")
-                response = requests.get(url, headers=headers, timeout=15)
-                logger.info(f"BSE API response status: {response.status_code}")
-                logger.info(
-                    f"BSE API response headers: {dict(response.headers)}")
-
-                if response.status_code == 200:
-                    content_type = response.headers.get('content-type', '')
-                    logger.info(f"BSE API content type: {content_type}")
-
-                    # Check if response is JSON
-                    if 'application/json' in content_type or response.text.strip().startswith('{'):
-                        try:
-                            data = response.json()
-                            logger.info(
-                                f"BSE API JSON parsed successfully. Keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
-
-                            # Try different possible data structures
-                            stocks_data = []
-                            if isinstance(data, dict):
-                                stocks_data = data.get('Table', data.get(
-                                    'data', data.get('stocks', [])))
-                            elif isinstance(data, list):
-                                stocks_data = data
-
-                            logger.info(
-                                f"Found {len(stocks_data)} stocks in BSE response")
-
-                            for stock in stocks_data:
-                                if isinstance(stock, dict):
-                                    # Try different field names
-                                    scrip_cd = stock.get('Scrip_cd') or stock.get(
-                                        'scrip_cd') or stock.get('code') or stock.get('symbol')
-                                    scrip_name = (stock.get('Scrip_Name') or stock.get('scrip_name') or
-                                                  stock.get('name') or stock.get('company_name') or '')
-
-                                    if scrip_cd and scrip_name:
-                                        ticker = f"{scrip_cd}.BO"
-                                        variations = self.create_name_variations(
-                                            scrip_name)
-                                        stock_mapping[ticker] = variations
-
-                            logger.info(
-                                f"Successfully processed {len(stock_mapping)} stocks from BSE API")
-
-                        except ValueError as e:
-                            logger.warning(f"BSE API JSON parsing failed: {e}")
-                            logger.warning(
-                                f"Response text preview: {response.text[:300]}")
-                    else:
-                        logger.warning(
-                            f"BSE API returned non-JSON content: {response.text[:200]}")
-                else:
-                    logger.warning(
-                        f"BSE API failed with status {response.status_code}: {response.text[:200]}")
-
-            except Exception as e:
-                logger.warning(f"BSE API method 1 failed: {e}")
-
-            # Method 2: Try alternative BSE endpoint if first method failed
-            if len(stock_mapping) == 0:
-                try:
-                    alt_url = "https://www.bseindia.com/corporates/List_Scrips.html"
-                    logger.info(f"Trying alternative BSE approach: {alt_url}")
-
-                    headers = {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-                    }
-
-                    response = requests.get(
-                        alt_url, headers=headers, timeout=15)
-                    if response.status_code == 200:
-                        logger.info(
-                            "Alternative BSE endpoint accessible, but HTML parsing not implemented")
-                        # Note: HTML parsing would require BeautifulSoup, keeping simple for now
-
-                except Exception as e:
-                    logger.warning(f"BSE alternative method failed: {e}")
-
-            # Method 3: Use hardcoded BSE stocks if APIs fail
-            if len(stock_mapping) == 0:
-                logger.info("Using fallback BSE stocks")
-                fallback_bse_stocks = {
-                    "500325.BO": ["Reliance Industries", "Reliance", "RIL"],
-                    "500209.BO": ["Infosys", "Infosys Technologies", "INFY"],
-                    "500180.BO": ["HDFC Bank", "HDFC", "Housing Development Finance Corporation"],
-                    "500034.BO": ["State Bank of India", "SBI", "State Bank"],
-                    "500696.BO": ["Hindustan Unilever", "HUL", "Unilever"],
-                    "500875.BO": ["ITC", "Indian Tobacco Company"],
-                    "532540.BO": ["Tata Consultancy Services", "TCS", "Tata Consultancy"],
-                    "500010.BO": ["HDFC", "Housing Development Finance Corporation"],
-                    "500112.BO": ["State Bank of India", "SBI"],
-                    "500820.BO": ["Asian Paints", "Asian Paint"]
-                }
-                stock_mapping.update(fallback_bse_stocks)
-                logger.info(
-                    f"Added {len(fallback_bse_stocks)} fallback BSE stocks")
-
-            return stock_mapping
-
-        except Exception as e:
-            logger.error(f"Error in fetch_bse_stock_list: {e}")
-            return {}
-
-    def create_name_variations(self, company_name):
-        """Create multiple variations of company name for better search"""
-        if not company_name:
-            return []
-
-        variations = [company_name.strip()]
-
-        # Remove common suffixes
-        suffixes_to_remove = [
-            " Limited", " Ltd", " Ltd.", " Private Limited", " Pvt Ltd", " Pvt. Ltd.",
-            " Corporation", " Corp", " Company", " Co.", " Inc", " Incorporated",
-            " Private", " Pvt", " Public Limited", " Public Ltd"
-        ]
-
-        clean_name = company_name.strip()
-        for suffix in suffixes_to_remove:
-            if clean_name.endswith(suffix):
-                clean_name = clean_name[:-len(suffix)].strip()
-                if clean_name and clean_name not in variations:
-                    variations.append(clean_name)
-
-        # Generate dynamic abbreviations using intelligent pattern recognition
-        name_lower = company_name.lower()
-
-        # Dynamic abbreviation generation
-        dynamic_abbreviations = self.generate_dynamic_abbreviations(
-            company_name)
-        variations.extend(dynamic_abbreviations)
-
-        # Remove duplicates and empty strings
-        variations = [v.strip() for v in variations if v.strip()]
-        # Remove duplicates while preserving order
-        variations = list(dict.fromkeys(variations))
-
-        # Limit to top 5 variations to avoid overly long queries
-        return variations[:5]
-
-    def generate_dynamic_abbreviations(self, company_name):
-        """Generate abbreviations dynamically using pattern recognition"""
-        if not company_name:
-            return []
-
-        abbreviations = []
-        name_lower = company_name.lower()
-        words = company_name.split()
-
-        # Method 1: First letter of each significant word
-        significant_words = []
-        skip_words = {'limited', 'ltd', 'private', 'pvt', 'corporation', 'corp',
-                      'company', 'co', 'inc', 'incorporated', 'public', 'the', 'and', '&'}
-
-        for word in words:
-            if word.lower() not in skip_words and len(word) > 1:
-                significant_words.append(word)
-
-        if len(significant_words) >= 2:
-            # Create acronym from first letters
-            acronym = ''.join([word[0].upper() for word in significant_words])
-            if len(acronym) >= 2 and len(acronym) <= 6:
-                abbreviations.append(acronym)
-
-        # Method 2: Common business patterns
-        if 'bank' in name_lower:
-            # For banks, often use first word + "Bank"
-            first_word = words[0] if words else ""
-            if first_word and first_word.lower() != 'bank':
-                abbreviations.append(f"{first_word} Bank")
-
-        if 'technologies' in name_lower or 'technology' in name_lower:
-            # For tech companies, often use first word + "Tech"
-            first_word = words[0] if words else ""
-            if first_word and 'tech' not in first_word.lower():
-                abbreviations.append(f"{first_word} Tech")
-
-        if 'industries' in name_lower or 'industry' in name_lower:
-            # For industrial companies, often just use first word
-            first_word = words[0] if words else ""
-            if first_word and first_word.lower() != 'industries':
-                abbreviations.append(first_word)
-
-        # Method 3: Group/Parent company patterns
-        if 'group' in name_lower:
-            # Extract group name
-            group_word = None
-            for i, word in enumerate(words):
-                if word.lower() == 'group' and i > 0:
-                    group_word = words[i-1]
-                    break
-            if group_word:
-                abbreviations.append(f"{group_word} Group")
-
-        # Method 4: Sector-specific patterns
-        sector_patterns = {
-            'energy': ['Energy', 'Power'],
-            'power': ['Power', 'Energy'],
-            'finance': ['Finance', 'Financial'],
-            'consultancy': ['Consultancy', 'Consulting'],
-            'services': ['Services'],
-            'motors': ['Motors', 'Auto'],
-            'automotive': ['Auto', 'Motors'],
-            'cement': ['Cement'],
-            'steel': ['Steel'],
-            'pharma': ['Pharma', 'Pharmaceutical'],
-            'pharmaceutical': ['Pharma'],
-            'telecom': ['Telecom', 'Communications'],
-            'communications': ['Telecom'],
-            'oil': ['Oil', 'Petroleum'],
-            'gas': ['Gas'],
-            'ports': ['Ports', 'Port'],
-            'shipping': ['Shipping'],
-            'textiles': ['Textiles'],
-            'chemicals': ['Chemicals', 'Chem'],
-            'metals': ['Metals'],
-            'mining': ['Mining'],
-            'real estate': ['Realty', 'Real Estate'],
-            'realty': ['Real Estate'],
-            'insurance': ['Insurance'],
-            'mutual fund': ['MF', 'Mutual Fund'],
-            'asset management': ['AMC', 'Asset Management']
-        }
-
-        for sector, variations in sector_patterns.items():
-            if sector in name_lower:
-                # Add sector-specific variations
-                first_word = words[0] if words else ""
-                if first_word:
-                    for variation in variations:
-                        abbreviations.append(f"{first_word} {variation}")
-
-        # Method 5: Handle special characters and conjunctions
-        if '&' in company_name or ' and ' in name_lower:
-            # For companies with & or "and", create variations
-            parts = company_name.replace('&', 'and').split(' and ')
-            if len(parts) == 2:
-                # Create "FirstWord & SecondWord" format
-                first_part = parts[0].strip().split()[
-                    0] if parts[0].strip() else ""
-                second_part = parts[1].strip().split()[
-                    0] if parts[1].strip() else ""
-                if first_part and second_part:
-                    abbreviations.append(f"{first_part} & {second_part}")
-                    abbreviations.append(f"{first_part[0]}&{second_part[0]}")
-
-        # Method 6: Remove common words and create short forms
-        clean_words = []
-        for word in words:
-            if (word.lower() not in skip_words and
-                len(word) > 2 and
-                    not word.lower().endswith('ing')):
-                clean_words.append(word)
-
-        if len(clean_words) >= 1:
-            # Just the main company name without suffixes
-            # Take first 2 significant words
-            main_name = ' '.join(clean_words[:2])
-            if main_name != company_name:
-                abbreviations.append(main_name)
-
-        return abbreviations
-
-    def test_api_connectivity(self):
-        """Test connectivity to NSE and BSE APIs"""
-        results = {
-            'nse_main': False,
-            'nse_market_data': False,
-            'bse_api': False,
-            'errors': []
-        }
-
-        # Test NSE main page
-        try:
-            response = requests.get("https://www.nseindia.com", timeout=10)
-            results['nse_main'] = response.status_code == 200
-            if not results['nse_main']:
-                results['errors'].append(
-                    f"NSE main page returned {response.status_code}")
-        except Exception as e:
-            results['errors'].append(f"NSE main page error: {e}")
-
-        # Test NSE market data page
-        try:
-            response = requests.get(
-                "https://www.nseindia.com/market-data", timeout=10)
-            results['nse_market_data'] = response.status_code == 200
-            if not results['nse_market_data']:
-                results['errors'].append(
-                    f"NSE market data page returned {response.status_code}")
-        except Exception as e:
-            results['errors'].append(f"NSE market data error: {e}")
-
-        # Test BSE API
-        try:
-            response = requests.get(
-                "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w", timeout=10)
-            results['bse_api'] = response.status_code == 200
-            if not results['bse_api']:
-                results['errors'].append(
-                    f"BSE API returned {response.status_code}")
-        except Exception as e:
-            results['errors'].append(f"BSE API error: {e}")
-
-        logger.info(f"API Connectivity Test Results: {results}")
-        return results
-
-    def update_mapping(self):
-        """Update mapping using Fyers API as primary source with fallbacks"""
-        all_mappings = {}
-
-        # Method 1: Try Fyers API (Primary - Most Reliable)
-        try:
-            logger.info("Attempting to fetch stocks from Fyers API...")
-            fyers_data = self.fetch_fyers_stock_list()
-            all_mappings.update(fyers_data)
-            logger.info(
-                f"[SUCCESS] Successfully fetched {len(fyers_data)} stocks from Fyers API")
-        except Exception as e:
-            logger.warning(f"[ERROR] Fyers API failed: {e}")
-
-        # Method 2: Try BSE API (Secondary)
-        try:
-            logger.info("Attempting BSE API as secondary source...")
-            bse_data = self.fetch_bse_stock_list()
-            # Merge with existing data
-            for ticker, names in bse_data.items():
-                if ticker in all_mappings:
-                    # Combine name variations
-                    all_mappings[ticker].extend(names)
-                    all_mappings[ticker] = list(set(all_mappings[ticker]))
-                else:
-                    all_mappings[ticker] = names
-            logger.info(
-                f"[SUCCESS] Successfully added {len(bse_data)} stocks from BSE API")
-        except Exception as e:
-            logger.warning(f"[ERROR] BSE API failed: {e}")
-
-        # Method 3: Yahoo Finance fallback for major stocks
-        if len(all_mappings) < 100:
-            logger.info("Adding Yahoo Finance data for major stocks...")
-            try:
-                yahoo_data = self.fetch_yahoo_major_stocks()
-                for ticker, names in yahoo_data.items():
-                    if ticker not in all_mappings:
-                        all_mappings[ticker] = names
-                logger.info(
-                    f"[SUCCESS] Added {len(yahoo_data)} stocks from Yahoo Finance")
-            except Exception as e:
-                logger.warning(f"[ERROR] Yahoo Finance fallback failed: {e}")
-
-        # Method 4: Hardcoded fallback if still insufficient data
-        if len(all_mappings) < 50:
-            logger.warning(
-                f"Only {len(all_mappings)} stocks fetched from APIs. Using fallback hardcoded mapping.")
-            fallback_mapping = self.get_fallback_mapping()
-            for ticker, names in fallback_mapping.items():
-                if ticker not in all_mappings:
-                    all_mappings[ticker] = names
-            logger.info(
-                f"[SUCCESS] Added {len(fallback_mapping)} fallback stocks")
-        else:
-            logger.info(
-                f"[SUCCESS] Sufficient stocks ({len(all_mappings)}) fetched from APIs")
-
-        self.ticker_mapping = all_mappings
-        self.last_updated = datetime.now()
-
-        logger.info(
-            f"Final mapping contains {len(self.ticker_mapping)} stocks")
-
-        # Log sample of stocks for verification
-        sample_stocks = list(self.ticker_mapping.keys())[:5]
-        logger.info(f"[DATA] Sample stocks: {sample_stocks}")
-
-    def get_fallback_mapping(self):
-        """Fallback hardcoded mapping for essential stocks - expanded to 50+ stocks"""
-        return {
-            # Top 10 by market cap
-            "RELIANCE.NS": ["Reliance Industries", "RIL", "Reliance"],
-            "TCS.NS": ["Tata Consultancy Services", "TCS"],
-            "HDFCBANK.NS": ["HDFC Bank", "Housing Development Finance Corporation"],
-            "INFY.NS": ["Infosys", "Infosys Limited"],
-            "ICICIBANK.NS": ["ICICI Bank", "Industrial Credit and Investment Corporation"],
-            "KOTAKBANK.NS": ["Kotak Mahindra Bank", "Kotak Bank"],
-            "BHARTIARTL.NS": ["Bharti Airtel", "Airtel"],
-            "ITC.NS": ["ITC Limited", "Indian Tobacco Company"],
-            "SBIN.NS": ["State Bank of India", "SBI"],
-            "HINDUNILVR.NS": ["Hindustan Unilever", "HUL"],
-
-            # Banking & Financial Services
-            "BAJFINANCE.NS": ["Bajaj Finance", "Bajaj Finserv"],
-            "AXISBANK.NS": ["Axis Bank"],
-            "HDFCLIFE.NS": ["HDFC Life Insurance", "HDFC Life"],
-            "SBILIFE.NS": ["SBI Life Insurance", "SBI Life"],
-            "BAJAJFINSV.NS": ["Bajaj Finserv"],
-            "INDUSINDBK.NS": ["IndusInd Bank"],
-            "BANDHANBNK.NS": ["Bandhan Bank"],
-            "IDFCFIRSTB.NS": ["IDFC First Bank"],
-
-            # IT & Technology
-            "HCLTECH.NS": ["HCL Technologies", "HCL Tech"],
-            "WIPRO.NS": ["Wipro Limited", "Wipro"],
-            "TECHM.NS": ["Tech Mahindra"],
-            "LTIM.NS": ["LTIMindtree", "L&T Infotech"],
-            "MPHASIS.NS": ["Mphasis"],
-
-            # Consumer Goods
-            "ASIANPAINT.NS": ["Asian Paints", "Asian Paint"],
-            "MARUTI.NS": ["Maruti Suzuki", "Maruti", "Suzuki India"],
-            "TITAN.NS": ["Titan Company", "Titan Industries"],
-            "NESTLEIND.NS": ["Nestle India", "Nestle"],
-            "BRITANNIA.NS": ["Britannia Industries", "Britannia"],
-            "DABUR.NS": ["Dabur India", "Dabur"],
-            "MARICO.NS": ["Marico"],
-            "GODREJCP.NS": ["Godrej Consumer Products", "Godrej"],
-            "SIMPLEXINF.NS": ["Simplex Infrastructures", "Simplex Infrastructures Ltd", "Simplex"],
-
-            # Infrastructure & Construction
-            "LT.NS": ["Larsen & Toubro", "L&T", "Larsen Toubro"],
-            "ULTRACEMCO.NS": ["UltraTech Cement", "Ultratech"],
-            "GRASIM.NS": ["Grasim Industries", "Grasim"],
-            "SHREECEM.NS": ["Shree Cement"],
-            "RAMCOCEM.NS": ["Ramco Cements", "Ramco"],
-
-            # Energy & Oil
-            "ONGC.NS": ["Oil and Natural Gas Corporation", "ONGC"],
-            "BPCL.NS": ["Bharat Petroleum", "BPCL"],
-            "IOC.NS": ["Indian Oil Corporation", "IOC"],
-            "COALINDIA.NS": ["Coal India", "CIL"],
-            "NTPC.NS": ["NTPC"],
-            "POWERGRID.NS": ["Power Grid Corporation", "PowerGrid"],
-
-            # Adani Group
-            "ADANIENSOL.NS": ["Adani Energy Solutions", "Adani Green Energy", "Adani Power", "Adani Energy"],
-            "ADANIPORTS.NS": ["Adani Ports", "Adani Port"],
-            "ADANITRANS.NS": ["Adani Transmission"],
-            "ATGL.NS": ["Adani Total Gas"],
-            "ADANIENT.NS": ["Adani Enterprises"],
-
-            # Pharmaceuticals
-            "SUNPHARMA.NS": ["Sun Pharmaceutical", "Sun Pharma"],
-            "DRREDDY.NS": ["Dr. Reddy's Laboratories", "Dr Reddy"],
-            "CIPLA.NS": ["Cipla"],
-            "DIVISLAB.NS": ["Divi's Laboratories", "Divis Lab"],
-            "BIOCON.NS": ["Biocon"],
-            "LUPIN.NS": ["Lupin"],
-
-            # Metals & Mining
-            "TATASTEEL.NS": ["Tata Steel"],
-            "HINDALCO.NS": ["Hindalco Industries", "Hindalco"],
-            "JSWSTEEL.NS": ["JSW Steel"],
-            "SAIL.NS": ["Steel Authority of India", "SAIL"],
-            "VEDL.NS": ["Vedanta"],
-
-            # Auto & Auto Components
-            "BAJAJ-AUTO.NS": ["Bajaj Auto"],
-            "M&M.NS": ["Mahindra & Mahindra", "Mahindra"],
-            "TATAMOTORS.NS": ["Tata Motors"],
-            "EICHERMOT.NS": ["Eicher Motors"],
-            "HEROMOTOCO.NS": ["Hero MotoCorp", "Hero"],
-
-            # Telecom
-            "JIOFINANCE.NS": ["Jio Financial Services", "Jio Finance"],
-
-            # Others
-            "APOLLOHOSP.NS": ["Apollo Hospitals", "Apollo"],
-            "PIDILITIND.NS": ["Pidilite Industries", "Pidilite"],
-            "BERGEPAINT.NS": ["Berger Paints", "Berger"],
-            "HAVELLS.NS": ["Havells India", "Havells"],
-        }
-
-    def save_cache(self):
-        """Save mapping to cache file"""
-        try:
-            cache_data = {
-                'mapping': self.ticker_mapping,
-                'last_updated': self.last_updated
-            }
-            with open(self.cache_file, 'wb') as f:
-                pickle.dump(cache_data, f)
-            logger.info(f"Saved ticker mapping cache to {self.cache_file}")
-        except Exception as e:
-            logger.error(f"Failed to save cache: {e}")
-
-    def load_cache(self):
-        """Load mapping from cache file"""
-        try:
-            if os.path.exists(self.cache_file):
-                with open(self.cache_file, 'rb') as f:
-                    cache_data = pickle.load(f)
-                self.ticker_mapping = cache_data.get('mapping', {})
-                self.last_updated = cache_data.get('last_updated')
-                logger.info(
-                    f"Loaded {len(self.ticker_mapping)} stocks from cache")
-        except Exception as e:
-            logger.warning(f"Failed to load cache: {e}")
-            self.ticker_mapping = {}
-            self.last_updated = None
-
-    def get_company_names(self, ticker):
-        """Get company names for a specific ticker"""
-        mapping = self.get_ticker_mapping()
-        return mapping.get(ticker, [ticker.replace(".NS", "").replace(".BO", "")])
-
-    def search_ticker_by_name(self, company_name):
-        """Reverse lookup: find ticker by company name"""
-        mapping = self.get_ticker_mapping()
-        company_name_lower = company_name.lower()
-
-        for ticker, names in mapping.items():
-            for name in names:
-                if company_name_lower in name.lower() or name.lower() in company_name_lower:
-                    return ticker
-        return None
 
 
 # Custom Llama LLM Integration via Ollama
@@ -1685,9 +938,7 @@ class VirtualPortfolio:
             try:
                 logger.info(
                     f"Initializing Dhan API with client ID: {dhan_client_id[:4]}...{dhan_client_id[-4:] if len(dhan_client_id) > 8 else dhan_client_id}")
-                # Use our custom DhanAPIClient which has proper get_funds implementation
-                from dhan_client import DhanAPIClient
-                self.api = DhanAPIClient(
+                self.api = dhanhq(
                     client_id=dhan_client_id,
                     access_token=dhan_access_token
                 )
@@ -1759,65 +1010,30 @@ class VirtualPortfolio:
             if self.mode == "live" and self.api:
                 try:
                     funds = self.api.get_funds()
-                    holdings_data = self.api.get_holdings()
-                    
-                    # Extract available cash from Dhan response
-                    available_cash = 0.0
-                    for key in ('availableBalance', 'availabelBalance', 'available_balance', 'available', 'availBalance', 'cash', 'netBalance', 'totalBalance'):
-                        if isinstance(funds, dict) and key in funds:
-                            try:
-                                available_cash = float(
-                                    funds.get(key, 0.0) or 0.0)
-                                logger.debug(
-                                    f"Found Dhan balance in key '{key}': Rs.{available_cash:.2f}")
-                                break
-                            except (ValueError, TypeError):
-                                continue
+                    if funds:
+                        # Extract available cash from Dhan response
+                        available_cash = 0.0
+                        for key in ('availableBalance', 'availabelBalance', 'available_balance', 'available', 'availBalance', 'cash', 'netBalance', 'totalBalance'):
+                            if isinstance(funds, dict) and key in funds:
+                                try:
+                                    available_cash = float(
+                                        funds.get(key, 0.0) or 0.0)
+                                    logger.debug(
+                                        f"Found Dhan balance in key '{key}': Rs.{available_cash:.2f}")
+                                    break
+                                except (ValueError, TypeError):
+                                    continue
 
-                    # If we found a valid balance, update the portfolio
-                    if available_cash > 0:
-                        self.cash = available_cash
-                        logger.info(
-                            f"🔄 Synced cash balance with Dhan account: Rs.{self.cash:.2f}")
-                        
-                        # Also sync holdings from Dhan
-                        if holdings_data:
-                            old_holdings = self.holdings.copy()
-                            new_holdings = {}
-                            
-                            for holding in holdings_data:
-                                symbol = holding.get("tradingSymbol", "")
-                                quantity = int(holding.get("totalQty", 0))
-                                avg_price = float(holding.get("avgCostPrice", 0))
-                                current_price = float(holding.get("ltp", avg_price))
-                                
-                                if quantity > 0 and symbol:
-                                    new_holdings[symbol] = {
-                                        "qty": quantity,
-                                        "avg_price": avg_price,
-                                        "last_price": current_price
-                                    }
-                            
-                            self.holdings = new_holdings
+                        # If we found a valid balance, update the portfolio
+                        if available_cash > 0:
+                            self.cash = available_cash
                             logger.info(
-                                f"🔄 Synced holdings with Dhan account: {len(old_holdings)} → {len(new_holdings)} positions")
-                            
-                            # Log any significant changes in holdings
-                            for symbol, old_data in old_holdings.items():
-                                if symbol not in new_holdings:
-                                    logger.info(f"📈 Position closed: {symbol} - {old_data['qty']} shares")
-                                elif old_data['qty'] != new_holdings[symbol]['qty']:
-                                    logger.info(f"📊 Position change: {symbol} - {old_data['qty']} → {new_holdings[symbol]['qty']} shares")
-                            
-                            for symbol, new_data in new_holdings.items():
-                                if symbol not in old_holdings:
-                                    logger.info(f"📈 New position: {symbol} - {new_data['qty']} shares")
-                        
-                        self.save_portfolio()  # Save the updated balance
-                        return True
-                    else:
-                        logger.warning(
-                            f"Dhan API returned zero or invalid balance: {funds}")
+                                f"🔄 Synced cash balance with Dhan account: Rs.{self.cash:.2f}")
+                            self.save_portfolio()  # Save the updated balance
+                            return True
+                        else:
+                            logger.warning(
+                                f"Dhan API returned zero or invalid balance: {funds}")
                 except Exception as e:
                     logger.warning(f"Failed to sync with Dhan API: {e}")
 
@@ -1826,49 +1042,16 @@ class VirtualPortfolio:
                 try:
                     with open(self.portfolio_file, 'r') as f:
                         portfolio_data = json.load(f)
-                        
-                        # Sync cash balance
                         synced_cash = portfolio_data.get('cash', self.cash)
-                        old_cash = self.cash
                         if synced_cash != self.cash:
+                            old_cash = self.cash
                             self.cash = synced_cash
                             logger.info(
                                 f"🔄 Synced cash balance from JSON file: Rs.{old_cash:.2f} → Rs.{self.cash:.2f}")
+                            return True
                         else:
                             logger.debug(
                                 f"Cash balance unchanged: Rs.{self.cash:.2f}")
-                        
-                        # Sync holdings from JSON file
-                        json_holdings = portfolio_data.get('holdings', {})
-                        old_holdings = self.holdings.copy()
-                        holdings_changed = False
-                        
-                        if json_holdings != old_holdings:
-                            self.holdings = json_holdings
-                            holdings_changed = True
-                            logger.info(
-                                f"🔄 Synced holdings from JSON file: {len(old_holdings)} → {len(json_holdings)} positions")
-                            
-                            # Log any significant changes in holdings
-                            for symbol, old_data in old_holdings.items():
-                                if symbol not in json_holdings:
-                                    logger.info(f"📈 Position closed (JSON): {symbol} - {old_data['qty']} shares")
-                                elif old_data.get('qty') != json_holdings[symbol].get('qty'):
-                                    old_qty = old_data.get('qty', 0)
-                                    new_qty = json_holdings[symbol].get('qty', 0)
-                                    logger.info(f"📊 Position change (JSON): {symbol} - {old_qty} → {new_qty} shares")
-                            
-                            for symbol, new_data in json_holdings.items():
-                                if symbol not in old_holdings:
-                                    new_qty = new_data.get('qty', 0)
-                                    logger.info(f"📈 New position (JSON): {symbol} - {new_qty} shares")
-                        else:
-                            logger.debug(
-                                f"Holdings unchanged: {len(self.holdings)} positions")
-                        
-                        # Return True if either cash or holdings were updated
-                        if synced_cash != old_cash or holdings_changed:
-                            return True
                 except Exception as e:
                     logger.warning(f"Failed to sync from JSON file: {e}")
 
@@ -1987,15 +1170,15 @@ class VirtualPortfolio:
             # Update portfolio regardless of mode
             self.cash -= cost
             if asset in self.holdings:
-                current_qty = float(self.holdings[asset]["qty"])
-                current_avg_price = float(self.holdings[asset]["avg_price"])
+                current_qty = self.holdings[asset]["qty"]
+                current_avg_price = self.holdings[asset]["avg_price"]
                 new_qty = current_qty + qty
                 new_avg_price = (
                     (current_avg_price * current_qty) + (price * qty)) / new_qty
                 self.holdings[asset] = {
-                    "qty": int(new_qty) if new_qty == int(new_qty) else new_qty, "avg_price": new_avg_price}
+                    "qty": new_qty, "avg_price": new_avg_price}
             else:
-                self.holdings[asset] = {"qty": int(qty) if qty == int(qty) else qty, "avg_price": price}
+                self.holdings[asset] = {"qty": qty, "avg_price": price}
 
             trade_data = {
                 "asset": asset,
@@ -2066,12 +1249,11 @@ class VirtualPortfolio:
             realized_pnl_for_trade = (price - avg_price) * qty
             self.realized_pnl += realized_pnl_for_trade
 
-            current_qty = float(self.holdings[asset]["qty"])
+            current_qty = self.holdings[asset]["qty"]
             if current_qty == qty:
                 del self.holdings[asset]
             else:
-                new_qty = current_qty - qty
-                self.holdings[asset]["qty"] = int(new_qty) if new_qty == int(new_qty) else new_qty
+                self.holdings[asset]["qty"] -= qty
 
             trade_data = {
                 "asset": asset,
@@ -2099,16 +1281,20 @@ class VirtualPortfolio:
             return False
 
     def get_security_id(self, ticker):
-        """Fetch security ID for a ticker using the existing Dhan API client."""
+        """Fetch security ID for a ticker using dynamic resolution system."""
         try:
-            # Use the existing API client to get security ID
-            if hasattr(self, 'api') and self.api:
-                security_id = self.api.get_security_id(ticker)
-                logger.info(f"Found security ID for {ticker}: {security_id}")
-                return security_id
-            else:
-                logger.error(f"No Dhan API client available for security ID lookup: {ticker}")
-                return None
+            # Import the dynamic security ID method from dhan_client
+            from dhan_client import DhanAPIClient
+
+            # Create a temporary client instance for security ID lookup
+            # Use dummy credentials since we only need the mapping function
+            temp_client = DhanAPIClient("temp", "temp")
+
+            # Use the dynamic security ID resolution
+            security_id = temp_client.get_security_id(ticker)
+            logger.info(f"Found security ID for {ticker}: {security_id}")
+            return security_id
+
         except ValueError as e:
             logger.error(f"Security ID not found for {ticker}: {e}")
             return None
@@ -2476,7 +1662,7 @@ class TradingExecutor:
     def __init__(self, portfolio, config):
         self.portfolio = portfolio
         self.mode = config.get("mode", "paper")
-        self.dhan_client = portfolio.api  # Use the Dhan API client from VirtualPortfolio
+        self.dhanhq = portfolio.api  # Use the dhanhq client from VirtualPortfolio
         self.stop_loss_pct = float(config.get(
             "stop_loss_pct", 0.05) if config else 0.05)
         self.max_capital_per_trade = float(config.get(
@@ -2606,7 +1792,7 @@ class TradingExecutor:
                         return {"success": False, "message": result.get("message", "Live trade failed")}
 
                 # Fallback to original live trading logic if no database executor
-                elif self.dhan_client:
+                elif self.dhanhq:
                     # Fetch security ID for live trading
                     security_id = self.get_security_id(ticker)
                     if security_id is None:
@@ -2614,19 +1800,21 @@ class TradingExecutor:
                         logger.error(error_msg)
                         return {"success": False, "message": error_msg}
 
-                    # Place live order using our custom DhanAPIClient
-                    order = self.dhan_client.place_order(
-                        symbol=ticker,
-                        quantity=int(qty),
+                    # Place live order
+                    order = self.dhanhq.place_order(
+                        security_id=security_id,
+                        exchange_segment="NSE_EQ",
+                        transaction_type=action.upper(),
                         order_type="MARKET",
-                        side=action.upper(),
-                        price=None  # Market order
+                        quantity=int(qty),
+                        price=0,  # Market order
+                        validity="DAY"
                     )
                     logger.info(
                         f"Legacy live trade executed: {action} {qty} units of {ticker} at Rs.{price}")
                 else:
                     # More descriptive error message
-                    dhan_status = "available" if self.dhan_client else "NOT available"
+                    dhan_status = "available" if self.dhanhq else "NOT available"
                     mode_status = self.mode
                     return {"success": False, "message": f"No live trading client available - Dhan API status: {dhan_status}, Mode: {mode_status}"}
             else:
@@ -2678,21 +1866,27 @@ class TradingExecutor:
         return ticker
 
     def get_security_id(self, ticker):
-        """Fetch security ID for a ticker using the existing Dhan API client."""
+        """Fetch security ID for a ticker using dynamic resolution system."""
         try:
-            # Use the existing dhan_client from TradingExecutor
-            if hasattr(self, 'dhan_client') and self.dhan_client:
-                security_id = self.dhan_client.get_security_id(ticker)
-                logger.info(f"Found security ID for {ticker}: {security_id}")
-                return security_id
-            else:
-                logger.error(f"No Dhan API client available for security ID lookup: {ticker}")
-                return None
+            # Import the dynamic security ID method from dhan_client
+            from dhan_client import DhanAPIClient
+
+            # Create a temporary client instance for security ID lookup
+            # Use dummy credentials since we only need the mapping function
+            temp_client = DhanAPIClient("temp", "temp")
+
+            # Use the dynamic security ID resolution
+            security_id = temp_client.get_security_id(ticker)
+            logger.info(f"Found security ID for {ticker}: {security_id}")
+            return security_id
+
         except ValueError as e:
             logger.error(f"Security ID not found for {ticker}: {e}")
             return None
         except Exception as e:
             logger.error(f"Error fetching security ID for {ticker}: {e}")
+            return None
+
             return None
 
 
@@ -2836,6 +2030,9 @@ class Stock:
                 'neutral': ['Ensemble', 'VotingRegressor', 'StackingRegressor']
             }
         }
+        
+        # Initialize bot running state for Stock object
+        self.bot_running = False
 
     def detect_market_regime(self, price_history):
         """Compatibility wrapper: detect market regime using canonical detector.
@@ -5509,6 +4706,8 @@ class Stock:
                 }
 
             ticker = ticker.strip().upper()
+            # PRODUCTION FIX: Sanitize ticker input
+            ticker = ticker.replace('$', '')
             logger.info(f"Fetching and analyzing data for {ticker}...")
 
             # Track errors for decision making
@@ -7062,6 +6261,9 @@ class StockTradingBot:
             logger.error(
                 f"Failed to initialize professional sell integration: {e}")
             self.professional_sell_integration = None
+        
+        # Initialize bot running state
+        self.bot_running = False
 
         # Initialize production core components
         try:
@@ -7288,56 +6490,120 @@ class StockTradingBot:
             return "RANGE_BOUND"
 
     def calculate_dynamic_weights(self, analysis, market_regime, historical_performance=None):
-        """Calculate dynamic decision weights using enhanced adaptive system"""
+        """Calculate dynamic decision weights based on market conditions and historical performance"""
         try:
-            # Import the new adaptive weighting system
-            from backend.utils.adaptive_signal_weighting import AdaptiveSignalWeighter
-            
-            # Initialize adaptive weighter with proper configuration
-            weighter_config = {
-                "max_sentiment_weight": 0.25,  # Prevent sentiment over-weighting
-                "min_sentiment_weight": 0.05,  # Ensure minimum sentiment consideration
-                "confidence_threshold": 0.6,   # Only confident signals
-                "volatility_sensitivity": 0.3,
-                "correlation_threshold": 0.7,
-                "performance_window": 30,
-                "weight_update_frequency": 5
-            }
-            
-            weighter = AdaptiveSignalWeighter(weighter_config)
-            
-            # Extract analysis components
-            technical_indicators = analysis.get("technical_indicators", {})
-            sentiment_analysis = analysis.get("sentiment_analysis", {})
-            ml_analysis = analysis.get("ml_analysis", {})
-            fundamental_data = analysis.get("fundamental_analysis", {})
-            risk_metrics = analysis.get("risk_metrics", {})
-            
-            # Calculate adaptive weights
-            weights = weighter.calculate_weights(
-                technical_indicators=technical_indicators,
-                sentiment_analysis=sentiment_analysis,
-                ml_analysis=ml_analysis,
-                fundamental_data=fundamental_data,
-                risk_metrics=risk_metrics,
-                market_regime=market_regime,
-                historical_performance=historical_performance
-            )
-            
-            # Convert to dictionary format for backward compatibility
-            dynamic_weights = {
-                'technical': weights.technical,
-                'sentiment': weights.sentiment,
-                'ml': weights.ml,
-                'fundamental': weights.fundamental,
-                'risk': weights.risk
+            base_weights = {
+                'technical': 0.35,
+                'sentiment': 0.20,
+                'ml': 0.30,
+                'fundamental': 0.10,
+                'risk': 0.05
             }
 
-            # Log weight adjustment report
-            weight_report = weighter.get_weight_report()
-            logger.info(f"Dynamic Weighting Report: {json.dumps(weight_report, indent=2)}")
-            
-            return dynamic_weights
+            # Adjust weights based on market regime
+            if market_regime == "TRENDING":
+                # In trending markets, emphasize technical and ML signals
+                regime_weights = {
+                    'technical': 0.40,
+                    'sentiment': 0.15,
+                    'ml': 0.35,
+                    'fundamental': 0.08,
+                    'risk': 0.02
+                }
+            elif market_regime == "VOLATILE":
+                # In volatile markets, emphasize risk management and reduce sentiment weight
+                regime_weights = {
+                    'technical': 0.30,
+                    'sentiment': 0.10,
+                    'ml': 0.25,
+                    'fundamental': 0.15,
+                    'risk': 0.20
+                }
+            else:  # RANGE_BOUND
+                # In range-bound markets, balanced approach with higher sentiment weight
+                regime_weights = {
+                    'technical': 0.30,
+                    'sentiment': 0.25,
+                    'ml': 0.25,
+                    'fundamental': 0.15,
+                    'risk': 0.05
+                }
+
+            # Adjust based on signal quality and historical performance
+            technical_indicators = analysis.get("technical_indicators", {})
+            ml_analysis = analysis.get("ml_analysis", {})
+            sentiment_analysis = analysis.get("sentiment_analysis", {})
+
+            # Technical signal quality adjustment
+            technical_quality = 0.0
+            if technical_indicators:
+                # Check for strong technical signals
+                rsi = technical_indicators.get("rsi", 50)
+                macd = technical_indicators.get("macd", 0)
+                adx = technical_indicators.get("adx", 25)
+
+                # RSI quality (extreme values indicate stronger signals)
+                rsi_quality = 1.0 if rsi < 30 or rsi > 70 else 0.5
+                # MACD quality (larger divergences are stronger)
+                macd_quality = min(abs(macd) / 2.0, 1.0)
+                # ADX quality (higher values indicate stronger trends)
+                adx_quality = min(adx / 50.0, 1.0)
+
+                technical_quality = (
+                    rsi_quality + macd_quality + adx_quality) / 3.0
+
+            # ML confidence adjustment
+            ml_confidence = ml_analysis.get(
+                "confidence", 0.5) if ml_analysis.get("success", False) else 0.3
+
+            # Sentiment consistency adjustment
+            sentiment_confidence = 0.5
+            if sentiment_analysis:
+                comprehensive = sentiment_analysis.get(
+                    "comprehensive_analysis", {})
+                sentiment_confidence = comprehensive.get(
+                    "confidence_score", 0.5)
+
+            # Performance-based adjustments
+            if historical_performance:
+                # Increase weight for signals that have performed well recently
+                technical_win_rate = historical_performance.get(
+                    "technical_win_rate", 0.5)
+                ml_win_rate = historical_performance.get("ml_win_rate", 0.5)
+                sentiment_win_rate = historical_performance.get(
+                    "sentiment_win_rate", 0.5)
+
+                # Adjust weights based on recent performance (last 30 trades)
+                performance_multiplier = 0.1  # Maximum 10% adjustment
+
+                regime_weights['technical'] *= (
+                    1.0 + performance_multiplier * (technical_win_rate - 0.5))
+                regime_weights['ml'] *= (1.0 +
+                                         performance_multiplier * (ml_win_rate - 0.5))
+                regime_weights['sentiment'] *= (
+                    1.0 + performance_multiplier * (sentiment_win_rate - 0.5))
+
+            # Quality-based adjustments
+            quality_multiplier = 0.15  # Maximum 15% adjustment based on signal quality
+
+            regime_weights['technical'] *= (1.0 +
+                                            quality_multiplier * (technical_quality - 0.5))
+            regime_weights['ml'] *= (1.0 +
+                                     quality_multiplier * (ml_confidence - 0.5))
+            regime_weights['sentiment'] *= (1.0 + quality_multiplier *
+                                            (sentiment_confidence - 0.5))
+
+            # Normalize weights to sum to 1.0
+            total_weight = sum(regime_weights.values())
+            if total_weight > 0:
+                normalized_weights = {
+                    k: v / total_weight for k, v in regime_weights.items()}
+            else:
+                normalized_weights = base_weights.copy()
+
+            logger.debug(
+                f"Dynamic weights for {market_regime}: {normalized_weights}")
+            return normalized_weights
 
         except Exception as e:
             logger.error(f"Error calculating dynamic weights: {e}")
@@ -9998,6 +9264,14 @@ class StockTradingBot:
                 f"Failed to fetch database stop-loss/target for {ticker}: {e}")
             return None, None
 
+    def _responsive_sleep(self, seconds):
+        """Sleep for a given duration while checking for stop signal every second"""
+        for _ in range(int(seconds)):
+            if not self.bot_running:
+                return False
+            time.sleep(1)
+        return True
+
     def run(self):
         """Main bot loop to run analysis, make trades, and generate reports."""
         logger.info("Starting Stock Trading Bot for Indian market...")
@@ -10024,12 +9298,14 @@ class StockTradingBot:
                             "Trading pause expired, resuming trading...")
                     else:
                         logger.info("Trading is paused, waiting...")
-                        time.sleep(60)  # Wait 1 minute
+                        if not self._responsive_sleep(60):  # Wait 1 minute responsively
+                            break
                         continue
 
                 # if not self.is_market_open():
                 #     logger.info("NSE market is closed, waiting...")
-                #     time.sleep(300)  # Wait 5 minutes
+                #     if not self._responsive_sleep(300):  # Wait 5 minutes responsively
+                #         break
                 #     continue
 
                 logger.info(
@@ -10089,11 +9365,13 @@ class StockTradingBot:
                 if self.portfolio.mode == "paper":
                     self.portfolio.generate_paper_pnl_summary()
 
-                time.sleep(self.config.get("sleep_interval", 300))
+                if not self._responsive_sleep(self.config.get("sleep_interval", 300)):
+                    break
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
                 # Add longer delay on error to prevent excessive logging
-                time.sleep(120)
+                if not self._responsive_sleep(120):
+                    break
 
         # Stop real-time monitoring when bot stops
         self.stop_real_time_monitoring()

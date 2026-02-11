@@ -342,5 +342,13 @@
         "qty": 2,
         "price": 298.5,
         "pnl": 0.0
+    },
+    {
+        "timestamp": "2026-02-09 11:39:48.353522",
+        "asset": "MAHABANK.NS",
+        "action": "buy",
+        "qty": 5,
+        "price": 66.49,
+        "pnl": 0.0
     }
 ]

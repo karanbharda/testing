@@ -158,31 +158,19 @@ class LiveTradingExecutor:
                     Portfolio).filter_by(mode='live').first()
                 if not portfolio:
                     # Create live portfolio if it doesn't exist
-                    # Only use available_cash if it's valid and non-zero, otherwise use 0
-                    effective_cash = available_cash if available_cash > 0 else 0.0
-                    effective_starting_balance = available_cash if available_cash > 0 else 50000.0  # Default starting balance
                     portfolio = Portfolio(
                         mode='live',
-                        cash=effective_cash,
-                        starting_balance=effective_starting_balance,
+                        cash=available_cash,
+                        starting_balance=available_cash,
                         realized_pnl=0.0,
                         unrealized_pnl=0.0,
                         last_updated=datetime.now()
                     )
-                    if available_cash <= 0:
-                        logger.debug(f"Created new portfolio with default cash (API returned invalid balance: Rs.{available_cash:.2f})")
-                    else:
-                        logger.info(f"Created new portfolio with cash from Dhan: Rs.{effective_cash:.2f}")
                     session.add(portfolio)
                     session.flush()
                 else:
-                    # Only update portfolio cash if we got a valid, non-zero balance
-                    # This prevents resetting balance to 0 when API fails
-                    if available_cash > 0:
-                        portfolio.cash = available_cash
-                        logger.info(f"Synced cash balance with Dhan: Rs.{available_cash:.2f}")
-                    else:
-                        logger.debug(f"Skipping cash balance update (funds appear to be zero or invalid: Rs.{available_cash:.2f})")
+                    # Update existing portfolio cash
+                    portfolio.cash = available_cash
                     portfolio.last_updated = datetime.now()
 
                 # Clear existing holdings and add current ones from Dhan
@@ -208,18 +196,12 @@ class LiveTradingExecutor:
                         session.add(db_holding)
                         total_holdings_value += quantity * current_price
 
-                # Calculate cost basis for unrealized P&L
-                cost_basis = 0
-                for holding in holdings:
-                    symbol = holding.get("tradingSymbol", "")
-                    quantity = int(holding.get("totalQty", 0))
-                    avg_price = float(holding.get("avgCostPrice", 0))
-                    
-                    if quantity > 0 and symbol:
-                        cost_basis += quantity * avg_price
-                
                 # Update portfolio metrics
-                portfolio.unrealized_pnl = total_holdings_value - cost_basis
+                portfolio.unrealized_pnl = total_holdings_value - sum(
+                    h.quantity * h.avg_price for h in
+                    session.query(Holding).filter_by(
+                        portfolio_id=portfolio.id).all()
+                )
 
                 session.commit()
 

@@ -1,5 +1,5 @@
 {
-    "cash": 780.08,
+    "cash": 16882.9,
     "holdings": {
         "MRPL": {
             "qty": 10,
@@ -7,9 +7,9 @@
             "last_price": 184.624
         },
         "BEL": {
-            "qty": 10,
-            "avg_price": 449.0,
-            "last_price": 449.0
+            "qty": 21,
+            "avg_price": 439.02142,
+            "last_price": 439.02142
         },
         "BAJFINANCE": {
             "qty": 20,
@@ -21,10 +21,10 @@
             "avg_price": 298.11,
             "last_price": 298.11
         },
-        "UNIONBANK": {
-            "qty": 30,
-            "avg_price": 176.84,
-            "last_price": 176.84
+        "MAHABANK": {
+            "qty": 11,
+            "avg_price": 66.48455,
+            "last_price": 66.48455
         },
         "GENUSPOWER": {
             "qty": 68,
@@ -32,8 +32,7 @@
             "last_price": 291.86398
         }
     },
-    "starting_balance": 780.08,
+    "starting_balance": 1357.95,
     "realized_pnl": 0.0,
-    "unrealized_pnl": 0.0,
-    "last_updated": "2026-02-06T11:33:04.110040"
+    "unrealized_pnl": 0.0
 }

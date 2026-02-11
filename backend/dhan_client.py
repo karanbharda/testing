@@ -44,184 +44,30 @@ class DhanAPIClient:
         self.last_validation_time = 0
         self.validation_cache_duration = 300  # Cache validation for 5 minutes
 
+        # Data directory for caching
+        backend_dir = Path(__file__).resolve().parent
+        project_root = backend_dir.parent
+        self.data_dir = project_root / 'data'
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+
         # Security ID cache for dynamic lookups
         self.security_id_cache = {}
         self.cache_expiry = {}
         self.cache_duration = 3600  # Cache for 1 hour
 
-        # Manual security ID mappings - takes precedence over dynamic search
-        self.manual_security_id_mapping = {
-            # Banking & Financial Services
-            'HDFCBANK': '500180',
-            'ICICIBANK': '532174',
-            'SBIN': '500112',
-            'KOTAKBANK': '500247',
-            'AXISBANK': '532215',
-            'INDUSINDBK': '532187',
-            'BANDHANBNK': '540691',
-            'FEDERALBNK': '500469',
-            'IDFCFIRSTB': '539437',
-            'CANBK': '532483',
-            'BANKBARODA': '532134',
-            'IDBI': '532461',
-            # IT Services
-            'TCS': '532540',
-            'INFY': '500209',
-            'WIPRO': '507685',
-            'HCLTECH': '532281',
-            'TECHM': '532755',
-            'LTI': '540005',
-            'MINDTREE': '532819',
-            'MPHASIS': '526299',
-            'COFORGE': '532541',
-
-            # Energy & Oil
-            'RELIANCE': '500325',
-            'ONGC': '500312',
-            'IOC': '530965',
-            'BPCL': '500547',
-            'HPCL': '500104',
-            'GAIL': '532155',
-            'NTPC': '532555',
-            'POWERGRID': '532898',
-            'COALINDIA': '533278',
-            'ADANIGREEN': '541450',
-            'ADANITRANS': '542066',
-            'ADANIPORTS': '532921',
-
-            # FMCG & Consumer
-            'HINDUNILVR': '500696',
-            'ITC': '500875',
-            'NESTLEIND': '500790',
-            'BRITANNIA': '500825',
-            'DABUR': '500096',
-            'MARICO': '531642',
-            'GODREJCP': '532424',
-            'COLPAL': '500840',
-            'TATACONSUM': '500800',
-            'UBL': '532953',
-
-            # Pharmaceuticals
-            'SUNPHARMA': '524715',
-            'DRREDDY': '500124',
-            'CIPLA': '500087',
-            'DIVISLAB': '532488',
-            'BIOCON': '532523',
-            'LUPIN': '500257',
-            'AUROPHARMA': '524804',
-            'CADILAHC': '532321',
-            'TORNTPHARM': '500825',
-            'GLENMARK': '532296',
-
-            # Automotive
-            'MARUTI': '532500',
-            'HYUNDAI': '543066',
-            'M&M': '500520',
-            'TATAMOTORS': '500570',
-            'BAJAJ-AUTO': '532977',
-            'EICHERMOT': '500182',
-            'HEROMOTOCO': '500182',
-            'TVSMOTORS': '532343',
-            'ASHOKLEY': '500477',
-            'MOTHERSON': '532754',   # Samvardhana Motherson International Ltd
-            'MOTHERSUMI': '533188',
-
-            # Metals & Mining
-            'TATASTEEL': '3499',
-            'JSWSTEEL': '500228',
-            'HINDALCO': '500440',
-            'VEDL': '500295',
-            'SAIL': '500113',
-            'JINDALSTEL': '532286',
-            'NMDC': '526371',
-            'MOIL': '533286',
-            'WELCORP': '532144',
-
-            # Telecom
-            'BHARTIARTL': '532454',
-            'IDEA': '532822',
-            'MTNL': '500455',
-            'LTTS': '540005',
-
-            # Cement
-            'ULTRACEMCO': '532538',
-            'SHREECEM': '500387',
-            'ACC': '500410',
-            'AMBUJACEMENT': '500425',
-            'DALMIACEMEN': '532139',
-            'JKCEMENT': '532454',
-
-            # Real Estate & Construction
-            'LT': '500510',
-            'DLF': '532868',
-            'GODREJPROP': '533150',
-            'OBEROIRLTY': '533273',
-            'PRESTIGE': '532811',
-            'SOBHA': '533129',
-            'BRIGADE': '532929',
-            # NBCC (India) Limited - Infrastructure/Construction
-            'NBCC': '538835',
-
-            # Airlines & Tourism
-            'INDIGO': '539448',
-            'SPICEJET': '532906',
-            'IRCTC': '542830',
-
-            # Textiles
-            'RNAM': '500261',
-            'WELSPUNIND': '514162',
-            'TRIDENT': '521064',
-
-            # Chemicals
-            'UPL': '512070',
-            'PIDILITIND': '500331',
-            'AAVAS': '540376',
-            'DEEPAKNI': '532706',
-            'TATACHEM': '500770',
-            'GNFC': '532538',
-
-            # Media & Entertainment
-            'ZEEL': '505537',
-            'SUNTV': '532733',
-            'PVR': '532689',
-            'BALRAMCHIN': '500335',
-
-            # Agriculture
-            'RALLIS': '500355',
-            'COROMANDEL': '500825',
-            'CHAMBLFERT': '515145',
-
-            # Logistics
-            'BLUEDART': '526612',
-            'GATI': '532345',
-
-            # Specialty Stocks
-            'NSLNISP': '1333',
-            'IOB': '1584',
-
-            # Additional Popular Stocks
-            'ASIANPAINT': '500820',
-            'TITAN': '500114',
-            'BAJFINANCE': '500034',
-            'BAJAJFINSV': '532978',
-            'HDFC': '500010',
-            'MCDOWELL-N': '500193',
-            'APOLLOHOSP': '500488',
-            'GRASIM': '500300',
-            'SBILIFE': '542933',
-
-            # Manual corrections for known problematic symbols
-            'RAJOOENG': '539297',  # Corrected security ID for RAJOOENG
-            'NBCC': '538835',      # Corrected security ID for NBCC
-            'SHANTIGOLD': '544459',  # Shanti Gold International Ltd
-            'DBI': '532461',         # IDBI Bank Ltd (alternative symbol)
-            'GMRAIRPORT': '532754',  # GMR Airports Ltd
-            'GMRI': '532754',        # GMR Airports Ltd (alternative symbol)
-
-            # Add BDL symbol to fix the error
-            'BDL': '2144',           # Bharat Dynamics Limited
-            'BHARATDYNAMICS': '2144'  # Alternative symbol for Bharat Dynamics Limited
-        }
+        # Load manual security ID mappings from JSON file
+        try:
+            mapping_file = self.data_dir / 'security_id_mapping.json'
+            if mapping_file.exists():
+                with open(mapping_file, 'r') as f:
+                    self.manual_security_id_mapping = json.load(f)
+                logger.info(f"Loaded {len(self.manual_security_id_mapping)} manual security ID mappings from {mapping_file}")
+            else:
+                logger.warning(f"Security ID mapping file not found at {mapping_file}")
+                self.manual_security_id_mapping = {}
+        except Exception as e:
+            logger.error(f"Failed to load security ID mapping file: {e}")
+            self.manual_security_id_mapping = {}
 
         # Instrument data cache
         self.instrument_cache = {}
@@ -237,12 +83,6 @@ class DhanAPIClient:
         # Dhan instrument master URLs (no auth required)
         self.compact_url = "https://images.dhan.co/api-data/api-scrip-master.csv"
         self.detailed_url = "https://images.dhan.co/api-data/api-scrip-master-detailed.csv"
-
-        # Data directory for caching - FIXED: Use project root data directory
-        backend_dir = Path(__file__).resolve().parent
-        project_root = backend_dir.parent
-        self.data_dir = project_root / 'data'
-        self.data_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize database for corrected security IDs
         self._init_security_id_db()
@@ -285,12 +125,14 @@ class DhanAPIClient:
         """Implement rate limiting to avoid API limits"""
         current_time = time.time()
         time_since_last = current_time - self.last_request_time
-        if time_since_last < self.min_request_interval:
-            time.sleep(self.min_request_interval - time_since_last)
+        # Increased to 0.25s (4 requests/sec) to be safer
+        # Dhan limit is nominally 10/sec but bursts cause 429s
+        if time_since_last < 0.25:
+            time.sleep(0.25 - time_since_last)
         self.last_request_time = time.time()
 
     def _make_request(self, method: str, endpoint: str, data: Dict = None) -> Dict:
-        """Make API request with error handling"""
+        """Make API request with error handling and retry logic"""
         self._rate_limit()
 
         url = f"{self.base_url}{endpoint}"
@@ -300,11 +142,11 @@ class DhanAPIClient:
         if data:
             logger.debug(f"Request data: {data}")
 
-        # Enhanced error handling with retry logic for connection issues
+        # Enhanced error handling with retry logic for connection issues and 429s
         max_retries = 3
-        retry_delay = 1.0  # seconds
+        retry_delay = 1.0  # Initial retry delay in seconds
 
-        for attempt in range(max_retries):
+        for attempt in range(max_retries + 1):
             try:
                 if method.upper() == 'GET':
                     # Create headers for GET requests without Content-Type
@@ -334,6 +176,23 @@ class DhanAPIClient:
                     logger.debug(
                         "Holdings endpoint returned 500 - likely empty portfolio")
                     return {"data": []}
+                
+                # Handle 429 Too Many Requests explicitly
+                if response.status_code == 429:
+                    logger.warning(f"⚠️ Dhan API Rate Limit (429) hit on {endpoint}")
+                    if attempt < max_retries:
+                        # Check for Retry-After header
+                        retry_after = response.headers.get("Retry-After")
+                        wait_time = float(retry_after) if retry_after else (retry_delay * (2 ** attempt))
+                        # Cap max wait to 10s
+                        wait_time = min(wait_time, 10.0) 
+                        
+                        logger.info(f"   Waiting {wait_time:.2f}s before retry {attempt + 1}/{max_retries}...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        logger.error("❌ Max retries reached for 429 Rate Limit")
+                        raise Exception(f"Dhan API Rate Limit Exceeded (429) after {max_retries} retries")
 
                 # Enhanced error handling for 400 errors
                 if response.status_code == 400:
@@ -362,7 +221,7 @@ class DhanAPIClient:
             except requests.exceptions.ConnectionError as e:
                 logger.error(
                     f"Dhan API connection error on attempt {attempt + 1}/{max_retries}: {e}")
-                if attempt < max_retries - 1:
+                if attempt < max_retries:
                     # Exponential backoff
                     time.sleep(retry_delay * (attempt + 1))
                     continue
@@ -374,7 +233,7 @@ class DhanAPIClient:
             except requests.exceptions.Timeout as e:
                 logger.error(
                     f"Dhan API timeout on attempt {attempt + 1}/{max_retries}: {e}")
-                if attempt < max_retries - 1:
+                if attempt < max_retries:
                     # Exponential backoff
                     time.sleep(retry_delay * (attempt + 1))
                     continue
@@ -388,10 +247,21 @@ class DhanAPIClient:
                 if "500" in str(e) and endpoint == '/v2/holdings':
                     logger.info(
                         "Holdings API returned 500 - empty portfolio (normal for new accounts)")
+                elif "429" in str(e): 
+                     # Should be caught above, but just in case RequestException wraps it without status_code attr access
+                     pass 
                 else:
                     logger.error(f"Dhan API request failed: {e}")
                     if data:
                         logger.error(f"Request data: {data}")
+                
+                # If we are here, it's a non-retryable error or retries exhausted (though loop handles retries)
+                # But wait, the loop structure handles RequestException generally.
+                # If we want to retry generic RequestExceptions:
+                if attempt < max_retries:
+                     time.sleep(retry_delay * (attempt + 1))
+                     continue
+                
                 raise Exception(f"Dhan API error: {str(e)}")
 
     def get_profile(self) -> Dict:
@@ -410,46 +280,38 @@ class DhanAPIClient:
             }
 
     def get_funds(self) -> Dict:
-        """Get account funds and margin information using the fundlimit endpoint"""
+        """Get account funds and margin information"""
         try:
-            # Use fundlimit endpoint as it provides accurate real-time balance with zero parameters
-            # According to the memory, this is the correct endpoint for fetching real-time available cash balance
+            # Use profile endpoint as the most reliable source for account information
             try:
-                # Call the fundlimit endpoint with zero parameters to avoid DH-905 errors
-                funds_response = self._make_request('GET', '/v2/fundlimit')
+                profile_response = self._make_request('GET', '/v2/profile')
                 logger.debug(
-                    f"Dhan Fundlimit Response: {json.dumps(funds_response, indent=2)}")
+                    f"Dhan Profile Response: {json.dumps(profile_response, indent=2)}")
 
-                # The fundlimit response should contain the actual balance information
-                # Check if the response has the expected structure
-                if isinstance(funds_response, dict):
-                    # Ensure we have proper keys for balance information
-                    available_balance = funds_response.get("availableBalance", 
-                                                         funds_response.get("availabelBalance", 
-                                                                           funds_response.get("available_balance", 
-                                                                                             funds_response.get("sodLimit", 
-                                                                                                               funds_response.get("netBalance", 0.0)))))
-                    
-                    # Construct funds response with actual data
-                    return {
-                        "availableBalance": float(available_balance) if available_balance is not None else 0.0,
-                        "marginUsed": float(funds_response.get("marginUsed", 0.0)),
-                        "totalBalance": float(funds_response.get("totalBalance", 
-                                                              funds_response.get("netBalance", 0.0))),
-                        "clientName": funds_response.get("clientName", "Unknown"),
-                        "clientId": funds_response.get("clientId", self.client_id),
-                        "status": "success"
-                    }
-                else:
-                    # Unexpected response format
-                    logger.warning(f"Unexpected fundlimit response format: {funds_response}")
-                    # Fallback to profile endpoint
-                    return self._get_funds_from_profile()
-            except Exception as fundlimit_error:
+                # Construct funds response from profile data
+                return {
+                    "availableBalance": profile_response.get("availableBalance", 0.0),
+                    "marginUsed": profile_response.get("marginUsed", 0.0),
+                    "totalBalance": profile_response.get("totalBalance", 0.0),
+                    "clientName": profile_response.get("clientName", "Unknown"),
+                    "clientId": profile_response.get("clientId", self.client_id),
+                    "status": "success"
+                }
+            except Exception as profile_error:
+                logger.debug(
+                    f"Profile-based funds request failed: {profile_error}")
+
+                # Fallback to minimal working structure
                 logger.warning(
-                    f"Fundlimit-based funds request failed: {fundlimit_error}, falling back to profile")
-                # Fallback to profile endpoint
-                return self._get_funds_from_profile()
+                    "Using estimated funds structure due to API issues")
+                return {
+                    "availableBalance": 0.0,
+                    "marginUsed": 0.0,
+                    "totalBalance": 0.0,
+                    "clientName": "Unknown",
+                    "clientId": self.client_id,
+                    "status": "estimated"
+                }
         except Exception as e:
             logger.error(f"Failed to get funds: {e}")
             # Return minimal structure to prevent system crashes
@@ -462,33 +324,14 @@ class DhanAPIClient:
                 "status": "error",
                 "errorMessage": str(e)
             }
-    
-    def _get_funds_from_profile(self) -> Dict:
-        """Helper method to get funds from profile endpoint as fallback"""
-        try:
-            profile_response = self._make_request('GET', '/v2/profile')
-            logger.debug(
-                f"Dhan Profile Response: {json.dumps(profile_response, indent=2)}")
-
-            # Construct funds response from profile data
             return {
-                "availableBalance": profile_response.get("availableBalance", 0.0),
-                "marginUsed": profile_response.get("marginUsed", 0.0),
-                "totalBalance": profile_response.get("totalBalance", 0.0),
-                "clientName": profile_response.get("clientName", "Unknown"),
-                "clientId": profile_response.get("clientId", self.client_id),
-                "status": "success"
-            }
-        except Exception as profile_error:
-            logger.warning(f"Profile fallback also failed: {profile_error}")
-            # Final fallback to minimal structure
-            return {
-                "availableBalance": 0.0,
-                "marginUsed": 0.0,
-                "totalBalance": 0.0,
-                "clientName": "Unknown",
-                "clientId": self.client_id,
-                "status": "fallback_failed"
+                "availableBalance": 0,
+                "sodLimit": 0,
+                "marginUsed": 0,
+                "netBalance": 0,
+                "spanMargin": 0,
+                "exposureMargin": 0,
+                "totalMargin": 0
             }
 
     def get_holdings(self) -> List[Dict]:
