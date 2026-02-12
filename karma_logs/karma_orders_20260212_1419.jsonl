@@ -1,0 +1,1 @@
+{"timestamp": "2026-02-12T14:19:41.506276", "data": {"event": "PLACED", "order": "ShadowOrder(order_id='PIPE_ORD_1', timestamp=datetime.datetime(2026, 2, 12, 14, 19, 41, 505684), symbol='RELIANCE', side=<Side.BUY: 'BUY'>, quantity=50, limit_price=2500.0, status=<OrderStatus.OPEN: 'OPEN'>, trade_type=<TradeType.EQUITY_INTRADAY: 'EQUITY_INTRADAY'>)"}}

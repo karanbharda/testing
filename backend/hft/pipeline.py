@@ -40,20 +40,14 @@ class HFTPipeline:
         self.regime_detector = RegimeDetector()
         
         # 3. Risk & Execution
-        self.risk_gate = RiskGate(constraints=config.risk)
+        # 3. Risk & Execution
+        # Initialize RiskGate with config from HFTConfig
+        self.risk_gate = RiskGate(config.risk)
         
-        # Risk Config (Day 1 Integration)
-        self.risk_config = RiskConfig(
-            max_loss_per_min=5000.0,
-            max_trades_per_min=20,
-            max_drawdown_session=10000.0,
-            max_order_qty=100
-        )
-        
-        # Initializing Throttler (Day 1) with None config for now as placeholder or could use new config
         self.throttler = RegimeThrottler(config=None) 
         
-        self.simulator = ShadowSimulator(risk_config=self.risk_config, karma_logger=self.karma)
+        # Inject shared RiskGate into Simulator
+        self.simulator = ShadowSimulator(risk_gate=self.risk_gate, karma_logger=self.karma)
         self.router = ExecutionRouter(simulator=self.simulator)
         
         # Ensure Router is in SHADOW_ONLY mode
@@ -66,7 +60,6 @@ class HFTPipeline:
         2. Update Features
         3. Check Regime
         4. (Optional) Generate Feature Vector
-        5. (Optional) Logic for Trade Generation (Placeholder)
         """
         # 1. Pipeline: Ingest
         if self.tick_buffer.add_tick(tick):
@@ -93,23 +86,34 @@ class HFTPipeline:
             current_regime=market_regime.regime.value if market_regime else "UNKNOWN"
         )
         
-        # 5. Logic: Throttle Check (Example)
+        # 5. Update Simulator Regime
         if market_regime:
-             # This simple logic demonstrates using the throttling component
-             effective_limit = self.throttler.get_effective_limit(market_regime.regime) 
+             self.simulator.set_regime(market_regime.regime)
              
     def submit_shadow_order(self, order: ShadowOrder):
         """
         Attempt to route a generated order through the safety gates.
         """
-        # 1. Risk Gate Check
-        if not self.risk_gate.check_trade(order.symbol, order.quantity, order.side.value):
-            print(f"Order {order.order_id} blocked by Risk Gate.")
+        # 1. Risk Gate Check (Global Pre-check)
+        allowed, reason = self.risk_gate.check_risk(self.simulator.current_regime)
+        if not allowed:
+            reason_str = reason.value if reason else "UNKNOWN"
+            print(f"Order {order.order_id} blocked by Risk Gate: {reason_str}")
             return
 
         # 2. Routing (Guaranteed Shadow)
         try:
-            self.router.route_order(order)
+            # Get Context (Price + Spread)
+            # For accurate simulation, we need the LATEST price.
+            # Assuming TickBuffer has the latest.
+            last_tick = self.tick_buffer.get_latest()
+            current_price = last_tick.price if last_tick else order.limit_price or 0.0
+            
+            # Spread (Optional, default 2.0 bps)
+            # spread_metrics = self.spread_tracker.get_latest() # Not implemented yet?
+            spread_bps = 2.0 # Placeholder or fetch from tracker
+            
+            self.router.route_order(order, current_price, spread_bps)
             print(f"Order {order.order_id} sent to Shadow Simulator.")
         except Exception as e:
             print(f"CRITICAL: Routing failed: {e}")

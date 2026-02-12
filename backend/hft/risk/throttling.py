@@ -1,5 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Dict, Deque, Tuple, Optional
+from collections import deque
+import time
+
+from backend.hft.risk.limits import RiskConfig
+from backend.hft.models.trade_event import RiskStopReason
 
 class VolatilityRegime(Enum):
     LOW = "LOW"
@@ -7,26 +13,28 @@ class VolatilityRegime(Enum):
     HIGH = "HIGH"
     EXTREME = "EXTREME"
 
-from typing import Dict, Deque, Tuple
-from collections import deque
-import time
-from backend.hft.risk.limits import RiskConfig
-
 @dataclass(frozen=True)
 class ThrottlingConfig:
     """
     Configuration for activity scaling based on regime.
     """
     base_rate_limit: int  # Orders per second
-    regime_multipliers: Dict[VolatilityRegime, float]
-    # e.g., {LOW: 1.2, NORMAL: 1.0, HIGH: 0.5, EXTREME: 0.0}
+    regime_multipliers: Dict[VolatilityRegime, float] = field(default_factory=lambda: {
+        VolatilityRegime.LOW: 1.2,
+        VolatilityRegime.NORMAL: 1.0,
+        VolatilityRegime.HIGH: 0.5,
+        VolatilityRegime.EXTREME: 0.0
+    })
 
 class RegimeThrottler:
     """
     Regime-Aware Throttling Logic.
     """
-    def __init__(self, config: ThrottlingConfig):
-        self.config = config
+    def __init__(self, config: Optional[ThrottlingConfig] = None):
+        if config is None:
+            self.config = ThrottlingConfig(base_rate_limit=5)
+        else:
+            self.config = config
 
     def get_effective_limit(self, regime: VolatilityRegime) -> float:
         """
@@ -34,19 +42,18 @@ class RegimeThrottler:
         """
         return self.config.base_rate_limit * self.config.regime_multipliers.get(regime, 1.0)
 
-class RiskMonitor:
+class RiskGate:
     """
-    Stateful Risk Monitor.
-    Tracks:
-    - Trades per minute (Sliding Window)
-    - PnL per minute (Approximation or Snapshot) - To simplify, we track realized loss in last window.
+    Deterministic Risk Gate.
+    Enforces hard limits on trades and losses per minute.
+    Returns structured Stop Reasons.
     """
     def __init__(self, config: RiskConfig):
         self.config = config
         self.trade_timestamps: Deque[float] = deque()
         self.loss_timestamps: Deque[Tuple[float, float]] = deque() # (timestamp, loss_amount)
         self.is_halted: bool = False
-        self.halt_reason: str = ""
+        self.halt_reason: RiskStopReason = RiskStopReason.UNKNOWN
 
     def record_trade(self):
         """Call this when a trade is executed."""
@@ -57,13 +64,13 @@ class RiskMonitor:
         if loss_amount > 0:
             self.loss_timestamps.append((time.time(), loss_amount))
 
-    def check_risk(self, regime: VolatilityRegime = VolatilityRegime.NORMAL) -> Tuple[bool, str]:
+    def check_risk(self, regime: VolatilityRegime = VolatilityRegime.NORMAL) -> Tuple[bool, Optional[RiskStopReason]]:
         """
         Checks if we can trade.
-        Returns (Allowed: bool, Reason: str)
+        Returns (Allowed: bool, Reason: Optional[RiskStopReason])
         """
         if self.is_halted:
-            return False, f"HALTED: {self.halt_reason}"
+            return False, self.halt_reason
 
         now = time.time()
         
@@ -74,17 +81,22 @@ class RiskMonitor:
         while self.loss_timestamps and self.loss_timestamps[0][0] < now - 60:
             self.loss_timestamps.popleft()
 
-        # 2. Check Max Trades / Min
-        if len(self.trade_timestamps) >= self.config.max_trades_per_min:
-            return False, f"RATE_LIMIT: {len(self.trade_timestamps)} trades in last minute (Max {self.config.max_trades_per_min})"
+        # 2. Check Throttle (Regime)
+        # If regime is EXTREME, we might just stop.
+        if regime == VolatilityRegime.EXTREME:
+             return False, RiskStopReason.REGIME_THROTTLE
 
-        # 3. Check Max Loss / Min
+        # 3. Check Max Trades / Min
+        if len(self.trade_timestamps) >= self.config.max_trades_per_min:
+            return False, RiskStopReason.MAX_TRADES_LIMIT
+
+        # 4. Check Max Loss / Min
         recent_loss = sum(l[1] for l in self.loss_timestamps)
         if recent_loss >= self.config.max_loss_per_min:
-            return False, f"MAX_LOSS_LIMIT: Loss {recent_loss:.2f} in last minute (Max {self.config.max_loss_per_min})"
+            return False, RiskStopReason.MAX_LOSS_MINUTE
 
-        return True, "OK"
+        return True, None
     
-    def force_halt(self, reason: str):
+    def force_halt(self, reason: RiskStopReason):
         self.is_halted = True
         self.halt_reason = reason

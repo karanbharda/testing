@@ -1,12 +1,6 @@
 from dataclasses import dataclass, field
 from .risk.throttling import VolatilityRegime
-
-@dataclass
-class RiskConfig:
-    max_trades_per_minute: int = 5
-    max_loss_per_minute: float = 1000.0
-    max_position_size: float = 100000.0
-    max_drawdown_session: float = 5000.0
+from .risk.limits import RiskConfig
 
 @dataclass
 class StrategyConfig:

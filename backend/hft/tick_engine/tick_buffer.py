@@ -35,18 +35,33 @@ class TickBuffer:
             # deque with maxlen automatically drops oldest
             if len(self._buffer) == self.max_size:
                  self.dropped_ticks_count += 1
+            
+            # Monotonicity Check
+            if self._buffer and tick.timestamp < self._buffer[-1].timestamp:
+                # Log warning? For now just accept but note it's an anomaly if needed
+                pass 
+
             self._buffer.append(tick)
             return True
         else: # DROP_NEWEST
             if len(self._buffer) >= self.max_size:
                 self.dropped_ticks_count += 1
                 return False # Reject new tick
+            
+            # Monotonicity Check
+            if self._buffer and tick.timestamp < self._buffer[-1].timestamp:
+                pass
+                
             self._buffer.append(tick)
             return True
 
     def get_snapshot(self) -> List[Tick]:
         """Returns a list of current ticks."""
         return list(self._buffer)
+
+    def get_latest(self) -> Optional[Tick]:
+        """Returns the most recent tick, or None if empty."""
+        return self._buffer[-1] if self._buffer else None
 
     def size(self) -> int:
         return len(self._buffer)

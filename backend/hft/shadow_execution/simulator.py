@@ -4,15 +4,14 @@ from typing import List, Optional, Dict
 from enum import Enum
 import random
 
-from backend.hft.shadow_execution.fee_model import FeeModel, FeeBreakdown
-from backend.hft.risk.throttling import RiskMonitor, VolatilityRegime
+from backend.hft.shadow_execution.fee_model import FeeModel
+from backend.hft.models.trade_event import FeeBreakdown, TradeType, RiskStopReason
+from backend.hft.risk.throttling import RiskGate, VolatilityRegime
 from backend.hft.risk.limits import RiskConfig
 from backend.hft.reporting.karma import KarmaLogger
 
 class Side(Enum):
     BUY = "BUY"
-    SELL = "SELL"
-
 class OrderStatus(Enum):
     OPEN = "OPEN"
     FILLED = "FILLED"
@@ -29,6 +28,7 @@ class ShadowOrder:
     quantity: float
     limit_price: Optional[float]
     status: OrderStatus
+    trade_type: TradeType = TradeType.EQUITY_INTRADAY
 
 @dataclass(frozen=True)
 class ShadowFill:
@@ -65,42 +65,43 @@ class ShadowSimulator:
     Simulates order execution without broker connection.
     Tracks shadow fills and PnL.
     """
-    def __init__(self, risk_config: RiskConfig, karma_logger: Optional[KarmaLogger] = None):
+    def __init__(self, risk_gate: RiskGate, karma_logger: Optional[KarmaLogger] = None):
         self.audit_trail = SimulationAuditTrail(
             session_id=datetime.now().isoformat(),
             start_time=datetime.now()
         )
         self.positions: Dict[str, ShadowPosition] = {}
         self.fee_model = FeeModel()
-        self.risk_monitor = RiskMonitor(risk_config)
+        self.risk_gate = risk_gate
         self.karma_logger = karma_logger
         self.current_regime = VolatilityRegime.NORMAL
 
     def set_regime(self, regime: VolatilityRegime):
         self.current_regime = regime
 
-    def place_order(self, order: ShadowOrder, current_market_price: float) -> str:
+    def place_order(self, order: ShadowOrder, current_market_price: float, spread_bps: float = 2.0) -> str:
         """
         Attempts to place a shadow order.
         Returns "OK" or Rejection Reason.
         """
         # 1. Risk Check
-        allowed, reason = self.risk_monitor.check_risk(self.current_regime)
+        allowed, reason = self.risk_gate.check_risk(self.current_regime)
         if not allowed:
+            # reason is of type RiskStopReason
+            reason_str = reason.value if reason else "UNKNOWN"
             if self.karma_logger:
-                self.karma_logger.log_limit_check({"event": "REJECTED", "order_id": order.order_id, "reason": reason})
-            return f"REJECTED: {reason}"
+                self.karma_logger.log_limit_check({"event": "REJECTED", "order_id": order.order_id, "reason": reason_str})
+            return f"REJECTED: {reason_str}"
 
         self.audit_trail.orders.append(order)
         if self.karma_logger:
             self.karma_logger.log("orders", {"event": "PLACED", "order": str(order)})
         
-        # 2. Simulate Execution (Immediate simplified simulation for now)
-        # In a real event loop, this would go into an order book. 
-        # Here we simulate immediate fill possibilities.
+        # 2. Simulate Execution
         
-        # Slippage Model
-        execution_price = self._apply_slippage(order, current_market_price)
+        # Slippage Model (Spread Aware)
+        # Base slippage is half the spread (crossing the spread) + regime impact
+        execution_price = self._apply_slippage(order, current_market_price, spread_bps)
         
         # Partial Fill Model
         fill_qty = self._calculate_fill_qty(order.quantity)
@@ -109,26 +110,24 @@ class ShadowSimulator:
             self._fill_order(order, execution_price, fill_qty)
             return "FILLED" if fill_qty == order.quantity else "PARTIALLY_FILLED"
             
-        return "OPEN" # Placed but not filled (limit order far away)
+        return "OPEN" 
 
-    def _apply_slippage(self, order: ShadowOrder, market_price: float) -> float:
+    def _apply_slippage(self, order: ShadowOrder, market_price: float, spread_bps: float) -> float:
         """
-        Applies slippage based on regime.
+        Applies slippage.
+        Slippage = (Spread / 2) + Unexplained Volatility Impact.
         """
-        slippage_bps = 0.0
-        if self.current_regime == VolatilityRegime.LOW:
-            slippage_bps = 1.0 # 1 bps
-        elif self.current_regime == VolatilityRegime.HIGH:
-            slippage_bps = 5.0
+        regime_impact = 0.0
+        if self.current_regime == VolatilityRegime.HIGH:
+            regime_impact = 2.0
         elif self.current_regime == VolatilityRegime.EXTREME:
-            slippage_bps = 15.0
-        else: # Normal
-            slippage_bps = 2.0
+            regime_impact = 10.0
             
-        # Random jitter
-        actual_slippage = slippage_bps * (0.5 + random.random()) # 0.5x to 1.5x of base
+        # Total slippage in BPS = Half Spread + Regime Impact + Random Jitter
+        jitter = random.uniform(0, 1.0) # 0 to 1 bps jitter
+        total_slippage_bps = (spread_bps / 2.0) + regime_impact + jitter
         
-        slippage_factor = actual_slippage / 10000.0
+        slippage_factor = total_slippage_bps / 10000.0
         
         if order.side == Side.BUY:
             return market_price * (1 + slippage_factor)
@@ -139,17 +138,22 @@ class ShadowSimulator:
         """
         Simulates partial fills.
         """
-        # Simple probabilistic model: 90% chance of full fill, 10% partial
-        if random.random() < 0.9:
+        # In EXTREME regime, fill probability drops
+        fill_prob = 0.9
+        if self.current_regime == VolatilityRegime.EXTREME:
+            fill_prob = 0.5
+            
+        if random.random() < fill_prob:
             return order_qty
         
-        return int(order_qty * 0.5) # Fill half
+        # Partial fill
+        return int(order_qty * random.uniform(0.1, 0.9))
 
     def _fill_order(self, order: ShadowOrder, price: float, qty: float):
-        self.risk_monitor.record_trade()
+        self.risk_gate.record_trade()
         
         # Calculate Fees
-        fees = self.fee_model.calculate_fees(price, qty, order.side.value)
+        fees = self.fee_model.calculate_fees(price, qty, order.side.value, order.trade_type)
         
         # Create Fill
         fill = ShadowFill(
@@ -159,7 +163,7 @@ class ShadowSimulator:
             price=price,
             quantity=qty,
             fee_breakdown=fees,
-            liquidity_flag="TAKER" # Assuming aggressive for now
+            liquidity_flag="TAKER" 
         )
         self.audit_trail.fills.append(fill)
         
@@ -178,29 +182,24 @@ class ShadowSimulator:
     def _update_position(self, symbol: str, side: Side, qty: float, price: float, fees: FeeBreakdown):
         pos = self.positions.get(symbol, ShadowPosition(symbol=symbol))
         
-        # Simple Average Price implementation
         if side == Side.BUY:
             new_qty = pos.quantity + qty
+            # Average Price calculation
             pos.average_price = ((pos.quantity * pos.average_price) + (qty * price)) / new_qty if new_qty > 0 else 0.0
             pos.quantity = new_qty
         else: # SELL
             # Realized PnL Calculation (FIFO/Average Cost)
-            # Using Average Cost for simplicity
             pnl = (price - pos.average_price) * qty
             pos.realized_pnl += pnl
             pos.quantity -= qty
             
-            # Check for Loss to update Risk Monitor
-            # Note: PnL here is Gross. Net PnL = Gross - Fees.
-            # Risk Monitor typically tracks Net PnL or Gross? Let's track Gross Loss for now, or Net.
-            # Let's say we track Net Loss.
-            net_pnl = pnl - fees.total_tax_and_fees
-            if net_pnl < 0:
-                self.risk_monitor.record_loss(abs(net_pnl))
+            # Net PnL = Gross PnL - Fees (Fees are always positive cost)
+            # Checking Loss for Risk Gate
+            net_pnl_trade = pnl - fees.total_tax_and_fees
+            if net_pnl_trade < 0:
+                self.risk_gate.record_loss(abs(net_pnl_trade))
 
         pos.total_fees += fees.total_tax_and_fees
         self.positions[symbol] = pos
 
-    def cancel_order(self, order_id: str) -> None:
-        pass
 

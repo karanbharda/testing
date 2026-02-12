@@ -21,7 +21,7 @@ class ExecutionRouter:
         self._simulator = simulator
         self._config = ExecutionConfig(mode=ExecutionMode.SHADOW_ONLY, allow_live_broker=False)
 
-    def route_order(self, order: ShadowOrder) -> None:
+    def route_order(self, order: ShadowOrder, market_price: float, spread_bps: float = 0.0) -> None:
         """
         Routes an order to the appropriate destination.
         
@@ -30,7 +30,7 @@ class ExecutionRouter:
         or raise an exception.
         """
         if self._config.mode == ExecutionMode.SHADOW_ONLY:
-            self._simulator.place_order(order)
+            self._simulator.place_order(order, market_price, spread_bps)
             return
 
         # Explicit safety catch
