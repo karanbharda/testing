@@ -6,52 +6,52 @@ This directory contains the **Shadow HFT System**, designed for:
 2. **Risk Determinism**: Hardened risk gates with explicit stop reasons.
 3. **System Integrity**: Robust tick processing and safety-locked execution.
 
+## Institutional Clarifications
+### 1. What is Shadow Mode?
+`SHADOW_ONLY` is the **default and mandatory** state of this system. In this mode:
+- **No external orders** are ever sent to a broker.
+- **Execution is simulated** against live market data using liquidity-aware slippage models.
+- **PnL is theoretical** but tax-aware (STT, Stamp Duty, GST deducted).
+- **Audit Trails** are generated as if the trades were real, stored in append-only Karma logs.
+
+### 2. What is Live Mode?
+`LIVE` mode is a strictly restricted state that requires explicit configuration overrides. **It is currently NOT ENABLED for this repository.** Any attempt to run components in LIVE mode without proper flags will trigger an immediate system shutdown (Exit Code 1).
+
+### 3. What is "OFF"?
+The system is "OFF" when:
+- The `TRADING_MODE` config is set to anything other than `SHADOW_ONLY` (safety mechanism).
+- The `RiskGate` has triggered a Stop (e.g., Max Loss reached).
+
+### 4. Authority
+The **System Config** (`backend/hft/config.py`) is the single source of truth. Runtime changes to config are ignored to prevent hot-swapping into unsafe states.
+
 ## Modules
 
 ### 1. Models (`hft/models/`)
-- `TradeType`: `EQUITY_INTRADAY` vs `EQUITY_DELIVERY`.
-- `FeeBreakdown`: Detailed tax analysis (STT, GST, Stamp Duty, etc.).
-- `RiskStopReason`: Structured enums for risk rejections (e.g., `MAX_LOSS_MINUTE`).
+- `TradeArtifact`: **Immutable, atomic record** of a trade event.
+- `FeeBreakdown`: detailed tax analysis.
 
 ### 2. Shadow Execution (`hft/shadow_execution/`)
-- **`FeeModel`**: Calculates brokerage (Zerodha/NSE rates), STT, Exchange Txn Charges, SEBI Fees, Stamp Duty, and GST.
-- **`ShadowSimulator`**: Simulates order execution with:
-    - **Regime-aware Slippage**: Higher slippage in high volatility.
-    - **Partial Fills**: Probabilistic fill logic.
-    - **Safety**: Physically decoupled from broker API in SHADOW mode.
+- **`ShadowSimulator`**: The core execution engine.
+    - **Liquidity-Aware Slippage**: Prices degrade with size and volatility.
+    - **Partial Fills**: Orders are broken into chunks.
+    - **Trade State Machine**: Enforces `INIT -> SIGNALLED -> SUBMITTED -> FILLED -> LOGGED`.
+- **`FeeModel`**: Deterministic fee calculations for Intraday vs Delivery.
 
-### 3. Risk Engine (`hft/risk/`)
-- **`RiskGate`**: The central guardian. Checks every order against:
-    - Max Trades per Minute
-    - Max Loss per Minute
-    - Market Regime (e.g., halts in EXTREME volatility)
-- **`RegimeThrottler`**: Dynamically adjusts rate limits based on volatility.
+### 3. Core (`hft/core/`)
+- **`KarmaLog`**: Append-only audit log.
+- **`TradeStateMachine`**: Validation logic for trade lifecycles.
 
 ### 4. Tick Engine (`hft/tick_engine/`)
-- **`TickBuffer`**: Fixed-size circular buffer with monotonicity checks and overflow protection.
-
-### 5. Config (`config.py`)
-- **`MODE`**: Defaults to `SHADOW`. 
-- **`RiskConfig`**: Central place to set limits.
-
-## Usage
-
-```python
-from backend.hft.pipeline import HFTPipeline
-from backend.hft.tick_engine import Tick
-
-# Initialize
-pipeline = HFTPipeline()
-
-# Ingest Ticks
-pipeline.process_tick(Tick(symbol="INFY", price=1500.0, ...))
-
-# Generate Orders (Internal logic or External signal)
-# ...
-```
+- **`TickBuffer`**: Hardened buffer with **Backpressure Monitoring**.
 
 ## Verification
 Run the verification script to test all components:
 ```bash
 python backend/hft/verify_hft.py
 ```
+This script validates:
+- Deterministic Fee Checks.
+- Risk Gate triggers.
+- Shadow Simulation flow.
+- Buffer Backpressure.

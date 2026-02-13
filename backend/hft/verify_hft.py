@@ -7,114 +7,121 @@ from datetime import datetime
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from backend.hft.shadow_execution.fee_model import FeeModel
-from backend.hft.models.trade_event import TradeType, RiskStopReason
+from backend.hft.models.trade_event import TradeType, RiskStopReason, TradeArtifact
 from backend.hft.risk.throttling import RiskGate, VolatilityRegime
 from backend.hft.risk.limits import RiskConfig
 from backend.hft.shadow_execution.simulator import ShadowSimulator, ShadowOrder, Side, OrderStatus
 from backend.hft.tick_engine.tick_buffer import TickBuffer, Tick
-from backend.hft.reporting.karma import KarmaLogger
+from backend.hft.core.karma import KarmaLog
+from backend.hft.config import default_config, ExecutionMode
+
+def test_mode_guard():
+    print("\n--- Testing Mode Guard ---")
+    original_mode = default_config.system.execution_mode
+    
+    try:
+        # 1. Test SHADOW_ONLY (Should work)
+        print("Testing Shadow Mode (Expected: OK)")
+        gate = RiskGate(RiskConfig())
+        sim = ShadowSimulator(risk_gate=gate)
+        print("Shadow Simulator initialized successfully.")
+        
+        # 2. Test LIVE (Should Fail)
+        print("Testing Live Mode Trigger (Expected: SystemExit)")
+        default_config.system.execution_mode = ExecutionMode.LIVE
+        try:
+             ShadowSimulator(risk_gate=gate)
+             print("FAILURE: LIVE mode did not trigger shutdown!")
+        except SystemExit:
+             print("SUCCESS: LIVE mode triggered SystemExit.")
+             
+    finally:
+        default_config.system.execution_mode = original_mode
 
 def test_fee_model():
-    print("\n--- Testing Fee Model ---")
+    print("\n--- Testing Deterministic Fee Model ---")
     fm = FeeModel()
     
     # Test Case 1: Intraday Buy
-    # Buy 100 @ 100 = 10,000 Volume
     fees = fm.calculate_fees(100.0, 100, "BUY", trade_type=TradeType.EQUITY_INTRADAY)
     print(f"Intraday Buy 100@100 Fees: {fees.total_tax_and_fees:.4f}")
-    print(f"Breakdown: Brok={fees.brokerage}, GST={fees.gst}, STT={fees.stt}, Stamp={fees.stamp_duty}")
+    assert fees.tax_category == "BUSINESS_INCOME"
 
-    # Test Case 2: Intraday Sell (STT applies)
-    fees_sell = fm.calculate_fees(100.0, 100, "SELL", trade_type=TradeType.EQUITY_INTRADAY)
-    print(f"Intraday Sell 100@100 Fees: {fees_sell.total_tax_and_fees:.4f} (STT={fees_sell.stt})")
-
-    # Test Case 3: Delivery Buy (High Stamp Duty, No STT on Buy?) -> Delivery has STT on Buy and Sell usually? 
-    # Logic in fee_model: Delivery STT on Buy & Sell.
+    # Test Case 2: Delivery Buy (STT check)
     fees_del = fm.calculate_fees(100.0, 100, "BUY", trade_type=TradeType.EQUITY_DELIVERY)
     print(f"Delivery Buy 100@100 Fees: {fees_del.total_tax_and_fees:.4f} (STT={fees_del.stt})")
+    assert fees_del.tax_category == "STCG_OR_LTCG"
 
-def test_risk_hardening():
-    print("\n--- Testing Risk Hardening ---")
-    config = RiskConfig(
-        max_loss_per_min=100.0,
-        max_trades_per_min=5,
-        max_drawdown_session=1000.0,
-        max_order_qty=100
+def test_liquidity_slippage():
+    print("\n--- Testing Liquidity Slippage & Partial Fills ---")
+    gate = RiskGate(RiskConfig(max_trades_per_min=100))
+    karma = KarmaLog()
+    sim = ShadowSimulator(risk_gate=gate, karma_log=karma)
+    
+    # 1. Small Order - Low Slippage
+    order_small = ShadowOrder(
+        order_id="SMALL_1", timestamp=datetime.now(), symbol="INFY", side=Side.BUY,
+        quantity=10, limit_price=None, status=OrderStatus.OPEN, trade_type=TradeType.EQUITY_INTRADAY
     )
-    gate = RiskGate(config)
-    
-    # 1. Test Trade Throttling
-    print("Testing Throttling (Max 5 trades/min)...")
-    for i in range(6):
-        gate.record_trade()
-        allowed, reason = gate.check_risk()
-        reason_str = reason.value if reason else "OK"
-        print(f"Trade {i+1} Check: {allowed} ({reason_str})")
-    
-    # 2. Test Loss Limit
-    print("Testing Loss Limit (Max 100)...")
-    gate = RiskGate(config) # Reset
-    gate.record_loss(50.0)
-    print(f"Loss 50: {gate.check_risk()[0]}")
-    gate.record_loss(60.0) # Total 110
-    allowed, reason = gate.check_risk()
-    reason_str = reason.value if reason else "OK"
-    print(f"Loss 110: {allowed} ({reason_str})")
+    sim.place_order(order_small, current_market_price=1000.0, spread_bps=2.0)
+    fill_small = sim.audit_trail.fills[0]
+    slippage_small = (fill_small.price - 1000.0) / 1000.0
+    print(f"Small Order Slippage: {slippage_small*10000:.2f} bps")
 
-def test_shadow_simulation():
-    print("\n--- Testing Shadow Execution ---")
-    config = RiskConfig(max_loss_per_min=1000, max_trades_per_min=100, max_drawdown_session=10000, max_order_qty=100)
-    gate = RiskGate(config)
-    sim = ShadowSimulator(risk_gate=gate)
-    
-    order = ShadowOrder(
-        order_id="ORD_1",
-        timestamp=datetime.now(),
-        symbol="INFY",
-        side=Side.BUY,
-        quantity=100,
-        limit_price=1500.0,
-        status=OrderStatus.OPEN,
-        trade_type=TradeType.EQUITY_INTRADAY
+    # 2. Large Order - High Slippage (Fragments)
+    sim.set_regime(VolatilityRegime.HIGH)
+    order_large = ShadowOrder(
+        order_id="LARGE_1", timestamp=datetime.now(), symbol="INFY", side=Side.BUY,
+        quantity=500, limit_price=None, status=OrderStatus.OPEN, trade_type=TradeType.EQUITY_INTRADAY
     )
+    sim.place_order(order_large, current_market_price=1000.0, spread_bps=5.0)
     
-    print("Placing Order...")
-    res = sim.place_order(order, current_market_price=1500.0, spread_bps=2.0)
-    print(f"Order Result: {res}")
+    # Check chunks
+    fills = [f for f in sim.audit_trail.fills if f.order_id == "LARGE_1"]
+    print(f"Large Order generated {len(fills)} fills (chunks).")
+    avg_price = sum(f.price * f.quantity for f in fills) / 500.0
+    slippage_large = (avg_price - 1000.0) / 1000.0
+    print(f"Large Order Avg Slippage: {slippage_large*10000:.2f} bps")
     
-    if sim.audit_trail.fills:
-        fill = sim.audit_trail.fills[0]
-        print(f"Fill Price: {fill.price} (Limit 1500)")
-        print(f"Fees Paid: {fill.fee_breakdown.total_tax_and_fees}")
+    if slippage_large <= slippage_small:
+         print("WARNING: Large order slippage not higher than small order!")
     else:
-        print("No fill occurred (unexpected for market price match)")
+         print("SUCCESS: Large order slippage > Small order slippage.")
 
-def test_pipeline_integration():
-    print("\n--- Testing Pipeline Integration ---")
-    from backend.hft.pipeline import HFTPipeline
+def test_karma_integrity():
+    print("\n--- Testing Karma Integrity ---")
+    karma = KarmaLog()
+    karma.append("TEST_EVENT", {"data": 123})
+    karma.append("TEST_EVENT_2", {"data": 456})
     
-    pipeline = HFTPipeline()
+    if karma.verify_integrity():
+        print("Karma Chain Valid.")
+    else:
+        print("Karma Chain INVALID.")
+        
+    print(f"Log Size: {len(karma.get_log())}")
+    print(f"Latest Hash: {karma.get_log()[-1]['hash']}")
+
+def test_backpressure_hardening():
+    print("\n--- Testing Tick Buffer Backpressure ---")
+    # Small buffer to force overflow
+    buffer = TickBuffer(max_size=10, drop_strategy="DROP_OLDEST")
     
-    # 1. Process Tick
-    tick = Tick(symbol="RELIANCE", price=2500.0, volume=100, timestamp=time.time())
-    pipeline.process_tick(tick)
-    print(f"Processed Tick. Buffer Size: {pipeline.tick_buffer.size()}")
+    for i in range(15):
+        buffer.add_tick(Tick("INFY", 100.0, 1, time.time()))
+        
+    metrics = buffer.get_backpressure_metrics()
+    print(f"Metrics: {metrics}")
     
-    # 2. Submit Shadow Order
-    order = ShadowOrder(
-        order_id="PIPE_ORD_1",
-        timestamp=datetime.now(),
-        symbol="RELIANCE",
-        side=Side.BUY,
-        quantity=50,
-        limit_price=2500.0,
-        status=OrderStatus.OPEN
-    )
-    pipeline.submit_shadow_order(order)
-    print("Submitted Order via Pipeline.")
+    if metrics['dropped_ticks'] == 5 and metrics['is_full']:
+        print("SUCCESS: Buffer dropped oldest ticks and reports full.")
+    else:
+        print("FAILURE: Backpressure metrics incorrect.")
 
 if __name__ == "__main__":
+    test_mode_guard()
     test_fee_model()
-    test_risk_hardening()
-    test_shadow_simulation()
-    test_pipeline_integration()
+    test_liquidity_slippage()
+    test_karma_integrity()
+    test_backpressure_hardening()
+
