@@ -83,6 +83,41 @@ class ShadowSimulator:
     def set_regime(self, regime: VolatilityRegime):
         self.current_regime = regime
 
+    def _validate_inputs(self, order: ShadowOrder, current_market_price: float, spread_bps: float) -> None:
+        """
+        Validates all inputs to prevent corrupt calculations.
+        Raises ValueError with descriptive message if invalid.
+        """
+        # Validate price
+        if not isinstance(current_market_price, (int, float)):
+            raise ValueError(f"Invalid price type: {type(current_market_price).__name__}. Must be numeric.")
+        if math.isnan(current_market_price):
+            raise ValueError("Invalid price: NaN not allowed")
+        if math.isinf(current_market_price):
+            raise ValueError(f"Invalid price: Infinity not allowed (got {current_market_price})")
+        if current_market_price <= 0:
+            raise ValueError(f"Invalid price: must be > 0 (got {current_market_price})")
+        
+        # Validate quantity
+        if not isinstance(order.quantity, (int, float)):
+            raise ValueError(f"Invalid quantity type: {type(order.quantity).__name__}. Must be numeric.")
+        if math.isnan(order.quantity):
+            raise ValueError("Invalid quantity: NaN not allowed")
+        if math.isinf(order.quantity):
+            raise ValueError(f"Invalid quantity: Infinity not allowed (got {order.quantity})")
+        if order.quantity <= 0:
+            raise ValueError(f"Invalid quantity: must be > 0 (got {order.quantity})")
+        
+        # Validate spread
+        if not isinstance(spread_bps, (int, float)):
+            raise ValueError(f"Invalid spread type: {type(spread_bps).__name__}. Must be numeric.")
+        if math.isnan(spread_bps):
+            raise ValueError("Invalid spread: NaN not allowed")
+        if math.isinf(spread_bps):
+            raise ValueError(f"Invalid spread: Infinity not allowed (got {spread_bps})")
+        if spread_bps < 0:
+            raise ValueError(f"Invalid spread: must be >= 0 (got {spread_bps})")
+
     def place_order(self, order: ShadowOrder, current_market_price: float, spread_bps: float = 2.0, liquidity_snapshot: Dict = None) -> str:
         """
         Attempts to place a shadow order with full State Machine enforcement.
@@ -91,6 +126,16 @@ class ShadowSimulator:
         
         # TRANSITION: INIT -> SIGNALLED
         sm.transition(TradeState.SIGNALLED)
+        
+        # 0. INPUT VALIDATION (CRITICAL)
+        try:
+            self._validate_inputs(order, current_market_price, spread_bps)
+        except ValueError as e:
+            sm.transition(TradeState.REJECTED)
+            if self.karma_log:
+                self.karma_log.append("INPUT_VALIDATION_REJECT", {"order_id": order.order_id, "reason": str(e)})
+            sm.transition(TradeState.LOGGED)
+            return f"REJECTED: {str(e)}"
         
         # 1. Mode Guard (Redundant but critical)
         if default_config.system.execution_mode != ExecutionMode.SHADOW_ONLY:
