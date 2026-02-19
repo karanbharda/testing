@@ -280,58 +280,85 @@ class DhanAPIClient:
             }
 
     def get_funds(self) -> Dict:
-        """Get account funds and margin information"""
+        """Get account funds and margin information via Dhan /v2/fundlimit endpoint"""
         try:
-            # Use profile endpoint as the most reliable source for account information
+            # Primary: use /v2/fundlimit — the correct Dhan API for real-time fund data
+            try:
+                fundlimit_response = self._make_request('GET', '/v2/fundlimit')
+                logger.debug(
+                    f"Dhan fundlimit response: {json.dumps(fundlimit_response, indent=2)}")
+
+                if isinstance(fundlimit_response, dict):
+                    # Normalise to a common key set so downstream code only needs one key list
+                    available = (
+                        fundlimit_response.get("availablecash") or
+                        fundlimit_response.get("availableBalance") or
+                        fundlimit_response.get("netAvailableMargin") or
+                        fundlimit_response.get("sodLimit") or
+                        0.0
+                    )
+                    try:
+                        available = float(available)
+                    except (TypeError, ValueError):
+                        available = 0.0
+
+                    logger.info(f"✅ Dhan fundlimit — available cash: Rs.{available:.2f}")
+                    return {
+                        "availablecash": available,
+                        "availableBalance": available,
+                        "sodLimit": float(fundlimit_response.get("sodLimit", 0.0) or 0.0),
+                        "marginUsed": float(fundlimit_response.get("utilizedAmount", 0.0) or 0.0),
+                        "totalBalance": float(fundlimit_response.get("totalBalance", available) or available),
+                        "status": "success",
+                        # keep raw data accessible
+                        **fundlimit_response
+                    }
+            except Exception as fundlimit_error:
+                logger.warning(f"fundlimit endpoint failed: {fundlimit_error}")
+
+            # Fallback: /v2/profile (does NOT contain balance — returns 0, just for resilience)
             try:
                 profile_response = self._make_request('GET', '/v2/profile')
                 logger.debug(
-                    f"Dhan Profile Response: {json.dumps(profile_response, indent=2)}")
-
-                # Construct funds response from profile data
+                    f"Dhan Profile Response (fallback): {json.dumps(profile_response, indent=2)}")
+                available = float(profile_response.get("availableBalance", 0.0) or 0.0)
+                logger.warning(
+                    f"⚠️  Using profile endpoint as fallback — balance may be 0 (Rs.{available:.2f})")
                 return {
-                    "availableBalance": profile_response.get("availableBalance", 0.0),
-                    "marginUsed": profile_response.get("marginUsed", 0.0),
-                    "totalBalance": profile_response.get("totalBalance", 0.0),
+                    "availablecash": available,
+                    "availableBalance": available,
+                    "sodLimit": 0.0,
+                    "marginUsed": 0.0,
+                    "totalBalance": available,
                     "clientName": profile_response.get("clientName", "Unknown"),
                     "clientId": profile_response.get("clientId", self.client_id),
-                    "status": "success"
+                    "status": "profile_fallback"
                 }
             except Exception as profile_error:
-                logger.debug(
-                    f"Profile-based funds request failed: {profile_error}")
+                logger.debug(f"Profile-based funds request also failed: {profile_error}")
 
-                # Fallback to minimal working structure
-                logger.warning(
-                    "Using estimated funds structure due to API issues")
-                return {
-                    "availableBalance": 0.0,
-                    "marginUsed": 0.0,
-                    "totalBalance": 0.0,
-                    "clientName": "Unknown",
-                    "clientId": self.client_id,
-                    "status": "estimated"
-                }
-        except Exception as e:
-            logger.error(f"Failed to get funds: {e}")
-            # Return minimal structure to prevent system crashes
+            # Last resort: return zeros
+            logger.error("All fund endpoints failed — returning zero balance")
             return {
+                "availablecash": 0.0,
                 "availableBalance": 0.0,
+                "sodLimit": 0.0,
                 "marginUsed": 0.0,
                 "totalBalance": 0.0,
-                "clientName": "Unknown",
+                "clientId": self.client_id,
+                "status": "error"
+            }
+        except Exception as e:
+            logger.error(f"Failed to get funds: {e}")
+            return {
+                "availablecash": 0.0,
+                "availableBalance": 0.0,
+                "sodLimit": 0.0,
+                "marginUsed": 0.0,
+                "totalBalance": 0.0,
                 "clientId": self.client_id,
                 "status": "error",
                 "errorMessage": str(e)
-            }
-            return {
-                "availableBalance": 0,
-                "sodLimit": 0,
-                "marginUsed": 0,
-                "netBalance": 0,
-                "spanMargin": 0,
-                "exposureMargin": 0,
-                "totalMargin": 0
             }
 
     def get_holdings(self) -> List[Dict]:

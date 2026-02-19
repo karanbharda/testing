@@ -350,5 +350,21 @@
         "qty": 5,
         "price": 66.49,
         "pnl": 0.0
+    },
+    {
+        "timestamp": "2026-02-19 13:00:23.951744",
+        "asset": "PFC.NS",
+        "action": "buy",
+        "qty": 3,
+        "price": 413.2,
+        "pnl": 0.0
+    },
+    {
+        "timestamp": "2026-02-19 13:45:48.157911",
+        "asset": "PFC.NS",
+        "action": "buy",
+        "qty": 3,
+        "price": 413.3,
+        "pnl": 0.0
     }
 ]

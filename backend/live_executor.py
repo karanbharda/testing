@@ -585,22 +585,61 @@ class LiveTradingExecutor:
                     "timestamp": datetime.now().isoformat(),
                     "signal_data": signal_data
                 }
-
-                # Record trade in database immediately (market orders usually execute quickly)
+                
+                # Check order status immediately after placing to see if it's already executed
                 try:
-                    self.portfolio_manager.record_trade(
-                        ticker=symbol,
-                        action="buy",
-                        quantity=adjusted_quantity,
-                        price=current_price,
-                        stop_loss=signal_data.get("stop_loss"),
-                        take_profit=signal_data.get("take_profit")
-                    )
-                    logger.info(
-                        f"✅ Buy trade executed successfully: {adjusted_quantity} {symbol} at Rs.{current_price:.2f}")
+                    self.check_and_update_orders()
+                except Exception as status_error:
+                    logger.warning(f"Failed to check order status immediately after placement: {status_error}")
+
+                # NOTE: We shouldn't record the trade immediately after placing the order.
+                # The order may still fail at the broker level. The actual recording should happen
+                # in _update_portfolio_after_execution when we confirm the order was executed.
+                # However, since the system currently relies on immediate recording, we'll keep this
+                # but add better handling for cases where the order status changes later.
+                try:
+                    # Check if the order was immediately executed by checking the status
+                    order_details = self.dhan_client.get_order_by_id(order_id)
+                    if order_details and order_details.get("orderStatus", "").upper() == "TRADED":
+                        # Order was immediately executed, record it in database
+                        self.portfolio_manager.record_trade(
+                            ticker=symbol,
+                            action="buy",
+                            quantity=adjusted_quantity,
+                            price=current_price,
+                            stop_loss=signal_data.get("stop_loss"),
+                            take_profit=signal_data.get("take_profit")
+                        )
+                        logger.info(
+                            f"✅ Buy trade executed and recorded: {adjusted_quantity} {symbol} at Rs.{current_price:.2f}")
+                        
+                        # Also update the portfolio after execution
+                        self._update_portfolio_after_execution(
+                            symbol, "BUY", adjusted_quantity, current_price
+                        )
+                    else:
+                        # Order is pending, don't record in database yet - wait for execution
+                        logger.info(
+                            f"⏳ Buy order placed but pending execution: {adjusted_quantity} {symbol} at Rs.{current_price:.2f}")
+                        logger.info(f"   Order ID: {order_id}")
+                        logger.info(f"   Current status: {order_details.get('orderStatus', 'UNKNOWN') if order_details else 'UNABLE_TO_FETCH_STATUS'}")
                 except Exception as db_error:
                     logger.error(
-                        f"❌ Failed to record buy trade in database: {db_error}")
+                        f"❌ Error checking immediate execution or recording trade: {db_error}")
+                    # As fallback, record the trade anyway to maintain consistency
+                    try:
+                        self.portfolio_manager.record_trade(
+                            ticker=symbol,
+                            action="buy",
+                            quantity=adjusted_quantity,
+                            price=current_price,
+                            stop_loss=signal_data.get("stop_loss"),
+                            take_profit=signal_data.get("take_profit")
+                        )
+                        logger.info(
+                            f"✅ Buy trade recorded after error (fallback): {adjusted_quantity} {symbol} at Rs.{current_price:.2f}")
+                    except Exception as fallback_error:
+                        logger.error(f"❌ Fallback recording also failed: {fallback_error}")
 
                 # Update trade count
                 self._update_daily_trade_count()
@@ -678,22 +717,67 @@ class LiveTradingExecutor:
 
                 order_id = order_response.get("orderId")
                 if order_id:
-                    # Record trade in database
+                    # Track pending order
+                    self.pending_orders[order_id] = {
+                        "symbol": symbol,
+                        "quantity": holding.quantity,
+                        "side": "SELL",
+                        "price": current_price,
+                        "timestamp": datetime.now().isoformat(),
+                        "signal_data": signal_data
+                    }
+                    
+                    # Check order status immediately after placing to see if it's already executed
                     try:
-                        self.portfolio_manager.record_trade(
-                            ticker=symbol,
-                            action="sell",
-                            quantity=holding.quantity,
-                            price=current_price,
-                            pnl=pnl,
-                            stop_loss=signal_data.get("stop_loss"),
-                            take_profit=signal_data.get("take_profit")
-                        )
-                        logger.info(
-                            f"✅ Sell trade executed successfully: {holding.quantity} {symbol} at Rs.{current_price:.2f}")
+                        self.check_and_update_orders()
+                    except Exception as status_error:
+                        logger.warning(f"Failed to check order status immediately after placement: {status_error}")
+
+                    # Check if the order was immediately executed by checking the status
+                    try:
+                        order_details = self.dhan_client.get_order_by_id(order_id)
+                        if order_details and order_details.get("orderStatus", "").upper() == "TRADED":
+                            # Order was immediately executed, record it in database
+                            self.portfolio_manager.record_trade(
+                                ticker=symbol,
+                                action="sell",
+                                quantity=holding.quantity,
+                                price=current_price,
+                                pnl=pnl,
+                                stop_loss=signal_data.get("stop_loss"),
+                                take_profit=signal_data.get("take_profit")
+                            )
+                            logger.info(
+                                f"✅ Sell trade executed and recorded: {holding.quantity} {symbol} at Rs.{current_price:.2f}")
+                            
+                            # Also update the portfolio after execution
+                            self._update_portfolio_after_execution(
+                                symbol, "SELL", holding.quantity, current_price
+                            )
+                        else:
+                            # Order is pending, don't record in database yet - wait for execution
+                            logger.info(
+                                f"⏳ Sell order placed but pending execution: {holding.quantity} {symbol} at Rs.{current_price:.2f}")
+                            logger.info(f"   Order ID: {order_id}")
+                            logger.info(f"   Current status: {order_details.get('orderStatus', 'UNKNOWN') if order_details else 'UNABLE_TO_FETCH_STATUS'}")
                     except Exception as db_error:
                         logger.error(
-                            f"❌ Failed to record sell trade in database: {db_error}")
+                            f"❌ Error checking immediate execution or recording trade: {db_error}")
+                        # As fallback, record the trade anyway to maintain consistency
+                        try:
+                            self.portfolio_manager.record_trade(
+                                ticker=symbol,
+                                action="sell",
+                                quantity=holding.quantity,
+                                price=current_price,
+                                pnl=pnl,
+                                stop_loss=signal_data.get("stop_loss"),
+                                take_profit=signal_data.get("take_profit")
+                            )
+                            logger.info(
+                                f"✅ Sell trade recorded after error (fallback): {holding.quantity} {symbol} at Rs.{current_price:.2f}")
+                        except Exception as fallback_error:
+                            logger.error(f"❌ Fallback recording also failed: {fallback_error}")
 
                     return {
                         "success": True,

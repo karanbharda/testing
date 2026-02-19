@@ -25,16 +25,18 @@ logger = logging.getLogger(__name__)
 class DhanSyncService:
     """Background service to sync portfolio with Dhan account in real-time"""
 
-    def __init__(self, sync_interval: int = 300):  # Increased to 5 minutes
+    def __init__(self, sync_interval: int = 300, live_executor=None):  # Increased to 5 minutes
         """
         Initialize Dhan sync service
 
         Args:
             sync_interval: Sync interval in seconds (default: 30 seconds)
+            live_executor: Live executor instance to check pending orders
         """
         self.sync_interval = sync_interval
         self.client_id = os.getenv("DHAN_CLIENT_ID")
         self.access_token = os.getenv("DHAN_ACCESS_TOKEN")
+        self.live_executor = live_executor
         self.is_running = False
         self.last_sync_time = None
         self.last_known_balance = 0.0
@@ -264,9 +266,16 @@ class DhanSyncService:
             logger.error(f"JSON update failed: {e}")
             return False
 
-    def sync_once(self) -> bool:
+    def sync_once(self, live_executor=None) -> bool:
         """Perform a single sync operation"""
         try:
+            # First check pending orders if live executor is provided
+            if live_executor:
+                try:
+                    live_executor.check_and_update_orders()
+                except Exception as order_check_error:
+                    logger.warning(f"Failed to check pending orders: {order_check_error}")
+            
             # Get data from Dhan
             funds_data = self.get_dhan_funds()
             holdings_data = self.get_dhan_holdings()
@@ -373,7 +382,8 @@ class DhanSyncService:
             try:
                 await asyncio.sleep(self.sync_interval)
                 if self.is_running:
-                    self.sync_once()
+                    # Pass live executor if available
+                    self.sync_once(self.live_executor)
 
             except Exception as e:
                 logger.error(f"Error in background sync loop: {e}")
@@ -394,13 +404,13 @@ def get_sync_service() -> Optional[DhanSyncService]:
     return _sync_service
 
 
-def start_sync_service(sync_interval: int = 300) -> DhanSyncService:  # 5 minutes default
+def start_sync_service(sync_interval: int = 300, live_executor=None) -> DhanSyncService:  # 5 minutes default
     """Start the global sync service"""
     global _sync_service
 
     if _sync_service is None:
         try:
-            _sync_service = DhanSyncService(sync_interval)
+            _sync_service = DhanSyncService(sync_interval, live_executor)
             # Start the background task
             asyncio.create_task(_sync_service.start_background_sync())
             logger.info("Dhan sync service started successfully")

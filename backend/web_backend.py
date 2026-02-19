@@ -4447,8 +4447,10 @@ async def startup_event():
                     logger.error(
                         "Please set these in your .env file to enable live trading")
                 else:
+                    # Get live executor to pass to sync service for order monitoring
+                    live_executor = getattr(trading_bot, 'live_executor', None) if hasattr(trading_bot, 'live_executor') else None
                     sync_service = start_sync_service(
-                        sync_interval=30)  # Sync every 30 seconds
+                        sync_interval=30, live_executor=live_executor)  # Sync every 30 seconds
                     if sync_service:
                         try:
                             # Prefer the richer DhanAPIClient if available on the trading bot

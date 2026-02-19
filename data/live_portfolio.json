@@ -1,7 +1,7 @@
 {
-  "cash": 23339.45,
-  "total_value": 53701.98051,
-  "starting_balance": 23339.45,
+  "cash": 16879.27,
+  "total_value": 46676.80051,
+  "starting_balance": 16879.27,
   "holdings": {
     "BEL": {
       "qty": 21,
@@ -12,11 +12,6 @@
       "qty": 11,
       "avg_price": 66.48455,
       "last_price": 66.48455
-    },
-    "JUBLFOOD": {
-      "qty": 1,
-      "avg_price": 565.0,
-      "last_price": 565.0
     },
     "GENUSPOWER": {
       "qty": 68,
@@ -29,5 +24,5 @@
   "total_trades": 0,
   "winning_trades": 0,
   "losing_trades": 0,
-  "last_updated": "2026-02-12T12:51:39.968706"
+  "last_updated": "2026-02-19T14:13:58.218355"
 }

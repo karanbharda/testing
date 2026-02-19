@@ -1009,11 +1009,14 @@ class VirtualPortfolio:
             # For live mode, try to sync with Dhan API first
             if self.mode == "live" and self.api:
                 try:
-                    funds = self.api.get_funds()
+                    # dhanhq SDK uses get_fund_limits() — NOT get_funds()
+                    funds = self.api.get_fund_limits()
                     if funds:
-                        # Extract available cash from Dhan response
+                        # Extract available cash from Dhan fundlimit response
                         available_cash = 0.0
-                        for key in ('availableBalance', 'availabelBalance', 'available_balance', 'available', 'availBalance', 'cash', 'netBalance', 'totalBalance'):
+                        for key in ('availablecash', 'availableBalance', 'availabelBalance',
+                                    'available_balance', 'available', 'availBalance',
+                                    'sodLimit', 'cash', 'netBalance', 'totalBalance'):
                             if isinstance(funds, dict) and key in funds:
                                 try:
                                     available_cash = float(
