@@ -1,24 +1,29 @@
 {
-    "cash": 16879.27,
+    "cash": 14364.52,
     "holdings": {
-        "BEL": {
+        "INOXWIND": {
             "qty": 21,
-            "avg_price": 439.02142,
-            "last_price": 439.02142
+            "avg_price": 96.4,
+            "last_price": 96.4
         },
-        "MAHABANK": {
-            "qty": 11,
-            "avg_price": 66.48455,
-            "last_price": 66.48455
+        "PFC": {
+            "qty": 10,
+            "avg_price": 410.5,
+            "last_price": 410.5
+        },
+        "BEL": {
+            "qty": 30,
+            "avg_price": 438.115,
+            "last_price": 438.115
         },
         "GENUSPOWER": {
-            "qty": 68,
-            "avg_price": 291.86398,
-            "last_price": 291.86398
+            "qty": 80,
+            "avg_price": 287.89438,
+            "last_price": 287.89438
         }
     },
-    "starting_balance": 16879.27,
+    "starting_balance": 14364.52,
     "realized_pnl": 0.0,
     "unrealized_pnl": 0.0,
-    "last_updated": "2026-02-19T14:13:58.217512"
+    "last_updated": "2026-02-24T10:11:35.593441"
 }
