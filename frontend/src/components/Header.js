@@ -62,6 +62,20 @@ const StatusIndicator = styled.div`
   font-weight: 500;
 `;
 
+const CycleCompleteIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: ${props => props.$active ? '#d4edda' : '#f8f9fa'};
+  color: ${props => props.$active ? '#155724' : '#6c757d'};
+  border: 1px solid ${props => props.$active ? '#28a745' : '#e0e0e0'};
+  transition: all 0.3s ease;
+`;
+
 const BotStatusDot = styled.div`
   width: 10px;
   height: 10px;
@@ -203,6 +217,18 @@ const Header = ({ botData, activeTab, onTabChange, onOpenSettings, liveStatus })
             </ModeIndicator>
           )}
 
+          {/* Cycle Complete Indicator */}
+          <CycleCompleteIndicator $active={botData.cycleComplete && !botData.isRunning}>
+            <i className={`fas ${botData.cycleComplete && !botData.isRunning ? 'fa-check-circle' : 'fa-clock'}`}></i>
+            <span>
+              {botData.cycleComplete && !botData.isRunning 
+                ? 'Cycle Complete ✓' 
+                : botData.isRunning 
+                  ? 'Running...' 
+                  : 'Ready to Start'}
+            </span>
+          </CycleCompleteIndicator>
+
           <StatusIndicator>
             <BotStatusDot $active={botData.isRunning} />
             <span>{botData.isRunning ? 'Active' : 'Inactive'}</span>
@@ -236,7 +262,8 @@ const Header = ({ botData, activeTab, onTabChange, onOpenSettings, liveStatus })
 
 Header.propTypes = {
   botData: PropTypes.shape({
-    isRunning: PropTypes.bool.isRequired
+    isRunning: PropTypes.bool.isRequired,
+    cycleComplete: PropTypes.bool.isRequired
   }).isRequired,
   activeTab: PropTypes.string.isRequired,
   onTabChange: PropTypes.func.isRequired,

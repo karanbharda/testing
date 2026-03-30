@@ -377,6 +377,7 @@ class PortfolioMetrics(BaseModel):
 
 class BotStatus(BaseModel):
     is_running: bool
+    cycle_complete: bool = False  # True when bot completed one full watchlist cycle
     last_update: str
     mode: str
 
@@ -1575,6 +1576,10 @@ class WebTradingBot:
             # Start the actual trading bot in a separate thread
             self.trading_thread = threading.Thread(
                 target=self.trading_bot.run, daemon=True)
+            
+            # Set up callback to update is_running flag when cycle completes
+            self.trading_bot._parent_stop_callback = self.stop
+            
             self.trading_thread.start()
             logger.info(
                 "Web Trading Bot started successfully with production enhancements")
@@ -1586,6 +1591,12 @@ class WebTradingBot:
         if self.is_running:
             self.is_running = False
             logger.info("Stopping Trading Bot and all background processes...")
+            logger.info(f"[STOP] Cycle was complete: {getattr(self.trading_bot, 'cycle_complete', False)}")
+
+            # Reset cycle complete flag
+            if hasattr(self.trading_bot, 'cycle_complete'):
+                self.trading_bot.cycle_complete = False
+                logger.info("[STOP] Reset cycle_complete flag to False")
 
             # Call the StockTradingBot's stop method for graceful shutdown
             if hasattr(self.trading_bot, 'stop'):
@@ -1710,8 +1721,14 @@ class WebTradingBot:
         else:
             data_service_status = {"status": "bot_stopped"}
 
+        # Check if cycle is complete (bot completed one full watchlist cycle)
+        cycle_complete = False
+        if hasattr(self.trading_bot, 'cycle_complete'):
+            cycle_complete = self.trading_bot.cycle_complete
+
         return {
             "is_running": self.is_running,
+            "cycle_complete": cycle_complete,
             "last_update": self.last_update.isoformat(),
             "mode": self.config.get("mode", "paper"),
             "data_service": data_service_status
@@ -2009,8 +2026,14 @@ class WebTradingBot:
         try:
             portfolio_metrics = self.get_portfolio_metrics()
 
+            # Check if cycle is complete
+            cycle_complete = False
+            if hasattr(self.trading_bot, 'cycle_complete'):
+                cycle_complete = self.trading_bot.cycle_complete
+
             return {
                 "isRunning": self.is_running,
+                "cycleComplete": cycle_complete,
                 "config": {
                     "mode": self.config.get("mode", "paper"),
                     "tickers": self.config.get("tickers", []),
@@ -4448,7 +4471,8 @@ async def startup_event():
                         "Please set these in your .env file to enable live trading")
                 else:
                     # Get live executor to pass to sync service for order monitoring
-                    live_executor = getattr(trading_bot, 'live_executor', None) if hasattr(trading_bot, 'live_executor') else None
+                    live_executor = getattr(trading_bot, 'live_executor', None) if hasattr(
+                        trading_bot, 'live_executor') else None
                     sync_service = start_sync_service(
                         sync_interval=30, live_executor=live_executor)  # Sync every 30 seconds
                     if sync_service:

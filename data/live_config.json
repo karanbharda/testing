@@ -1,11 +1,11 @@
 {
   "mode": "live",
-  "riskLevel": "MEDIUM",
-  "stop_loss_pct": 0.05,
-  "target_profit_pct": 0.08,
+  "riskLevel": "CUSTOM",
+  "stop_loss_pct": 0.01,
+  "target_profit_pct": 0.02,
   "use_risk_reward": true,
   "risk_reward_ratio": 2.0,
-  "max_capital_per_trade": 0.25,
+  "max_capital_per_trade": 0.2,
   "max_trade_limit": 150,
-  "created_at": "2026-02-19T11:48:04.037495"
+  "created_at": "2026-03-30T10:51:38.133739"
 }

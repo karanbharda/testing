@@ -6267,6 +6267,7 @@ class StockTradingBot:
         
         # Initialize bot running state
         self.bot_running = False
+        self.cycle_complete = False  # Track if one full watchlist cycle is completed
 
         # Initialize production core components
         try:
@@ -9279,6 +9280,7 @@ class StockTradingBot:
         """Main bot loop to run analysis, make trades, and generate reports."""
         logger.info("Starting Stock Trading Bot for Indian market...")
         self.bot_running = True
+        self.cycle_complete = False  # Flag to track if one full cycle is completed
 
         # Perform one-time check for stop loss and take profit at startup
         self.start_real_time_monitoring()
@@ -9315,6 +9317,10 @@ class StockTradingBot:
                     "Logging portfolio metrics at start of trading cycle...")
                 self.tracker.log_metrics()
 
+                # Track how many tickers we processed in this cycle
+                tickers_processed = 0
+                total_tickers = len(self.config["tickers"])
+
                 for ticker in self.config["tickers"]:
                     try:
                         # Check if bot should stop before processing each ticker
@@ -9350,6 +9356,8 @@ class StockTradingBot:
                         logger.error(f"Error processing ticker {ticker}: {e}")
                         # Continue with next ticker instead of crashing
                         continue
+                    
+                    tickers_processed += 1
 
                 # Check if bot should stop before generating report
                 if not self.bot_running:
@@ -9368,8 +9376,28 @@ class StockTradingBot:
                 if self.portfolio.mode == "paper":
                     self.portfolio.generate_paper_pnl_summary()
 
-                if not self._responsive_sleep(self.config.get("sleep_interval", 300)):
-                    break
+                # Mark cycle as complete and notify
+                self.cycle_complete = True
+                logger.info("=" * 60)
+                logger.info(f"✓ ONE FULL CYCLE COMPLETED - Processed {tickers_processed}/{total_tickers} tickers")
+                logger.info("Bot will now stop. Click 'Start Bot' to run another cycle.")
+                logger.info("=" * 60)
+
+                # Stop the bot after completing one full cycle
+                self.bot_running = False
+                
+                # Call the parent stop method if available to update WebTradingBot state
+                if hasattr(self, '_parent_stop_callback'):
+                    try:
+                        logger.info("[CYCLE COMPLETE] Calling parent stop callback to update is_running flag")
+                        self._parent_stop_callback()
+                        logger.info("[CYCLE COMPLETE] Parent stop callback executed successfully")
+                    except Exception as e:
+                        logger.warning(f"[CYCLE COMPLETE] Error calling parent stop callback: {e}")
+                
+                # No sleep needed - bot will stop now
+                break
+                
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
                 # Add longer delay on error to prevent excessive logging
@@ -9384,6 +9412,7 @@ class StockTradingBot:
         """Stop the trading bot gracefully"""
         logger.info("Stopping Stock Trading Bot...")
         self.bot_running = False
+        self.cycle_complete = False  # Reset cycle flag when stopping
         logger.info("Bot stop signal sent, waiting for main loop to finish...")
 
         # Stop real-time monitoring if it's running

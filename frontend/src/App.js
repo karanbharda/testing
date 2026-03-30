@@ -86,6 +86,7 @@ function App() {
       maxAllocation: 25
     },
     isRunning: false,
+    cycleComplete: false, // Track if one full cycle is completed
     chatMessages: []
   });
 
@@ -131,11 +132,13 @@ function App() {
   const loadDataFromBackend = async () => {
     try {
       // Get complete bot data from new endpoint
-      const botData = await apiService.getBotData();
+      const backendData = await apiService.getBotData();
 
       setBotData(prev => ({
         ...prev,
-        ...botData,
+        ...backendData,
+        isRunning: backendData.isRunning || false,
+        cycleComplete: backendData.cycleComplete || false,
         chatMessages: prev.chatMessages // Preserve chat messages
       }));
 
@@ -146,7 +149,12 @@ function App() {
       if (savedData) {
         try {
           const parsed = JSON.parse(savedData);
-          setBotData(prev => ({ ...prev, ...parsed }));
+          setBotData(prev => ({ 
+            ...prev, 
+            ...parsed,
+            isRunning: parsed.isRunning || false,
+            cycleComplete: parsed.cycleComplete || false
+          }));
         } catch (e) {
           console.error('Error loading saved data:', e);
         }
@@ -156,9 +164,41 @@ function App() {
 
   const refreshData = async () => {
     try {
+      // Store previous state before updating
+      const prevCycleComplete = botData.cycleComplete;
+      const prevIsRunning = botData.isRunning;
+      
       await loadDataFromBackend();
       await loadLiveStatus();
       await checkMcpStatus();
+
+      // Check if cycle just completed (bot was running, now stopped with cycle complete)
+      // Use functional update to ensure we're checking the latest backend data
+      setBotData(currentBotData => {
+        // Detect transition: was running OR not cycle complete, now cycle complete and not running
+        const shouldShowNotification = (
+          (prevIsRunning || !prevCycleComplete) && 
+          currentBotData.cycleComplete && 
+          !currentBotData.isRunning
+        );
+        
+        if (shouldShowNotification) {
+          toast.success(
+            '✓ One full cycle completed! Bot has stopped. Click "Start Bot" to run another cycle.',
+            {
+              duration: 8000,
+              icon: '🎯',
+              style: {
+                background: '#27ae60',
+                color: '#fff',
+                fontWeight: '600'
+              }
+            }
+          );
+        }
+        
+        return currentBotData;
+      });
     } catch (error) {
       console.error('Error refreshing data:', error);
     }
@@ -187,7 +227,11 @@ function App() {
     try {
       setLoading(true);
       await apiService.startBot();
-      setBotData(prev => ({ ...prev, isRunning: true }));
+      setBotData(prev => ({ 
+        ...prev, 
+        isRunning: true,
+        cycleComplete: false // Reset cycle complete flag when starting bot
+      }));
       toast.success('Trading bot started successfully!');
       await refreshData();
     } catch (error) {

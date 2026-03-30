@@ -1,29 +1,39 @@
 {
-    "cash": 14364.52,
+    "cash": 4759.18,
     "holdings": {
+        "HDFCBANK": {
+            "qty": 15,
+            "avg_price": 800.2,
+            "last_price": 800.2
+        },
         "INOXWIND": {
             "qty": 21,
             "avg_price": 96.4,
             "last_price": 96.4
         },
-        "PFC": {
-            "qty": 10,
-            "avg_price": 410.5,
-            "last_price": 410.5
+        "PNB": {
+            "qty": 14,
+            "avg_price": 130.44,
+            "last_price": 130.44
         },
         "BEL": {
-            "qty": 30,
-            "avg_price": 438.115,
-            "last_price": 438.115
+            "qty": 20,
+            "avg_price": 468.8,
+            "last_price": 468.8
+        },
+        "JIOFIN": {
+            "qty": 51,
+            "avg_price": 238.73529,
+            "last_price": 238.73529
         },
         "GENUSPOWER": {
-            "qty": 80,
-            "avg_price": 287.89438,
-            "last_price": 287.89438
+            "qty": 50,
+            "avg_price": 280.305,
+            "last_price": 280.305
         }
     },
-    "starting_balance": 14364.52,
+    "starting_balance": 4759.18,
     "realized_pnl": 0.0,
     "unrealized_pnl": 0.0,
-    "last_updated": "2026-02-24T10:11:35.593441"
+    "last_updated": "2026-03-30T11:29:08.150865"
 }
