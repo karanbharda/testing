@@ -14,6 +14,7 @@ import logging
 import json
 import time
 import uuid
+import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
@@ -197,7 +198,7 @@ class SentimentTool:
         self.lookback_days = config.get("lookback_days", 7)
         self.mode = config.get("mode", "auto")  # "auto" or "approval"
 
-        # Indian RSS sources - updated with more reliable working URLs
+        # Indian RSS sources - updated with more reliable working URLs and Google News
         self.indian_rss_sources = [
             "https://www.moneycontrol.com/rss/marketreports.xml",  # MoneyControl market reports
             # Economic Times stocks
@@ -213,7 +214,15 @@ class SentimentTool:
             "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/12741757.cms",
             # Reuters business news (replace with alternative)
             "https://www.reuters.com/news/archive/businessNews",
-            "https://www.cnbc.com/id/100003114/device/rss/rss.html"  # CNBC market news
+            "https://www.cnbc.com/id/100003114/device/rss/rss.html",  # CNBC market news
+            # NEW: Google News India - comprehensive aggregated sources
+            "https://news.google.com/rss/search?q=ADANI+POWER+when:7d&hl=en-IN&gl=IN&ceid=IN:en",
+            # NEW: Financial Express markets
+            "https://www.financialexpress.com/feed/",
+            # NEW: Zee Business
+            "https://zeenews.india.com/rss/business-news.asp",
+            # NEW: Firstpost Business
+            "https://www.firstpost.com/rss/feed/business"
         ]
 
         # Global RSS sources - updated with working URLs
@@ -228,15 +237,76 @@ class SentimentTool:
         self.analyses_performed = 0
         self.news_items_processed = 0
 
-        # Initialize sentiment analyzer
+        # Initialize sentiment analyzers - FinBERT as primary, VADER as fallback
+        self.finbert_pipeline = None
+        self.finbert_available = False
+        self.sentiment_analyzer = None
+        self.vader_available = False
+        
+        # Try to initialize FinBERT first (primary analyzer)
         try:
-            from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-            self.sentiment_analyzer = SentimentIntensityAnalyzer()
-            self.vader_available = True
+            from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+            import torch
+            
+            logger.info("Initializing FinBERT sentiment analyzer...")
+            model_name = "ProsusAI/finbert"
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModelForSequenceClassification.from_pretrained(model_name)
+            
+            # Use GPU if available
+            device = 0 if torch.cuda.is_available() else -1
+            
+            self.finbert_pipeline = pipeline(
+                "sentiment-analysis",
+                model=model,
+                tokenizer=tokenizer,
+                device=device
+            )
+            
+            self.finbert_available = True
+            logger.info(f"FinBERT initialized successfully on {'GPU' if device == 0 else 'CPU'}")
+            
         except ImportError:
-            logger.warning("VADER sentiment analyzer not available")
-            self.sentiment_analyzer = None
-            self.vader_available = False
+            logger.warning("Transformers library not available, FinBERT disabled")
+        except Exception as e:
+            logger.warning(f"Failed to initialize FinBERT: {e}")
+        
+        # Initialize VADER as fallback
+        if not self.finbert_available:
+            try:
+                from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+                self.sentiment_analyzer = SentimentIntensityAnalyzer()
+                self.vader_available = True
+                logger.info("VADER sentiment analyzer initialized as fallback")
+            except ImportError:
+                logger.warning("VADER sentiment analyzer not available")
+        
+        # Custom finance keywords for sentiment adjustment
+        self.finance_keywords = {
+            # Strong positive keywords (+0.15)
+            "record profit": 0.15, "beat expectations": 0.15, "surge": 0.15,
+            "breakthrough": 0.15, "massive growth": 0.15, "soars": 0.15,
+            "rally": 0.15, "bullish": 0.15, "outperform": 0.15,
+            "strong buy": 0.15, "upgrade": 0.15, "dividend increase": 0.15,
+            
+            # Moderate positive keywords (+0.08)
+            "growth": 0.08, "profit": 0.08, "gain": 0.08,
+            "positive": 0.08, "upbeat": 0.08, "optimistic": 0.08,
+            "recovery": 0.08, "improve": 0.08, "expansion": 0.08,
+            "increase": 0.08, "rise": 0.08, "higher": 0.08,
+            
+            # Strong negative keywords (-0.15)
+            "crash": -0.15, "collapse": -0.15, "plunge": -0.15,
+            "miss expectations": -0.15, "layoffs": -0.15, "bankruptcy": -0.15,
+            "fraud": -0.15, "scandal": -0.15, "bearish": -0.15,
+            "sell-off": -0.15, "downgrade": -0.15, "loss": -0.15,
+            
+            # Moderate negative keywords (-0.08)
+            "decline": -0.08, "drop": -0.08, "fall": -0.08,
+            "negative": -0.08, "pessimistic": -0.08, "concern": -0.08,
+            "risk": -0.08, "warning": -0.08, "decrease": -0.08,
+            "lower": -0.08, "reduced": -0.08, "weak": -0.08
+        }
 
         # Initialize LangGraph agent if available
         self.agent_executor = None
@@ -545,7 +615,7 @@ class SentimentTool:
 
     async def _analyze_news_sentiment(self, symbol: str, lookback_days: int,
                                       include_items: bool) -> tuple[SentimentScore, List[NewsItem]]:
-        """Analyze sentiment from financial news"""
+        """Analyze sentiment from financial news using FinBERT (primary) or VADER (fallback)"""
         try:
             # Extract company name from symbol for better search
             company_name = self._extract_company_name(symbol)
@@ -561,23 +631,65 @@ class SentimentTool:
             sentiment_scores = []
 
             for article in news_articles:
-                if self.vader_available:
+                text = f"{article.get('title', '')} {article.get('description', '')}"
+                
+                # Get article published time for time-decay weighting
+                published_date = self._parse_date(article.get('publishedAt'))
+                time_decay_weight = self._calculate_time_decay_weight(published_date)
+                
+                # Use FinBERT if available, otherwise fallback to VADER
+                if self.finbert_available:
+                    try:
+                        # Use FinBERT for financial sentiment analysis
+                        result = self.finbert_pipeline(text[:512])[0]
+                        
+                        label = result['label'].lower()
+                        confidence = result['score']
+                        
+                        # Convert FinBERT labels to positive/negative/neutral
+                        if 'positive' in label:
+                            positive = confidence
+                            negative = 0.0
+                            neutral = 1.0 - confidence
+                            compound = confidence
+                        elif 'negative' in label:
+                            positive = 0.0
+                            negative = confidence
+                            neutral = 1.0 - confidence
+                            compound = -confidence
+                        else:  # neutral
+                            positive = 0.0
+                            negative = 0.0
+                            neutral = 1.0
+                            compound = 0.0
+                        
+                        # Apply custom finance keyword adjustment
+                        keyword_adjustment = self._apply_finance_keywords(text)
+                        compound = np.clip(compound + keyword_adjustment, -1.0, 1.0)
+                        
+                        # Apply time-decay weighting
+                        compound *= time_decay_weight
+                        
+                        sentiment_score = SentimentScore(
+                            positive=positive * time_decay_weight,
+                            negative=negative * time_decay_weight,
+                            neutral=neutral,
+                            compound=compound,
+                            confidence=confidence * time_decay_weight
+                        )
+                        
+                    except Exception as e:
+                        logger.warning(f"FinBERT analysis failed, falling back to VADER: {e}")
+                        # Fallback to VADER
+                        sentiment_score = self._analyze_with_vader(text, time_decay_weight)
+                        
+                elif self.vader_available:
                     # Use VADER for sentiment analysis
-                    text = f"{article.get('title', '')} {article.get('description', '')}"
-                    sentiment = self.sentiment_analyzer.polarity_scores(text)
-
-                    sentiment_score = SentimentScore(
-                        positive=sentiment['pos'],
-                        negative=sentiment['neg'],
-                        neutral=sentiment['neu'],
-                        compound=sentiment['compound'],
-                        confidence=0.8
-                    )
+                    sentiment_score = self._analyze_with_vader(text, time_decay_weight)
+                    
                 else:
                     # Fallback sentiment analysis
-                    sentiment_score = self._simple_sentiment_analysis(
-                        f"{article.get('title', '')} {article.get('description', '')}"
-                    )
+                    sentiment_score = self._simple_sentiment_analysis(text)
 
                 if include_items:
                     news_item = NewsItem(
@@ -586,8 +698,7 @@ class SentimentTool:
                         source=article.get('source', {}).get(
                             'name', 'Unknown'),
                         url=article.get('url', ''),
-                        published_date=self._parse_date(
-                            article.get('publishedAt')),
+                        published_date=published_date,
                         sentiment_score=sentiment_score,
                         relevance_score=self._calculate_relevance(
                             article, company_name)
@@ -618,6 +729,75 @@ class SentimentTool:
         except Exception as e:
             logger.error(f"News sentiment analysis error: {e}")
             return self._create_neutral_sentiment(), []
+
+    def _calculate_time_decay_weight(self, published_date: datetime) -> float:
+        """
+        Calculate time-decay weight for news articles
+        Fresh news (0-6h) = 100% weight
+        24h old = 60% weight
+        48h old = 30% weight
+        Exponential decay formula: np.exp(-age_hours / 48)
+        """
+        if not published_date:
+            return 0.5  # Default weight for unknown dates
+        
+        try:
+            # Calculate age in hours
+            now = datetime.now(published_date.tzinfo) if published_date.tzinfo else datetime.now()
+            age = now - published_date
+            age_hours = age.total_seconds() / 3600.0
+            
+            # Exponential decay
+            weight = np.exp(-age_hours / 48.0)
+            
+            # Clamp between 0.1 and 1.0
+            return float(np.clip(weight, 0.1, 1.0))
+            
+        except Exception as e:
+            logger.warning(f"Error calculating time decay: {e}")
+            return 0.5
+    
+    def _apply_finance_keywords(self, text: str) -> float:
+        """
+        Apply custom finance keyword sentiment adjustment
+        Strong keywords: ±0.15 adjustment
+        Moderate keywords: ±0.08 adjustment
+        """
+        if not text:
+            return 0.0
+        
+        text_lower = text.lower()
+        total_adjustment = 0.0
+        
+        for keyword, weight in self.finance_keywords.items():
+            if keyword in text_lower:
+                total_adjustment += weight
+        
+        # Clamp adjustment to reasonable range
+        return float(np.clip(total_adjustment, -0.3, 0.3))
+    
+    def _analyze_with_vader(self, text: str, time_decay_weight: float) -> SentimentScore:
+        """Analyze sentiment using VADER with time-decay and keyword adjustment"""
+        try:
+            sentiment = self.sentiment_analyzer.polarity_scores(text)
+            
+            # Apply finance keyword adjustment
+            keyword_adjustment = self._apply_finance_keywords(text)
+            compound = np.clip(sentiment['compound'] + keyword_adjustment, -1.0, 1.0)
+            
+            # Apply time-decay weighting
+            compound *= time_decay_weight
+            
+            return SentimentScore(
+                positive=sentiment['pos'] * time_decay_weight,
+                negative=sentiment['neg'] * time_decay_weight,
+                neutral=sentiment['neu'],
+                compound=compound,
+                confidence=0.8 * time_decay_weight
+            )
+        except Exception as e:
+            logger.error(f"VADER analysis error: {e}")
+            return self._create_neutral_sentiment()
 
     async def _analyze_social_sentiment(self, symbol: str, lookback_days: int) -> SentimentScore:
         """Analyze sentiment from social media sources"""
@@ -693,7 +873,7 @@ class SentimentTool:
             return []
 
     async def _fetch_indian_news_articles(self, company_name: str, lookback_days: int) -> List[Dict[str, Any]]:
-        """Fetch Indian news articles from RSS sources"""
+        """Fetch Indian news articles from RSS sources including Google News"""
         try:
             articles = []
 
@@ -702,6 +882,9 @@ class SentimentTool:
                 try:
                     # Use enhanced scraping techniques
                     response = self._make_request(rss_url, use_enhanced=True)
+                    if response is None:
+                        continue
+
                     feed_content = response.content
                     feed = feedparser.parse(feed_content)
 
@@ -717,7 +900,17 @@ class SentimentTool:
                                 title = getattr(entry, 'title', '')
                                 summary = getattr(entry, 'summary', '')
 
-                                if company_name.lower() in title.lower() or company_name.lower() in summary.lower():
+                                # Enhanced relevance check - support list of company names
+                                company_names_to_check = company_name if isinstance(
+                                    company_name, list) else [company_name]
+
+                                is_relevant = False
+                                for company in company_names_to_check:
+                                    if company.lower() in title.lower() or company.lower() in summary.lower():
+                                        is_relevant = True
+                                        break
+
+                                if is_relevant:
                                     articles.append({
                                         'title': title,
                                         'description': summary,
@@ -763,11 +956,11 @@ class SentimentTool:
                         successful_sources += 1
                         working_sources.append(url)
                         logger.info(
-                            f"✓ SUCCESS: {url} - Fetched {len(relevant_items)} relevant items")
+                            f"+ SUCCESS: {url} - Fetched {len(relevant_items)} relevant items")
                     else:
                         failed_sources += 1
                         failing_sources.append(url)
-                        logger.warning(f"✗ FAILED: {url} - No items fetched")
+                        logger.warning(f"- FAILED: {url} - No items fetched")
                 except Exception as e:
                     failed_sources += 1
                     failing_sources.append(url)
@@ -812,12 +1005,12 @@ class SentimentTool:
             logger.info(f"Total sources: {len(self.indian_rss_sources)}")
             logger.info(f"Working sources ({successful_sources}):")
             for source in working_sources:
-                logger.info(f"  ✓ {source}")
+                logger.info(f"  + {source}")
 
             if failing_sources:
                 logger.info(f"Failing sources ({failed_sources}):")
                 for source in failing_sources:
-                    logger.info(f"  ✗ {source}")
+                    logger.info(f"  - {source}")
 
             # If too many sources are failing, log a warning
             if successful_sources < 3:
@@ -874,55 +1067,64 @@ class SentimentTool:
             return []
 
     def _extract_company_name(self, symbol: str) -> str:
-        """Extract company name from symbol"""
-        # Extended company name extraction with more Indian companies
+        """Extract company name from symbol with enhanced mappings for better relevance matching"""
+        # Extended company name extraction with more Indian companies and variations
         symbol_to_company = {
-            "RELIANCE.NS": "Reliance Industries",
-            "TCS.NS": "Tata Consultancy Services",
-            "INFY.NS": "Infosys",
-            "HDFCBANK.NS": "HDFC Bank",
-            "ICICIBANK.NS": "ICICI Bank",
-            "SBIN.NS": "State Bank of India",
-            "BHARTIARTL.NS": "Bharti Airtel",
-            "ITC.NS": "ITC Limited",
-            "HINDUNILVR.NS": "Hindustan Unilever",
-            "LT.NS": "Larsen & Toubro",
-            "PARAS.NS": "Paras Defence",
-            "ADANIPORTS.NS": "Adani Ports",
-            "ASIANPAINT.NS": "Asian Paints",
-            "AXISBANK.NS": "Axis Bank",
-            "BAJAJ-AUTO.NS": "Bajaj Auto",
-            "BAJFINANCE.NS": "Bajaj Finance",
-            "BPCL.NS": "Bharat Petroleum",
-            "CIPLA.NS": "Cipla",
-            "COALINDIA.NS": "Coal India",
-            "DRREDDY.NS": "Dr Reddy's",
-            "EICHERMOT.NS": "Eicher Motors",
-            "GAIL.NS": "GAIL",
-            "GRASIM.NS": "Grasim Industries",
-            "HCLTECH.NS": "HCL Technologies",
-            "HEROMOTOCO.NS": "Hero MotoCorp",
-            "HINDALCO.NS": "Hindalco Industries",
-            "INFRATEL.NS": "Bharti Infratel",
-            "IOC.NS": "Indian Oil",
-            "INDUSINDBK.NS": "IndusInd Bank",
-            "JSWSTEEL.NS": "JSW Steel",
-            "KOTAKBANK.NS": "Kotak Mahindra Bank",
-            "MARUTI.NS": "Maruti Suzuki",
-            "NTPC.NS": "NTPC",
-            "ONGC.NS": "ONGC",
-            "POWERGRID.NS": "Power Grid",
-            "SUNPHARMA.NS": "Sun Pharmaceuticals",
-            "TATAMOTORS.NS": "Tata Motors",
-            "TATASTEEL.NS": "Tata Steel",
-            "TECHM.NS": "Tech Mahindra",
-            "ULTRACEMCO.NS": "UltraTech Cement",
-            "WIPRO.NS": "Wipro",
-            "YESBANK.NS": "Yes Bank",
-            "ZEEL.NS": "Zee Entertainment"
+            "RELIANCE.NS": ["Reliance Industries", "Reliance", "RIL"],
+            "TCS.NS": ["Tata Consultancy Services", "TCS", "Tata Consulting"],
+            "INFY.NS": ["Infosys", "Infosys Technologies"],
+            "HDFCBANK.NS": ["HDFC Bank", "HDFC"],
+            "ICICIBANK.NS": ["ICICI Bank", "ICICI"],
+            "SBIN.NS": ["State Bank of India", "SBI"],
+            "BHARTIARTL.NS": ["Bharti Airtel", "Airtel"],
+            "ITC.NS": ["ITC Limited", "ITC"],
+            "HINDUNILVR.NS": ["Hindustan Unilever", "HUL"],
+            "LT.NS": ["Larsen & Toubro", "L&T", "Larsen Toubro"],
+            "PARAS.NS": ["Paras Defence", "Paras"],
+            "ADANIPORTS.NS": ["Adani Ports", "Adani Port"],
+            "ASIANPAINT.NS": ["Asian Paints"],
+            "AXISBANK.NS": ["Axis Bank", "Axis"],
+            "BAJAJ-AUTO.NS": ["Bajaj Auto"],
+            "BAJFINANCE.NS": ["Bajaj Finance"],
+            "BPCL.NS": ["Bharat Petroleum", "BPCL"],
+            "CIPLA.NS": ["Cipla"],
+            "COALINDIA.NS": ["Coal India"],
+            "DRREDDY.NS": ["Dr Reddy's", "Dr Reddys", "Dr. Reddy"],
+            "EICHERMOT.NS": ["Eicher Motors"],
+            "GAIL.NS": ["GAIL"],
+            "GRASIM.NS": ["Grasim Industries", "Grasim"],
+            "HCLTECH.NS": ["HCL Technologies", "HCL Tech"],
+            "HEROMOTOCO.NS": ["Hero MotoCorp", "Hero Motorcycle"],
+            "HINDALCO.NS": ["Hindalco Industries", "Hindalco"],
+            "INFRATEL.NS": ["Bharti Infratel", "Infratel"],
+            "IOC.NS": ["Indian Oil", "IOC"],
+            "INDUSINDBK.NS": ["IndusInd Bank", "IndusInd"],
+            "JSWSTEEL.NS": ["JSW Steel"],
+            "KOTAKBANK.NS": ["Kotak Mahindra Bank", "Kotak Bank"],
+            "MARUTI.NS": ["Maruti Suzuki", "Maruti"],
+            "NTPC.NS": ["NTPC", "National Thermal Power"],
+            "ONGC.NS": ["ONGC", "Oil Natural Gas"],
+            "POWERGRID.NS": ["Power Grid", "Power Grid Corporation", "PGCIL"],
+            "SUNPHARMA.NS": ["Sun Pharmaceuticals", "Sun Pharma"],
+            "TATAMOTORS.NS": ["Tata Motors"],
+            "TATASTEEL.NS": ["Tata Steel"],
+            "TECHM.NS": ["Tech Mahindra", "Tech Mahindra"],
+            "ULTRACEMCO.NS": ["UltraTech Cement", "UltraTech"],
+            "WIPRO.NS": ["Wipro"],
+            "YESBANK.NS": ["Yes Bank", "Yesbank"],
+            "ZEEL.NS": ["Zee Entertainment", "Zee"],
+            # CRITICAL: Add ADANIPOWER with multiple variations
+            "ADANIPOWER.NS": ["Adani Power", "Adani Power Limited", "Adani", "APL"],
+            "ADANIPOWER": ["Adani Power", "Adani Power Limited", "Adani", "APL"]
         }
 
-        return symbol_to_company.get(symbol, symbol.split('.')[0])
+        # Return list of company names for better matching
+        if symbol in symbol_to_company:
+            return symbol_to_company[symbol]
+        else:
+            # Fallback: use symbol without exchange suffix
+            base_symbol = symbol.split('.')[0]
+            return [base_symbol]
 
     def _simple_sentiment_analysis(self, text: str) -> SentimentScore:
         """Simple rule-based sentiment analysis fallback"""
@@ -1299,8 +1501,23 @@ class SentimentTool:
             # Define the agent state graph
             workflow = StateGraph(AgentState)
 
-            # Add nodes and edges (simplified)
-            # In a real implementation, this would be more complex
+            # Add agent node
+            def agent_node(state: AgentState):
+                """Simple agent node that processes messages"""
+                messages = state.get("messages", [])
+                if messages:
+                    last_message = messages[-1]
+                    logger.info(f"Agent processing: {last_message}")
+                return {"processed": True}
+
+            # Add node to graph
+            workflow.add_node("agent", agent_node)
+
+            # Set entrypoint - connect START to agent node
+            workflow.set_entry_point("agent")
+
+            # Add edge to END (simple single-node workflow)
+            workflow.add_edge("agent", END)
 
             # Compile the workflow
             self.agent_executor = workflow.compile()
@@ -1309,6 +1526,8 @@ class SentimentTool:
 
         except Exception as e:
             logger.error(f"Error initializing LangGraph agent: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
     def get_tool_status(self) -> Dict[str, Any]:
         """Get sentiment tool status"""
@@ -1450,55 +1669,34 @@ class SentimentTool:
             return []
 
     def _filter_relevant_news(self, news_items: List[NewsItem], symbol: str, lookback_days: int) -> List[NewsItem]:
-        """Filter news items relevant to the symbol within lookback period"""
+        """Filter news items relevant to the symbol within lookback period with enhanced matching"""
         try:
             relevant_items = []
             cutoff_date = datetime.now() - timedelta(days=lookback_days)
 
-            # Get company names for matching
-            symbol_to_company = {
-                "RELIANCE.NS": "Reliance",
-                "TCS.NS": "TCS",
-                "INFY.NS": "Infosys",
-                "HDFCBANK.NS": "HDFC Bank",
-                "ICICIBANK.NS": "ICICI Bank",
-                "AXISBANK.NS": "Axis Bank",
-                "SBIN.NS": "SBI",
-                "BHARTIARTL.NS": "Bharti Airtel",
-                "ITC.NS": "ITC",
-                "KOTAKBANK.NS": "Kotak Bank",
-                "BAJFINANCE.NS": "Bajaj Finance",
-                "HINDUNILVR.NS": "Hindustan Unilever",
-                "ASIANPAINT.NS": "Asian Paints",
-                "MARUTI.NS": "Maruti Suzuki",
-                "TITAN.NS": "Titan",
-                "LT.NS": "Larsen & Toubro",
-                "DMART.NS": "Avenue Supermarts",
-                "SUNPHARMA.NS": "Sun Pharma",
-                "CIPLA.NS": "Cipla",
-                "DRREDDY.NS": "Dr Reddy's",
-                "DIVISLAB.NS": "Divi's Laboratories",
-                "NCC.NS": "NCC Limited"  # Add NCC mapping
-            }
+            # Get ALL company name variations for matching
+            company_names_list = self._extract_company_name(symbol)
+            base_symbol = symbol.split('.')[0]
 
-            # Add SIMPLEXINF.NS to the mapping if not already present
-            if symbol == "SIMPLEXINF.NS" and symbol not in symbol_to_company:
-                symbol_to_company[symbol] = "Simplex Infrastructures"
+            # Build comprehensive search terms list
+            search_terms = set()
+            search_terms.add(base_symbol.lower())
 
-            company_name = symbol_to_company.get(symbol, symbol.split('.')[0])
-            search_terms = [symbol.split('.')[0], company_name]
+            # Add all company name variations
+            for company_name in company_names_list:
+                search_terms.add(company_name.lower())
+                # Add individual words from company name
+                for word in company_name.lower().split():
+                    if len(word) > 3:  # Skip short words
+                        search_terms.add(word)
 
-            # Add additional search terms for infrastructure companies
-            if 'infra' in company_name.lower() or 'construc' in company_name.lower():
-                search_terms.extend(
-                    ["infrastructure", "construction", "building", "projects"])
+            # Add additional search terms for specific sectors
+            if any('infra' in name or 'construc' in name or 'power' in name for name in company_names_list):
+                search_terms.update(
+                    ["infrastructure", "construction", "building", "projects", "power", "energy"])
 
-            # Remove duplicates while preserving order
-            unique_terms = []
-            for term in search_terms:
-                if term not in unique_terms:
-                    unique_terms.append(term)
-            search_terms = unique_terms
+            if any('adani' in name.lower() for name in company_names_list):
+                search_terms.add("adani")
 
             logger.debug(
                 f"Filtering news for {symbol} using search terms: {search_terms}")
@@ -1511,28 +1709,44 @@ class SentimentTool:
                             f"Skipping item (too old): {item.title[:50]}...")
                         continue
 
-                    # Check relevance
+                    # Check relevance with ENHANCED matching
                     title_lower = item.title.lower()
                     content_lower = item.content.lower()
+                    full_text = f"{title_lower} {content_lower}"
 
                     is_relevant = False
                     matched_term = None
+                    best_match_score = 0
+
                     for term in search_terms:
-                        if term.lower() in title_lower or term.lower() in content_lower:
+                        # Title match gets higher score
+                        if term in title_lower:
                             is_relevant = True
                             matched_term = term
-                            break
+                            score = 1.0 if term == base_symbol.lower() else 0.7
+                            best_match_score = max(best_match_score, score)
+                        elif term in content_lower:
+                            is_relevant = True
+                            matched_term = term
+                            score = 0.5 if term == base_symbol.lower() else 0.3
+                            best_match_score = max(best_match_score, score)
 
                     if is_relevant:
                         # Calculate relevance score
                         item.relevance_score = self._calculate_relevance_score(
-                            item, symbol, company_name)
-                        relevant_items.append(item)
-                        logger.debug(
-                            f"Relevant item found for {symbol} (matched term: {matched_term}): {item.title[:50]}...")
+                            item, symbol, company_names_list[0] if company_names_list else base_symbol)
+
+                        # Only include items with reasonable relevance
+                        if item.relevance_score > 0.1:
+                            relevant_items.append(item)
+                            logger.debug(
+                                f"✓ Relevant item found for {symbol} (matched: '{matched_term}', score: {item.relevance_score:.2f}): {item.title[:50]}...")
+                        else:
+                            logger.debug(
+                                f"✗ Item too weak for {symbol} (score: {item.relevance_score:.2f}): {item.title[:50]}...")
                     else:
                         logger.debug(
-                            f"Item not relevant for {symbol}: {item.title[:50]}...")
+                            f"✗ Item not relevant for {symbol}: {item.title[:50]}...")
 
                 except Exception as e:
                     logger.warning(f"Error filtering news item: {e}")
@@ -1547,29 +1761,44 @@ class SentimentTool:
             return []
 
     def _calculate_relevance_score(self, news_item: NewsItem, symbol: str, company_name: str) -> float:
-        """Calculate relevance score for a news item"""
+        """Calculate relevance score for a news item with enhanced scoring"""
         try:
             title_lower = news_item.title.lower()
             content_lower = news_item.content.lower()
 
             score = 0.0
+            base_symbol = symbol.split('.')[0].lower()
 
-            # Symbol exact match (highest weight)
-            if symbol.split('.')[0].lower() in title_lower:
-                score += 0.4
-            elif symbol.split('.')[0].lower() in content_lower:
-                score += 0.2
+            # Symbol exact match in title (highest weight)
+            if base_symbol in title_lower:
+                score += 0.5
+            elif base_symbol in content_lower:
+                score += 0.25
 
             # Company name match
-            if company_name.lower() in title_lower:
+            company_lower = company_name.lower()
+            if company_lower in title_lower:
                 score += 0.3
-            elif company_name.lower() in content_lower:
+            elif company_lower in content_lower:
                 score += 0.15
+
+            # Check for variations of company name
+            if hasattr(self, '_extract_company_name'):
+                company_variations = self._extract_company_name(symbol)
+                if isinstance(company_variations, list):
+                    for variation in company_variations:
+                        if variation.lower() != company_lower:  # Skip already checked
+                            if variation.lower() in title_lower:
+                                score += 0.2
+                                break
+                            elif variation.lower() in content_lower:
+                                score += 0.1
+                                break
 
             # Industry/sector keywords for infrastructure companies
             infrastructure_keywords = ['infrastructure', 'construction', 'building', 'project',
                                        'contract', 'cement', 'steel', 'roads', 'highways', 'development', 'real estate']
-            if any(keyword in company_name.lower() for keyword in ['infra', 'construc', 'build']):
+            if any(keyword in company_name.lower() for keyword in ['infra', 'construc', 'build', 'power']):
                 for keyword in infrastructure_keywords:
                     if keyword in title_lower or keyword in content_lower:
                         score += 0.1

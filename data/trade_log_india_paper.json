@@ -126,5 +126,89 @@
         "price": 102.9,
         "mode": "paper",
         "timestamp": "2025-08-26 14:12:24.915185"
+    },
+    {
+        "asset": "TATASTEEL",
+        "action": "sell",
+        "qty": 100,
+        "price": 150.0,
+        "product_type": "MIS",
+        "is_short_sell": true,
+        "mode": "paper",
+        "timestamp": "2026-04-02 13:07:26.144239",
+        "realized_pnl": 0
+    },
+    {
+        "asset": "TATASTEEL",
+        "action": "buy_to_cover",
+        "qty": 100,
+        "price": 147.0,
+        "product_type": "MIS",
+        "mode": "paper",
+        "timestamp": "2026-04-02 13:07:28.182814",
+        "realized_pnl": 300.0,
+        "short_avg_price": 150.0
+    },
+    {
+        "asset": "RELIANCE",
+        "action": "buy",
+        "qty": 10,
+        "price": 2500.0,
+        "product_type": "MIS",
+        "mode": "paper",
+        "timestamp": "2026-04-02 13:09:08.772890"
+    },
+    {
+        "asset": "RELIANCE",
+        "action": "sell",
+        "qty": 10,
+        "price": 2525.0,
+        "product_type": "MIS",
+        "is_short_sell": false,
+        "mode": "paper",
+        "timestamp": "2026-04-02 13:09:09.833577",
+        "realized_pnl": 250.0
+    },
+    {
+        "asset": "TATASTEEL",
+        "action": "sell",
+        "qty": 100,
+        "price": 150.0,
+        "product_type": "MIS",
+        "is_short_sell": true,
+        "mode": "paper",
+        "timestamp": "2026-04-02 13:09:09.860467",
+        "realized_pnl": 0
+    },
+    {
+        "asset": "TATASTEEL",
+        "action": "buy_to_cover",
+        "qty": 100,
+        "price": 147.0,
+        "product_type": "MIS",
+        "mode": "paper",
+        "timestamp": "2026-04-02 13:09:09.863738",
+        "realized_pnl": 300.0,
+        "short_avg_price": 150.0
+    },
+    {
+        "asset": "HDFCBANK",
+        "action": "buy",
+        "qty": 20,
+        "price": 1800.0,
+        "product_type": "CNC",
+        "mode": "paper",
+        "timestamp": "2026-04-02 13:09:09.893059"
+    },
+    {
+        "asset": "HDFCBANK",
+        "action": "sell",
+        "qty": 20,
+        "price": 1980.0000000000002,
+        "product_type": "CNC",
+        "is_short_sell": false,
+        "mode": "paper",
+        "timestamp": "2026-04-02 13:09:10.948761",
+        "realized_pnl": 3600.0000000000045
     }
 ]

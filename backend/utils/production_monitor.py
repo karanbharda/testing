@@ -35,7 +35,7 @@ class ProductionMonitor:
     
     def __init__(self, db_path: str = None):
         self.engine = init_db(db_path)
-        self.Session = sessionmaker(bind=self.engine)
+        self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         self.signal_tracker = get_signal_tracker(db_path)
         
         logger.info("Production Monitor initialized")

@@ -1,0 +1,66 @@
+{
+  "timestamp": "2026-03-31T17:08:58.838193",
+  "tests": [
+    {
+      "name": "Technical Indicators Calculation",
+      "success": true,
+      "timestamp": "2026-03-31T17:08:59.624169",
+      "details": {
+        "indicators_calculated": 12,
+        "rsi_value": "41.68",
+        "macd_value": "0.0200",
+        "price_vs_sma50": "-0.18%"
+      }
+    },
+    {
+      "name": "RL Agent Analysis",
+      "success": true,
+      "timestamp": "2026-03-31T17:09:03.751573",
+      "details": {
+        "recommendation": "HOLD",
+        "confidence": "0.341",
+        "buy_score": "0.323",
+        "sell_score": "0.336"
+      }
+    },
+    {
+      "name": "Sentiment Analysis",
+      "success": true,
+      "timestamp": "2026-03-31T17:09:03.769233",
+      "details": {
+        "overall_sentiment": "0.169",
+        "texts_analyzed": 3,
+        "sentiment_direction": "positive"
+      }
+    },
+    {
+      "name": "Ensemble Optimizer",
+      "success": true,
+      "timestamp": "2026-03-31T17:09:05.006381",
+      "details": {
+        "recommendation": "HOLD",
+        "prediction": "0.0000",
+        "confidence": "0.000"
+      }
+    },
+    {
+      "name": "Professional Buy Logic Integration",
+      "success": false,
+      "timestamp": "2026-03-31T17:09:05.014971",
+      "details": {
+        "error": "ProfessionalBuyLogic.__init__() missing 1 required positional argument: 'config'"
+      }
+    },
+    {
+      "name": "End-to-End Flow",
+      "success": true,
+      "timestamp": "2026-03-31T17:09:05.015376",
+      "details": {
+        "components_integrated": 5,
+        "flow_status": "complete",
+        "ready_for_production": true
+      }
+    }
+  ],
+  "integration_status": {}
+}

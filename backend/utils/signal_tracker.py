@@ -29,7 +29,7 @@ class SignalTracker:
     
     def __init__(self, db_path: str = None):
         self.engine = init_db(db_path)
-        self.Session = sessionmaker(bind=self.engine)
+        self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         self.performance_cache = {}  # Cache for performance metrics
         self.cache_expiry = timedelta(hours=1)  # Cache expiry time
         

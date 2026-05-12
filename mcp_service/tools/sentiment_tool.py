@@ -14,6 +14,7 @@ import logging
 import json
 import time
 import uuid
+import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
@@ -217,15 +218,76 @@ class SentimentTool:
         self.analyses_performed = 0
         self.news_items_processed = 0
 
-        # Initialize sentiment analyzer
+        # Initialize sentiment analyzers - FinBERT as primary, VADER as fallback
+        self.finbert_pipeline = None
+        self.finbert_available = False
+        self.sentiment_analyzer = None
+        self.vader_available = False
+        
+        # Try to initialize FinBERT first (primary analyzer)
         try:
-            from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-            self.sentiment_analyzer = SentimentIntensityAnalyzer()
-            self.vader_available = True
+            from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+            import torch
+            
+            logger.info("Initializing FinBERT sentiment analyzer...")
+            model_name = "ProsusAI/finbert"
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModelForSequenceClassification.from_pretrained(model_name)
+            
+            # Use GPU if available
+            device = 0 if torch.cuda.is_available() else -1
+            
+            self.finbert_pipeline = pipeline(
+                "sentiment-analysis",
+                model=model,
+                tokenizer=tokenizer,
+                device=device
+            )
+            
+            self.finbert_available = True
+            logger.info(f"FinBERT initialized successfully on {'GPU' if device == 0 else 'CPU'}")
+            
         except ImportError:
-            logger.warning("VADER sentiment analyzer not available")
-            self.sentiment_analyzer = None
-            self.vader_available = False
+            logger.warning("Transformers library not available, FinBERT disabled")
+        except Exception as e:
+            logger.warning(f"Failed to initialize FinBERT: {e}")
+        
+        # Initialize VADER as fallback
+        if not self.finbert_available:
+            try:
+                from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+                self.sentiment_analyzer = SentimentIntensityAnalyzer()
+                self.vader_available = True
+                logger.info("VADER sentiment analyzer initialized as fallback")
+            except ImportError:
+                logger.warning("VADER sentiment analyzer not available")
+        
+        # Custom finance keywords for sentiment adjustment
+        self.finance_keywords = {
+            # Strong positive keywords (+0.15)
+            "record profit": 0.15, "beat expectations": 0.15, "surge": 0.15,
+            "breakthrough": 0.15, "massive growth": 0.15, "soars": 0.15,
+            "rally": 0.15, "bullish": 0.15, "outperform": 0.15,
+            "strong buy": 0.15, "upgrade": 0.15, "dividend increase": 0.15,
+            
+            # Moderate positive keywords (+0.08)
+            "growth": 0.08, "profit": 0.08, "gain": 0.08,
+            "positive": 0.08, "upbeat": 0.08, "optimistic": 0.08,
+            "recovery": 0.08, "improve": 0.08, "expansion": 0.08,
+            "increase": 0.08, "rise": 0.08, "higher": 0.08,
+            
+            # Strong negative keywords (-0.15)
+            "crash": -0.15, "collapse": -0.15, "plunge": -0.15,
+            "miss expectations": -0.15, "layoffs": -0.15, "bankruptcy": -0.15,
+            "fraud": -0.15, "scandal": -0.15, "bearish": -0.15,
+            "sell-off": -0.15, "downgrade": -0.15, "loss": -0.15,
+            
+            # Moderate negative keywords (-0.08)
+            "decline": -0.08, "drop": -0.08, "fall": -0.08,
+            "negative": -0.08, "pessimistic": -0.08, "concern": -0.08,
+            "risk": -0.08, "warning": -0.08, "decrease": -0.08,
+            "lower": -0.08, "reduced": -0.08, "weak": -0.08
+        }
 
         # Initialize LangGraph agent if available
         self.agent_executor = None
@@ -534,7 +596,7 @@ class SentimentTool:
 
     async def _analyze_news_sentiment(self, symbol: str, lookback_days: int,
                                       include_items: bool) -> tuple[SentimentScore, List[NewsItem]]:
-        """Analyze sentiment from financial news"""
+        """Analyze sentiment from financial news using FinBERT (primary) or VADER (fallback)"""
         try:
             # Extract company name from symbol for better search
             company_name = self._extract_company_name(symbol)
@@ -550,23 +612,65 @@ class SentimentTool:
             sentiment_scores = []
 
             for article in news_articles:
-                if self.vader_available:
+                text = f"{article.get('title', '')} {article.get('description', '')}"
+                
+                # Get article published time for time-decay weighting
+                published_date = self._parse_date(article.get('publishedAt'))
+                time_decay_weight = self._calculate_time_decay_weight(published_date)
+                
+                # Use FinBERT if available, otherwise fallback to VADER
+                if self.finbert_available:
+                    try:
+                        # Use FinBERT for financial sentiment analysis
+                        result = self.finbert_pipeline(text[:512])[0]
+                        
+                        label = result['label'].lower()
+                        confidence = result['score']
+                        
+                        # Convert FinBERT labels to positive/negative/neutral
+                        if 'positive' in label:
+                            positive = confidence
+                            negative = 0.0
+                            neutral = 1.0 - confidence
+                            compound = confidence
+                        elif 'negative' in label:
+                            positive = 0.0
+                            negative = confidence
+                            neutral = 1.0 - confidence
+                            compound = -confidence
+                        else:  # neutral
+                            positive = 0.0
+                            negative = 0.0
+                            neutral = 1.0
+                            compound = 0.0
+                        
+                        # Apply custom finance keyword adjustment
+                        keyword_adjustment = self._apply_finance_keywords(text)
+                        compound = np.clip(compound + keyword_adjustment, -1.0, 1.0)
+                        
+                        # Apply time-decay weighting
+                        compound *= time_decay_weight
+                        
+                        sentiment_score = SentimentScore(
+                            positive=positive * time_decay_weight,
+                            negative=negative * time_decay_weight,
+                            neutral=neutral,
+                            compound=compound,
+                            confidence=confidence * time_decay_weight
+                        )
+                        
+                    except Exception as e:
+                        logger.warning(f"FinBERT analysis failed, falling back to VADER: {e}")
+                        # Fallback to VADER
+                        sentiment_score = self._analyze_with_vader(text, time_decay_weight)
+                        
+                elif self.vader_available:
                     # Use VADER for sentiment analysis
-                    text = f"{article.get('title', '')} {article.get('description', '')}"
-                    sentiment = self.sentiment_analyzer.polarity_scores(text)
-
-                    sentiment_score = SentimentScore(
-                        positive=sentiment['pos'],
-                        negative=sentiment['neg'],
-                        neutral=sentiment['neu'],
-                        compound=sentiment['compound'],
-                        confidence=0.8
-                    )
+                    sentiment_score = self._analyze_with_vader(text, time_decay_weight)
+                    
                 else:
                     # Fallback sentiment analysis
-                    sentiment_score = self._simple_sentiment_analysis(
-                        f"{article.get('title', '')} {article.get('description', '')}"
-                    )
+                    sentiment_score = self._simple_sentiment_analysis(text)
 
                 if include_items:
                     news_item = NewsItem(
@@ -575,8 +679,7 @@ class SentimentTool:
                         source=article.get('source', {}).get(
                             'name', 'Unknown'),
                         url=article.get('url', ''),
-                        published_date=self._parse_date(
-                            article.get('publishedAt')),
+                        published_date=published_date,
                         sentiment_score=sentiment_score,
                         relevance_score=self._calculate_relevance(
                             article, company_name)
@@ -607,6 +710,75 @@ class SentimentTool:
         except Exception as e:
             logger.error(f"News sentiment analysis error: {e}")
             return self._create_neutral_sentiment(), []
+
+    def _calculate_time_decay_weight(self, published_date: datetime) -> float:
+        """
+        Calculate time-decay weight for news articles
+        Fresh news (0-6h) = 100% weight
+        24h old = 60% weight
+        48h old = 30% weight
+        Exponential decay formula: np.exp(-age_hours / 48)
+        """
+        if not published_date:
+            return 0.5  # Default weight for unknown dates
+        
+        try:
+            # Calculate age in hours
+            now = datetime.now(published_date.tzinfo) if published_date.tzinfo else datetime.now()
+            age = now - published_date
+            age_hours = age.total_seconds() / 3600.0
+            
+            # Exponential decay
+            weight = np.exp(-age_hours / 48.0)
+            
+            # Clamp between 0.1 and 1.0
+            return float(np.clip(weight, 0.1, 1.0))
+            
+        except Exception as e:
+            logger.warning(f"Error calculating time decay: {e}")
+            return 0.5
+    
+    def _apply_finance_keywords(self, text: str) -> float:
+        """
+        Apply custom finance keyword sentiment adjustment
+        Strong keywords: ±0.15 adjustment
+        Moderate keywords: ±0.08 adjustment
+        """
+        if not text:
+            return 0.0
+        
+        text_lower = text.lower()
+        total_adjustment = 0.0
+        
+        for keyword, weight in self.finance_keywords.items():
+            if keyword in text_lower:
+                total_adjustment += weight
+        
+        # Clamp adjustment to reasonable range
+        return float(np.clip(total_adjustment, -0.3, 0.3))
+    
+    def _analyze_with_vader(self, text: str, time_decay_weight: float) -> SentimentScore:
+        """Analyze sentiment using VADER with time-decay and keyword adjustment"""
+        try:
+            sentiment = self.sentiment_analyzer.polarity_scores(text)
+            
+            # Apply finance keyword adjustment
+            keyword_adjustment = self._apply_finance_keywords(text)
+            compound = np.clip(sentiment['compound'] + keyword_adjustment, -1.0, 1.0)
+            
+            # Apply time-decay weighting
+            compound *= time_decay_weight
+            
+            return SentimentScore(
+                positive=sentiment['pos'] * time_decay_weight,
+                negative=sentiment['neg'] * time_decay_weight,
+                neutral=sentiment['neu'],
+                compound=compound,
+                confidence=0.8 * time_decay_weight
+            )
+        except Exception as e:
+            logger.error(f"VADER analysis error: {e}")
+            return self._create_neutral_sentiment()
 
     async def _analyze_social_sentiment(self, symbol: str, lookback_days: int) -> SentimentScore:
         """Analyze sentiment from social media sources"""

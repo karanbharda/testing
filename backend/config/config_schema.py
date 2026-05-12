@@ -18,6 +18,12 @@ class TradingMode(str, Enum):
     LIVE = "live"
 
 
+class ProductType(str, Enum):
+    """Product type for trading orders"""
+    CNC = "CNC"  # Cash and Carry - Delivery based (positions carried to next day)
+    INTRADAY = "MIS"  # Margin Intraday Square Off - positions squared off same day
+
+
 class RiskLevel(str, Enum):
     """Risk level enumeration"""
     LOW = "LOW"
@@ -30,40 +36,78 @@ class TradingConfig(BaseModel):
     """Complete trading configuration schema"""
 
     # Core settings
-    mode: TradingMode = Field(default=TradingMode.PAPER, description="Trading mode")
-    tickers: List[str] = Field(default_factory=list, description="List of stock tickers to trade")
+    mode: TradingMode = Field(
+        default=TradingMode.PAPER, description="Trading mode")
+    productType: ProductType = Field(
+        default=ProductType.CNC, description="Product type for orders (CNC for delivery, MIS for intraday)")
+    tickers: List[str] = Field(
+        default_factory=list, description="List of stock tickers to trade")
 
     # Financial settings
-    starting_balance: float = Field(gt=0, default=10000, description="Initial portfolio balance")
-    current_portfolio_value: float = Field(default=10000, description="Current portfolio value")
+    starting_balance: float = Field(
+        gt=0, default=10000, description="Initial portfolio balance")
+    current_portfolio_value: float = Field(
+        default=10000, description="Current portfolio value")
     current_pnl: float = Field(default=0, description="Current profit/loss")
 
     # Risk management
-    riskLevel: RiskLevel = Field(default=RiskLevel.MEDIUM, description="Risk level preset")
-    stop_loss_pct: float = Field(ge=0, le=1, default=0.05, description="Stop loss percentage")
-    max_capital_per_trade: float = Field(ge=0, le=1, default=0.25, description="Max capital per trade")
-    max_trade_limit: int = Field(ge=1, le=1000, default=150, description="Maximum number of trades")
+    riskLevel: RiskLevel = Field(
+        default=RiskLevel.MEDIUM, description="Risk level preset")
+    stop_loss_pct: float = Field(
+        ge=0, le=1, default=0.05, description="Stop loss percentage")
+    max_capital_per_trade: float = Field(
+        ge=0, le=1, default=0.25, description="Max capital per trade")
+    max_trade_limit: int = Field(
+        ge=1, le=1000, default=150, description="Maximum number of trades")
 
     # Risk-reward settings
-    use_risk_reward: bool = Field(default=True, description="Enable risk-reward ratio")
-    risk_reward_ratio: float = Field(ge=1, le=10, default=2.0, description="Risk-reward ratio")
-    target_profit_pct: float = Field(ge=0, le=1, default=0.10, description="Target profit percentage")
+    use_risk_reward: bool = Field(
+        default=True, description="Enable risk-reward ratio")
+    risk_reward_ratio: float = Field(
+        ge=1, le=10, default=2.0, description="Risk-reward ratio")
+    target_profit_pct: float = Field(
+        ge=0, le=1, default=0.10, description="Target profit percentage")
 
     # Technical settings
     period: str = Field(default="3y", description="Historical data period")
-    prediction_days: int = Field(ge=1, le=365, default=30, description="Prediction horizon in days")
-    sleep_interval: int = Field(ge=5, le=3600, default=30, description="Sleep interval between trades")
+    prediction_days: int = Field(
+        ge=1, le=365, default=30, description="Prediction horizon in days")
+    sleep_interval: int = Field(
+        ge=5, le=3600, default=30, description="Sleep interval between trades")
 
     # Benchmark and reference
-    benchmark_tickers: List[str] = Field(default_factory=lambda: ["^NSEI"], description="Benchmark tickers")
+    benchmark_tickers: List[str] = Field(
+        default_factory=lambda: ["^NSEI"], description="Benchmark tickers")
 
     # API credentials (optional for paper trading)
-    dhan_client_id: Optional[str] = Field(default=None, description="Dhan API client ID")
-    dhan_access_token: Optional[str] = Field(default=None, description="Dhan API access token")
+    dhan_client_id: Optional[str] = Field(
+        default=None, description="Dhan API client ID")
+    dhan_access_token: Optional[str] = Field(
+        default=None, description="Dhan API access token")
 
     # Advanced settings
-    drawdown_limit_pct: float = Field(ge=0, le=0.5, default=0.20, description="Maximum drawdown limit")
-    max_concurrent_trades: int = Field(ge=1, le=50, default=5, description="Maximum concurrent trades")
+    drawdown_limit_pct: float = Field(
+        ge=0, le=0.5, default=0.20, description="Maximum drawdown limit")
+    max_concurrent_trades: int = Field(
+        ge=1, le=50, default=5, description="Maximum concurrent trades")
+
+    # Short-selling settings (for intraday)
+    enable_shortsell: bool = Field(
+        default=False, description="Enable short-selling for intraday trades")
+    short_stop_loss_pct: float = Field(
+        ge=0, le=1, default=0.05, description="Short-sell stop loss percentage (above entry)")
+    short_target_profit_pct: float = Field(
+        ge=0, le=1, default=0.10, description="Short-sell target profit percentage (below entry)")
+    min_short_signals: int = Field(
+        ge=1, le=10, default=2, description="Minimum bearish signals required for short-sell")
+    min_short_confidence: float = Field(
+        ge=0, le=1, default=0.55, description="Minimum confidence threshold for short-sell")
+    enable_intraday_time_decay: bool = Field(
+        default=True, description="Enable time-based position reduction for intraday shorts")
+    force_exit_last_hour: bool = Field(
+        default=False, description="Force exit all short positions in last hour")
+    minutes_before_mandatory_exit: int = Field(
+        ge=1, le=60, default=15, description="Minutes before market close for mandatory short exit")
 
     class Config:
         """Pydantic configuration"""
@@ -168,7 +212,7 @@ class ConfigValidator:
 
     @staticmethod
     def validate_and_merge_configs(base_config: Dict[str, Any],
-                                 override_config: Dict[str, Any]) -> Dict[str, Any]:
+                                   override_config: Dict[str, Any]) -> Dict[str, Any]:
         """
         Validate and merge two configurations
 
@@ -207,13 +251,15 @@ class ConfigValidator:
             required_vars = ['DHAN_CLIENT_ID', 'DHAN_ACCESS_TOKEN']
             for var in required_vars:
                 if not os.getenv(var):
-                    issues.append(f"Missing required environment variable: {var}")
+                    issues.append(
+                        f"Missing required environment variable: {var}")
 
         # Check for optional but recommended variables
         recommended_vars = ['LOG_LEVEL', 'DATA_SERVICE_URL']
         for var in recommended_vars:
             if not os.getenv(var):
-                logger.warning(f"Recommended environment variable not set: {var}")
+                logger.warning(
+                    f"Recommended environment variable not set: {var}")
 
         return issues
 
@@ -237,7 +283,8 @@ def load_and_validate_config(mode: str = "paper") -> Dict[str, Any]:
 
         # Merge and validate
         if raw_config:
-            validated_config = ConfigValidator.validate_and_merge_configs(default_config, raw_config)
+            validated_config = ConfigValidator.validate_and_merge_configs(
+                default_config, raw_config)
         else:
             validated_config = default_config
 

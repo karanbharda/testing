@@ -156,7 +156,7 @@ class DhanSyncService:
             # Only update cash if it's a valid, non-zero amount
             # This prevents resetting balance to 0 when API fails
             effective_cash = cash_amount if cash_amount > 0 else None
-            
+
             if effective_cash is not None:
                 cursor.execute("""
                     UPDATE portfolios 
@@ -174,19 +174,34 @@ class DhanSyncService:
             if cursor.rowcount == 0:
                 # Insert new live portfolio if it doesn't exist
                 # Only use cash_amount if it's valid and non-zero, otherwise use default
-                effective_cash = cash_amount if cash_amount > 0 else 50000.0  # Default starting balance
-                effective_starting_balance = cash_amount if cash_amount > 0 else 50000.0  # Default starting balance
+                # Default starting balance
+                effective_cash = cash_amount if cash_amount > 0 else 50000.0
+                # Default starting balance
+                effective_starting_balance = cash_amount if cash_amount > 0 else 50000.0
                 cursor.execute("""
                     INSERT INTO portfolios (mode, cash, starting_balance, realized_pnl, unrealized_pnl, last_updated)
                     VALUES ('live', ?, ?, 0.0, 0.0, ?)
                 """, (effective_cash, effective_starting_balance, datetime.now().isoformat()))
                 if cash_amount <= 0:
-                    logger.info(f"Created new live portfolio with default cash (API returned invalid balance: Rs.{cash_amount:.2f})")
+                    logger.info(
+                        f"Created new live portfolio with default cash (API returned invalid balance: Rs.{cash_amount:.2f})")
                 else:
-                    logger.info(f"Created new live portfolio with cash from Dhan: Rs.{effective_cash:.2f}")
+                    logger.info(
+                        f"Created new live portfolio with cash from Dhan: Rs.{effective_cash:.2f}")
 
             conn.commit()
             conn.close()
+            
+            # Refresh portfolio manager's in-memory holdings dict if available
+            try:
+                from portfolio_manager import get_portfolio_manager
+                pm = get_portfolio_manager()
+                if pm and pm.current_portfolio and pm.current_portfolio.mode == 'live':
+                    pm.refresh_holdings_from_database()
+                    logger.debug("Refreshed portfolio manager holdings after Dhan sync")
+            except Exception as refresh_error:
+                logger.debug(f"Could not refresh portfolio manager: {refresh_error}")
+            
             return True
 
         except Exception as e:
@@ -202,12 +217,15 @@ class DhanSyncService:
                 symbol = holding.get("tradingSymbol", "")
                 quantity = int(holding.get("totalQty", 0))
                 avg_price = float(holding.get("avgCostPrice", 0))
+                # Use lastTradedPrice if available (Dhan API field name)
+                last_price = float(holding.get("lastTradedPrice", holding.get("ltp", avg_price)))
 
                 if quantity > 0:
                     holdings_dict[symbol] = {
                         "qty": quantity,
                         "avg_price": avg_price,
-                        "last_price": avg_price
+                        "last_price": last_price,
+                        "currentPrice": last_price  # Add currentPrice for frontend compatibility
                     }
 
             # Calculate total holdings value
@@ -223,7 +241,8 @@ class DhanSyncService:
             # Update portfolio_india_live.json
             # Only use cash_amount if it's valid and non-zero, otherwise keep existing cash
             effective_cash = cash_amount if cash_amount > 0 else self.last_known_balance
-            effective_starting_balance = max(cash_amount, self.last_known_balance) if cash_amount > 0 else self.last_known_balance
+            effective_starting_balance = max(
+                cash_amount, self.last_known_balance) if cash_amount > 0 else self.last_known_balance
             portfolio_data = {
                 "cash": effective_cash,
                 "holdings": holdings_dict,
@@ -241,8 +260,10 @@ class DhanSyncService:
             # Update live_portfolio.json
             # Only use cash_amount if it's valid and non-zero, otherwise keep existing cash
             effective_cash = cash_amount if cash_amount > 0 else self.last_known_balance
-            effective_total_value = (cash_amount + total_holdings_value) if cash_amount > 0 else (self.last_known_balance + total_holdings_value)
-            effective_starting_balance = max(cash_amount, self.last_known_balance) if cash_amount > 0 else self.last_known_balance
+            effective_total_value = (cash_amount + total_holdings_value) if cash_amount > 0 else (
+                self.last_known_balance + total_holdings_value)
+            effective_starting_balance = max(
+                cash_amount, self.last_known_balance) if cash_amount > 0 else self.last_known_balance
             live_portfolio_data = {
                 "cash": effective_cash,
                 "total_value": effective_total_value,
@@ -274,8 +295,9 @@ class DhanSyncService:
                 try:
                     live_executor.check_and_update_orders()
                 except Exception as order_check_error:
-                    logger.warning(f"Failed to check pending orders: {order_check_error}")
-            
+                    logger.warning(
+                        f"Failed to check pending orders: {order_check_error}")
+
             # Get data from Dhan
             funds_data = self.get_dhan_funds()
             holdings_data = self.get_dhan_holdings()
@@ -293,8 +315,10 @@ class DhanSyncService:
                 logger.debug(
                     f"Dhan funds data keys: {list(funds_data.keys()) if isinstance(funds_data, dict) else 'Not a dict'}")
 
-                # Common keys returned by Dhan endpoints (with more comprehensive list)
+                # Common keys returned by Dhan endpoints (with priority for correct balance)
+                # CRITICAL: Check 'availabelBalance' FIRST - it has the correct value despite the typo
                 possible_keys = [
+                    'availabelBalance',  # Typo in Dhan API but has correct balance!
                     'availableBalance', 'availablebalance', 'available_balance',
                     'sodLimit', 'sodlimit', 'sod_limit',
                     'netBalance', 'netbalance', 'net_balance',

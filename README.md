@@ -98,6 +98,24 @@ project/
 - **Query Understanding**: Natural language processing of trading-related queries
 - **Document Analysis**: Processing of SEC filings, economic reports, and research papers
 
+#### Intraday Short-Selling System ✨ NEW
+- **Reverse Logic Architecture**: Professional short-selling (sell high → buy low)
+- **6 Signal Categories**: Technical, Momentum, Sentiment, ML, Market, Value
+- **Dynamic Risk Management**: Automated stop-losses, profit targets, position sizing
+- **Intraday Focus**: Time-based position management, mandatory square-off before close
+- **Industry-Level**: Production-ready with comprehensive audit trail
+- **Configuration Presets**: Conservative, Balanced, Aggressive setups
+- **See Documentation**: `backend/core/SHORTSELL_SUMMARY.md` for complete details
+
+#### Auto-Detection Trading System 🎯 NEW
+- **Automatic Direction Selection**: System automatically chooses LONG vs SHORT based on market conditions
+- **Dual-Angle Analysis**: Evaluates both bullish and bearish scenarios simultaneously
+- **5-Factor Scoring**: Market trend, technicals, sentiment, ML predictions, market stress
+- **No Manual Configuration**: Adapts to changing markets automatically
+- **Intelligent Decision Engine**: Compares long/short bias scores, selects optimal direction
+- **Professional Framework**: Mirrors institutional trading systems
+- **See Documentation**: `backend/core/AUTO_DETECTION_TRADING.md` for complete guide
+
 #### Retrieval-Augmented Generation (RAG)
 - **Vector Database**: Efficient storage and retrieval of financial knowledge
 - **Contextual Search**: Semantic search across market data and news

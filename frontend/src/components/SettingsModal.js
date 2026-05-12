@@ -142,6 +142,7 @@ const SettingsModal = ({ settings, onSave, onClose }) => {
   const [formData, setFormData] = useState({
     mode: 'paper',
     riskLevel: 'MEDIUM',
+    productType: 'CNC',  // CNC (Delivery) or INTRADAY
     maxAllocation: 25,
     stopLossPct: 5,
     targetProfitLevel: 'MEDIUM',
@@ -154,6 +155,7 @@ const SettingsModal = ({ settings, onSave, onClose }) => {
       setFormData({
         mode: settings.mode || 'paper',
         riskLevel: settings.riskLevel || 'MEDIUM',
+        productType: settings.productType || 'CNC',  // Load product type from settings
         // Convert decimal to percentage - backend sends max_capital_per_trade and stop_loss_pct
         maxAllocation: settings.max_capital_per_trade
           ? (settings.max_capital_per_trade * 100)
@@ -171,18 +173,14 @@ const SettingsModal = ({ settings, onSave, onClose }) => {
 
   const handleInputChange = (field, value) => {
     setFormData(prev => {
-      const newData = {
-        ...prev,
-        [field]: value
-      };
+      const newData = { ...prev };
 
-      // Auto-update stop loss and allocation based on risk level
+      // Handle risk level changes
       if (field === 'riskLevel') {
-        if (value === 'CUSTOM') {
-          // When Custom is selected, clear the fields so user can input their own values
-          newData.stopLossPct = '';
-          newData.maxAllocation = '';
-        } else {
+        newData.riskLevel = value;
+
+        // Only auto-update if NOT switching TO CUSTOM
+        if (value !== 'CUSTOM') {
           // For predefined risk levels, set the values
           const riskSettings = {
             'LOW': { stopLoss: 3, allocation: 15 },
@@ -195,14 +193,14 @@ const SettingsModal = ({ settings, onSave, onClose }) => {
             newData.maxAllocation = riskSettings[value].allocation;
           }
         }
+        // When switching to CUSTOM, keep current values (don't clear them)
       }
+      // Handle target profit level changes
+      else if (field === 'targetProfitLevel' || field === 'targetPriceLevel') {
+        newData.targetPriceLevel = value;
 
-      // Auto-update target profit based on target profit level
-      if (field === 'targetProfitLevel') {
-        if (value === 'CUSTOM') {
-          // When Custom is selected, clear the field so user can input their own value
-          newData.targetProfitPct = '';
-        } else {
+        // Only auto-update if NOT switching TO CUSTOM
+        if (value !== 'CUSTOM') {
           // For predefined target profit levels, set the values
           const targetSettings = {
             'LOW': 8,
@@ -211,9 +209,14 @@ const SettingsModal = ({ settings, onSave, onClose }) => {
           };
 
           if (targetSettings[value]) {
-            newData.targetProfitPct = targetSettings[value];
+            newData.targetPricePct = targetSettings[value];
           }
         }
+        // When switching to CUSTOM, keep current value (don't clear it)
+      }
+      // Handle other field changes
+      else {
+        newData[field] = value;
       }
 
       console.log('Risk Level:', newData.riskLevel, 'Is Custom:', newData.riskLevel === 'CUSTOM');
@@ -232,36 +235,54 @@ const SettingsModal = ({ settings, onSave, onClose }) => {
       // Validate that we have values for custom mode
       if (formData.riskLevel === 'CUSTOM') {
         if (!formData.maxAllocation || !formData.stopLossPct || maxAllocationNum <= 0 || stopLossPctNum <= 0) {
-          alert('Please enter valid values for both Max Allocation (1-100) and Stop Loss Percentage (1-20) when using Custom risk level.');
+          alert('Please enter valid values for both Max Allocation (greater than 0) and Stop Loss Percentage (greater than 0) when using Custom risk level.');
           setLoading(false);
           return;
         }
 
-        // Validate ranges
-        if (maxAllocationNum < 1 || maxAllocationNum > 100) {
-          alert('Max Allocation must be between 1 and 100.');
+        // Validate ranges - allow any positive value
+        if (maxAllocationNum <= 0) {
+          alert('Max Allocation must be greater than 0.');
           setLoading(false);
           return;
         }
 
-        if (stopLossPctNum < 1 || stopLossPctNum > 20) {
-          alert('Stop Loss Percentage must be between 1 and 20.');
+        if (maxAllocationNum > 100) {
+          alert('Max Allocation should not exceed 100%.');
+          setLoading(false);
+          return;
+        }
+
+        if (stopLossPctNum <= 0) {
+          alert('Stop Loss Percentage must be greater than 0 (e.g., 0.3, 0.5, 1.0).');
+          setLoading(false);
+          return;
+        }
+
+        if (stopLossPctNum > 100) {
+          alert('Stop Loss Percentage should not exceed 100%.');
           setLoading(false);
           return;
         }
       }
 
       // Validate target profit for custom mode
-      if (formData.targetProfitLevel === 'CUSTOM') {
-        if (!formData.targetProfitPct || targetPricePctNum <= 0) {
-          alert('Please enter a valid Target Profit Percentage (1-50) when using Custom target profit level.');
+      if (formData.targetPriceLevel === 'CUSTOM') {
+        if (!formData.targetPricePct && formData.targetPricePct !== 0) {
+          alert('Please enter a valid Target Profit Percentage (e.g., 0.3, 0.5, 1.0, 5).');
           setLoading(false);
           return;
         }
 
-        // Validate range
-        if (targetPricePctNum < 1 || targetPricePctNum > 50) {
-          alert('Target Profit Percentage must be between 1 and 50.');
+        if (targetPricePctNum <= 0) {
+          alert('Target Profit Percentage must be greater than 0.');
+          setLoading(false);
+          return;
+        }
+
+        // Allow any positive value up to 100%
+        if (targetPricePctNum > 100) {
+          alert('Target Profit Percentage should not exceed 100%.');
           setLoading(false);
           return;
         }
@@ -275,6 +296,7 @@ const SettingsModal = ({ settings, onSave, onClose }) => {
       const settingsToSave = {
         mode: formData.mode,
         riskLevel: formData.riskLevel,
+        productType: formData.productType,  // Include product type in saved settings
         stop_loss_pct: stopLossPct / 100, // Convert percentage to decimal
         max_capital_per_trade: maxAllocation / 100, // Convert percentage to decimal
         target_profit_level: formData.targetProfitLevel,
@@ -318,6 +340,21 @@ const SettingsModal = ({ settings, onSave, onClose }) => {
               <option value="paper">Paper Trading</option>
               <option value="live">Live Trading</option>
             </select>
+          </SettingGroup>
+
+          <SettingGroup>
+            <label>Product Type:</label>
+            <select
+              value={formData.productType}
+              onChange={(e) => handleInputChange('productType', e.target.value)}
+              disabled={loading}
+            >
+              <option value="CNC">CNC (Delivery) - Carry positions to next day</option>
+              <option value="INTRADAY">Intraday (MIS) - Square off same day</option>
+            </select>
+            <small style={{ color: '#6c757d', fontSize: '0.85rem', marginTop: '5px', display: 'block' }}>
+              CNC: Positions carried forward overnight | Intraday: Auto square-off at 3:15 PM
+            </small>
           </SettingGroup>
 
           <SettingGroup>
@@ -371,11 +408,11 @@ const SettingsModal = ({ settings, onSave, onClose }) => {
             <label>Stop Loss Percentage (%):</label>
             <input
               type="number"
-              min="1"
-              max="20"
-              step="0.1"
+              min="0.01"
+              max="100"
+              step="0.01"
               value={formData.stopLossPct}
-              placeholder={formData.riskLevel === 'CUSTOM' ? 'Enter percentage (1-20)' : ''}
+              placeholder={formData.riskLevel === 'CUSTOM' ? 'Enter percentage (e.g., 0.5, 1.5, 5)' : ''}
               onChange={(e) => {
                 const value = e.target.value;
                 console.log('Stop Loss input changed:', value, 'Risk Level:', formData.riskLevel);
@@ -395,7 +432,7 @@ const SettingsModal = ({ settings, onSave, onClose }) => {
             )}
             {formData.riskLevel === 'CUSTOM' && (
               <small style={{ color: '#e74c3c', fontSize: '0.85rem', marginTop: '5px', display: 'block' }}>
-                ✓ Custom mode: You can edit this value
+                ✓ Custom mode: You can edit this value (e.g., 0.5, 0.3, 1.5)
               </small>
             )}
           </SettingGroup>
@@ -418,15 +455,14 @@ const SettingsModal = ({ settings, onSave, onClose }) => {
             <label>Target Price Percentage (%):</label>
             <input
               type="number"
-              min="1"
-              max="50"
-              step="0.1"
-              value={formData.targetPricePct}
-              placeholder={formData.targetPriceLevel === 'CUSTOM' ? 'Enter percentage (1-50)' : ''}
+              min="0.01"
+              max="100"
+              step="0.01"
+              value={formData.targetPricePct || ''}
+              placeholder={formData.targetPriceLevel === 'CUSTOM' ? 'Enter percentage (e.g., 0.3, 1.5, 5)' : ''}
               onChange={(e) => {
                 const value = e.target.value;
                 console.log('Target Price input changed:', value, 'Level:', formData.targetPriceLevel);
-                // Always allow the change, let the input handle validation
                 handleInputChange('targetPricePct', value);
               }}
               disabled={loading || formData.targetPriceLevel !== 'CUSTOM'}
@@ -443,7 +479,7 @@ const SettingsModal = ({ settings, onSave, onClose }) => {
             )}
             {formData.targetPriceLevel === 'CUSTOM' && (
               <small style={{ color: '#e74c3c', fontSize: '0.85rem', marginTop: '5px', display: 'block' }}>
-                ✓ Custom mode: You can edit this value
+                ✓ Custom mode: You can edit this value (e.g., 0.3, 0.4, 1.5)
               </small>
             )}
           </SettingGroup>

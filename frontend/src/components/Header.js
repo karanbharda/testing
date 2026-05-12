@@ -221,10 +221,10 @@ const Header = ({ botData, activeTab, onTabChange, onOpenSettings, liveStatus })
           <CycleCompleteIndicator $active={botData.cycleComplete && !botData.isRunning}>
             <i className={`fas ${botData.cycleComplete && !botData.isRunning ? 'fa-check-circle' : 'fa-clock'}`}></i>
             <span>
-              {botData.cycleComplete && !botData.isRunning 
-                ? 'Cycle Complete ✓' 
-                : botData.isRunning 
-                  ? 'Running...' 
+              {botData.cycleComplete && !botData.isRunning
+                ? 'Cycle Complete ✓'
+                : botData.isRunning
+                  ? 'Running...'
                   : 'Ready to Start'}
             </span>
           </CycleCompleteIndicator>

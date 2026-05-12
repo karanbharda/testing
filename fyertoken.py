@@ -2,8 +2,8 @@
 from fyers_apiv3 import fyersModel
 
 # Replace these values with your actual API credentials
-client_id = "9SUZA2X41H-100"
-secret_key = "VWUJ20PJSG"
+client_id = "ADDZCSY6QW-200"
+secret_key = "TjhqtLvLBPGZP436"
 redirect_uri = "https://www.google.com/"
 response_type = "code"  
 state = "sample_state"

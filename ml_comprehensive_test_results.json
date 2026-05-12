@@ -1,0 +1,229 @@
+{
+  "timestamp": "2026-03-31T15:19:08.233116",
+  "categories": {
+    "Technical Indicators": [
+      {
+        "test_name": "SMA Calculation",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:08.241307",
+        "details": {
+          "sma_20_last": 94.32664419605216,
+          "sma_50_last": 92.01410557153628,
+          "sma_200_last": 92.08339039071375
+        }
+      },
+      {
+        "test_name": "EMA Calculation",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:08.241877",
+        "details": {
+          "ema_12_last": 93.31540795699853,
+          "ema_26_last": 93.29539933031546
+        }
+      },
+      {
+        "test_name": "RSI Calculation",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:08.244147",
+        "details": {
+          "rsi_last": 41.67854401795272,
+          "rsi_mean": 46.24788236452525
+        }
+      },
+      {
+        "test_name": "MACD Calculation",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:08.244859",
+        "details": {
+          "macd_last": 0.020008626683065245,
+          "signal_last": 0.4501024790924948,
+          "histogram_last": -0.43009385240942954
+        }
+      },
+      {
+        "test_name": "Bollinger Bands",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:08.245495",
+        "details": {
+          "upper_last": 96.9634394749232,
+          "middle_last": 94.32664419605216,
+          "lower_last": 91.68984891718111
+        }
+      },
+      {
+        "test_name": "ADX Calculation",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:08.248365",
+        "details": {
+          "adx_last": 9.283528925793467
+        }
+      },
+      {
+        "test_name": "Stochastic Oscillator",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:08.249063",
+        "details": {
+          "stoch_k_last": 3.5153092746458037
+        }
+      }
+    ],
+    "ML Interface": [
+      {
+        "test_name": "Initialization",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:13.774198",
+        "details": {}
+      },
+      {
+        "test_name": "Feature Engineering",
+        "success": false,
+        "timestamp": "2026-03-31T15:19:13.774947",
+        "details": {
+          "error": "'AdvancedFeatureEngineer' object is not callable"
+        }
+      },
+      {
+        "test_name": "Ensemble Analysis",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:13.775230",
+        "details": {
+          "success": true,
+          "recommendation": "HOLD",
+          "confidence": 0.0
+        }
+      }
+    ],
+    "RL Agent": [
+      {
+        "test_name": "Initialization",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:13.777086",
+        "details": {
+          "device": "cpu"
+        }
+      },
+      {
+        "test_name": "RL Analysis",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:13.778348",
+        "details": {
+          "success": true,
+          "recommendation": "BUY",
+          "confidence": 0.3824918568134308,
+          "buy_score": 0.3824918568134308,
+          "sell_score": 0.2687520384788513
+        }
+      },
+      {
+        "test_name": "Model Architecture",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:13.778676",
+        "details": {
+          "total_parameters": 5059,
+          "trainable_parameters": 5059
+        }
+      }
+    ],
+    "NLP & Sentiment": [
+      {
+        "test_name": "VADER Sentiment",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:13.797385",
+        "details": {
+          "compound": 0.8481,
+          "positive": 0.648,
+          "neutral": 0.352,
+          "negative": 0.0
+        }
+      },
+      {
+        "test_name": "Sentence Transformers",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:23.964205",
+        "details": {
+          "embedding_dimension": 384,
+          "num_sentences": 2
+        }
+      },
+      {
+        "test_name": "Groq LLM Integration",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:25.398004",
+        "details": {
+          "api_key_configured": true,
+          "client_initialized": true
+        }
+      }
+    ],
+    "Deep Learning": [
+      {
+        "test_name": "PyTorch Import",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:25.400644",
+        "details": {
+          "version": "2.10.0+cpu",
+          "cuda_available": false
+        }
+      },
+      {
+        "test_name": "GPU Support",
+        "success": false,
+        "timestamp": "2026-03-31T15:19:25.400902",
+        "details": {
+          "error": "CUDA not available"
+        }
+      },
+      {
+        "test_name": "LSTM Model",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:25.401889",
+        "details": {
+          "parameters": 5665
+        }
+      },
+      {
+        "test_name": "Transformer Model",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:25.406984",
+        "details": {
+          "parameters": 275041
+        }
+      },
+      {
+        "test_name": "Tensor Operations",
+        "success": true,
+        "timestamp": "2026-03-31T15:19:25.430572",
+        "details": {
+          "input_shape": [
+            32,
+            10,
+            10
+          ],
+          "output_shape": [
+            32,
+            1
+          ]
+        }
+      }
+    ],
+    "Integration Pipeline": [
+      {
+        "test_name": "Unified Trading Decision",
+        "success": false,
+        "timestamp": "2026-03-31T15:19:25.436510",
+        "details": {
+          "error": "cannot import name 'UnifiedTradingDecision' from 'core.unified_trading_decision' (C:\\Users\\Admin\\Desktop\\backup\\project\\backend\\core\\unified_trading_decision.py)"
+        }
+      },
+      {
+        "test_name": "Overall Test",
+        "success": false,
+        "timestamp": "2026-03-31T15:19:25.437000",
+        "details": {
+          "error": "cannot access local variable 'ProfessionalBuyIntegration' where it is not associated with a value"
+        }
+      }
+    ]
+  },
+  "summary": {}
+}

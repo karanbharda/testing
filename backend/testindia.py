@@ -1,3 +1,5 @@
+from logging.handlers import RotatingFileHandler
+from utils.ticker_mapping import FyersTickerMapper
 import threading
 import queue
 import signal
@@ -10,6 +12,7 @@ import pickle
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from urllib.parse import quote
 from core.professional_buy_integration import ProfessionalBuyIntegration
+from core.trading_strategy import TradingStrategy
 from typing import Optional, List
 from ta.volatility import AverageTrueRange
 from ta.volume import VolumeWeightedAveragePrice
@@ -34,7 +37,6 @@ import requests
 import csv
 import pytz
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-import praw
 from gnews import GNews
 import pandas_market_calendars as mcal
 from sklearn.model_selection import train_test_split
@@ -130,9 +132,6 @@ logger.setLevel(logging.INFO)
 # threading removed - not used in current implementation
 
 
-from utils.ticker_mapping import FyersTickerMapper
-from logging.handlers import RotatingFileHandler
-
 # Import unified ML interface
 try:
     from ml_interface import get_ml_interface, get_unified_ml_analysis
@@ -147,7 +146,8 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        RotatingFileHandler('stock_bot_india.log', maxBytes=10*1024*1024, backupCount=5),
+        RotatingFileHandler('stock_bot_india.log',
+                            maxBytes=10*1024*1024, backupCount=5),
         logging.StreamHandler()
     ]
 )
@@ -907,12 +907,15 @@ class VirtualPortfolio:
     def __init__(self, config):
         self.starting_balance = config["starting_balance"]
         self.cash = self.starting_balance
-        self.holdings = {}  # {asset: {qty, avg_price}}
+        self.holdings = {}  # {asset: {qty, avg_price}} - Long positions
+        # {asset: {qty, avg_price}} - Short positions (intraday only)
+        self.short_positions = {}
         self.trade_log = []
         self.mode = config.get("mode", "paper")
         self.realized_pnl = 0  # P&L from completed trades
         self.unrealized_pnl = 0  # P&L from current holdings
         self.trade_callbacks = []  # Callbacks to notify when trades are executed
+        self.config = config  # Store config for product type access
 
         # Debug logging for received config
         import logging
@@ -1009,12 +1012,15 @@ class VirtualPortfolio:
             # For live mode, try to sync with Dhan API first
             if self.mode == "live" and self.api:
                 try:
-                    # dhanhq SDK uses get_fund_limits() — NOT get_funds()
-                    funds = self.api.get_fund_limits()
+                    # dhanhq SDK uses get_funds() — extract correct balance
+                    funds = self.api.get_funds()
                     if funds:
-                        # Extract available cash from Dhan fundlimit response
+                        # Extract available cash from Dhan fund response
+                        # CRITICAL: Check for typos in Dhan API response keys
                         available_cash = 0.0
-                        for key in ('availablecash', 'availableBalance', 'availabelBalance',
+
+                        # Priority order: check most accurate balance first
+                        for key in ('availabelBalance', 'availableBalance', 'availablecash',
                                     'available_balance', 'available', 'availBalance',
                                     'sodLimit', 'cash', 'netBalance', 'totalBalance'):
                             if isinstance(funds, dict) and key in funds:
@@ -1023,7 +1029,7 @@ class VirtualPortfolio:
                                         funds.get(key, 0.0) or 0.0)
                                     logger.debug(
                                         f"Found Dhan balance in key '{key}': Rs.{available_cash:.2f}")
-                                    break
+                                    break  # Use first valid balance found
                                 except (ValueError, TypeError):
                                     continue
 
@@ -1141,8 +1147,15 @@ class VirtualPortfolio:
             except Exception as e:
                 logger.error(f"Error in trade callback: {e}")
 
-    def buy(self, asset, qty, price):
-        """Execute a buy order in live or paper trading mode."""
+    def buy(self, asset, qty, price, product_type=None):
+        """Execute a buy order in live or paper trading mode.
+
+        Args:
+            asset: Stock ticker symbol
+            qty: Quantity to buy
+            price: Current market price
+            product_type: 'CNC' for delivery or 'MIS' for intraday (optional)
+        """
         if qty <= 0:
             logger.warning(f"Invalid buy quantity: {qty} for {asset}")
             return False
@@ -1154,6 +1167,10 @@ class VirtualPortfolio:
             return False
 
         try:
+            # Determine product type from parameter or config
+            dhan_product_type = product_type or self.config.get(
+                'productType', 'CNC')
+
             # Only place actual order in live mode
             if self.mode == "live" and self.api:
                 order_result = self.api.place_order(
@@ -1163,12 +1180,14 @@ class VirtualPortfolio:
                     order_type="MARKET",
                     quantity=qty,
                     price=0,  # Market order uses 0 for price
+                    productType=dhan_product_type,  # ✅ Pass product type
                     validity="DAY"
                 )
                 logger.info(f"Live order placed: {order_result}")
+                logger.info(f"Product Type: {dhan_product_type}")
             else:
                 logger.info(
-                    f"Paper trade executed: BUY {qty} {asset} at Rs.{price}")
+                    f"Paper trade executed: BUY {qty} {asset} at Rs.{price} ({dhan_product_type})")
 
             # Update portfolio regardless of mode
             self.cash -= cost
@@ -1188,6 +1207,7 @@ class VirtualPortfolio:
                 "action": "buy",
                 "qty": qty,
                 "price": price,
+                "product_type": dhan_product_type,  # Track product type
                 "mode": self.mode,
                 "timestamp": str(datetime.now())
             }
@@ -1207,8 +1227,16 @@ class VirtualPortfolio:
             logger.error(f"Error executing buy order for {asset}: {e}")
             return False
 
-    def sell(self, asset, qty, price):
-        """Execute a sell order in live or paper trading mode."""
+    def sell(self, asset, qty, price, product_type=None, is_short_sell=False):
+        """Execute a sell order in live or paper trading mode.
+
+        Args:
+            asset: Stock ticker symbol
+            qty: Quantity to sell
+            price: Current market price
+            product_type: 'CNC' for delivery or 'MIS' for intraday (optional)
+            is_short_sell: True if this is a short sell (sell first, buy later)
+        """
         # Enforce global sell disable flag
         enable_sell = str(os.getenv("ENABLE_SELL", "true")
                           ).lower() not in ("false", "0", "no", "off")
@@ -1221,12 +1249,18 @@ class VirtualPortfolio:
             logger.warning(f"Invalid sell quantity: {qty} for {asset}")
             return False
 
-        if asset not in self.holdings or self.holdings[asset]["qty"] < qty:
-            logger.warning(
-                f"Insufficient holdings for sell order: {asset}, qty: {qty}")
-            return False
+        # For normal sell, check holdings. For short sell, this check is bypassed
+        if not is_short_sell:
+            if asset not in self.holdings or self.holdings[asset]["qty"] < qty:
+                logger.warning(
+                    f"Insufficient holdings for sell order: {asset}, qty: {qty}")
+                return False
 
         try:
+            # Determine product type from parameter or config
+            dhan_product_type = product_type or self.config.get(
+                'productType', 'CNC')
+
             # Only place actual order in live mode
             if self.mode == "live" and self.api:
                 order_result = self.api.place_order(
@@ -1236,36 +1270,61 @@ class VirtualPortfolio:
                     order_type="MARKET",
                     quantity=qty,
                     price=0,  # Market order uses 0 for price
+                    productType=dhan_product_type,  # ✅ Pass product type
                     validity="DAY"
                 )
                 logger.info(f"Live order placed: {order_result}")
+                logger.info(f"Product Type: {dhan_product_type}")
+                if is_short_sell:
+                    logger.info(f"⚠️ SHORT SELL EXECUTED: {qty} {asset}")
             else:
-                logger.info(
-                    f"Paper trade executed: SELL {qty} {asset} at Rs.{price}")
+                if is_short_sell:
+                    logger.info(
+                        f"Paper SHORT SELL executed: SELL {qty} {asset} at Rs.{price} ({dhan_product_type})")
+                else:
+                    logger.info(
+                        f"Paper trade executed: SELL {qty} {asset} at Rs.{price}")
 
             # Update portfolio regardless of mode
             revenue = qty * price
             self.cash += revenue
 
-            # Calculate realized P&L for this trade
-            avg_price = self.holdings[asset]["avg_price"]
-            realized_pnl_for_trade = (price - avg_price) * qty
-            self.realized_pnl += realized_pnl_for_trade
-
-            current_qty = self.holdings[asset]["qty"]
-            if current_qty == qty:
-                del self.holdings[asset]
+            # Handle short sell vs normal sell
+            if is_short_sell:
+                # For short sell, create negative holdings
+                logger.info(f"Created short position: {qty} {asset}")
+                if asset in self.short_positions:
+                    self.short_positions[asset]['qty'] += qty
+                    self.short_positions[asset]['avg_price'] = (
+                        (self.short_positions[asset]['avg_price'] * (self.short_positions[asset]['qty'] - qty)) +
+                        (price * qty)
+                    ) / self.short_positions[asset]['qty']
+                else:
+                    self.short_positions[asset] = {
+                        'qty': qty, 'avg_price': price}
             else:
-                self.holdings[asset]["qty"] -= qty
+                # Normal sell from existing holdings
+                # Calculate realized P&L for this trade
+                avg_price = self.holdings[asset]["avg_price"]
+                realized_pnl_for_trade = (price - avg_price) * qty
+                self.realized_pnl += realized_pnl_for_trade
+
+                current_qty = self.holdings[asset]["qty"]
+                if current_qty == qty:
+                    del self.holdings[asset]
+                else:
+                    self.holdings[asset]["qty"] -= qty
 
             trade_data = {
                 "asset": asset,
                 "action": "sell",
                 "qty": qty,
                 "price": price,
+                "product_type": dhan_product_type,  # Track product type
+                "is_short_sell": is_short_sell,  # Flag for short sell
                 "mode": self.mode,
                 "timestamp": str(datetime.now()),
-                "realized_pnl": realized_pnl_for_trade
+                "realized_pnl": realized_pnl_for_trade if not is_short_sell else 0
             }
 
             self.log_trade(trade_data)
@@ -1281,6 +1340,185 @@ class VirtualPortfolio:
 
         except Exception as e:
             logger.error(f"Error executing sell order for {asset}: {e}")
+            return False
+
+    def check_and_square_off_intraday_positions(self):
+        """Auto square-off all MIS (intraday) positions at 3:15 PM"""
+        try:
+            from datetime import time
+            import pytz
+
+            ist = pytz.timezone('Asia/Kolkata')
+            now = datetime.now(ist)
+            square_off_time = time(15, 15)  # 3:15 PM IST
+
+            # Only check on weekdays during market hours
+            if now.weekday() >= 5:  # Weekend
+                return
+
+            current_time = now.time()
+
+            # Check if it's square-off time (between 3:15 PM and 3:20 PM)
+            if current_time.hour == 15 and 15 <= current_time.minute <= 20:
+                # Check if we already squared off today
+                last_square_off_date = getattr(
+                    self, '_last_square_off_date', None)
+                if last_square_off_date == now.date():
+                    return  # Already done today
+
+                product_type = self.config.get('productType', 'CNC')
+
+                # Only auto square-off if in MIS mode
+                if product_type != 'MIS':
+                    return
+
+                logger.info("=" * 80)
+                logger.info(
+                    f"⏰ AUTO SQUARE-OFF TIME: {now.strftime('%Y-%m-%d %H:%M:%S IST')}")
+                logger.info(f"Product Type: {product_type} (Intraday)")
+                logger.info("=" * 80)
+
+                # Square off long positions
+                if self.holdings:
+                    logger.info(
+                        f"Squaring off {len(self.holdings)} LONG position(s)...")
+                    for asset, position in list(self.holdings.items()):
+                        qty = position['qty']
+                        if qty > 0:
+                            current_price = self.get_latest_price(asset)
+                            if current_price:
+                                logger.info(
+                                    f"  SELL {qty} {asset} @ Rs.{current_price:.2f} (LONG square-off)")
+                                self.sell(asset, qty, current_price,
+                                          product_type='MIS', is_short_sell=False)
+                                logger.info(
+                                    f"✅ Squared off LONG: {qty} {asset}")
+                            else:
+                                logger.warning(
+                                    f"  Could not fetch price for {asset}, skipping")
+
+                # Square off short positions
+                if self.short_positions:
+                    logger.info(
+                        f"Squaring off {len(self.short_positions)} SHORT position(s)...")
+                    for asset, position in list(self.short_positions.items()):
+                        qty = position['qty']
+                        if qty > 0:
+                            current_price = self.get_latest_price(asset)
+                            if current_price:
+                                logger.info(
+                                    f"  BUY {qty} {asset} @ Rs.{current_price:.2f} (SHORT square-off)")
+                                # For short covering, we need to buy back
+                                self.buy_to_cover_short(
+                                    asset, qty, current_price, product_type='MIS')
+                                logger.info(
+                                    f"✅ Squared off SHORT: {qty} {asset}")
+                            else:
+                                logger.warning(
+                                    f"  Could not fetch price for {asset}, skipping")
+
+                if not self.holdings and not self.short_positions:
+                    logger.info("ℹ️ No intraday positions to square off")
+
+                logger.info("=" * 80)
+
+                # Mark that we've squared off today
+                self._last_square_off_date = now.date()
+
+        except Exception as e:
+            logger.error(f"Error in auto square-off: {e}")
+
+    def buy_to_cover_short(self, asset, qty, price, product_type=None):
+        """Buy to cover short position (close short sell)
+
+        Args:
+            asset: Stock ticker symbol
+            qty: Quantity to buy
+            price: Current market price
+            product_type: 'CNC' for delivery or 'MIS' for intraday
+        """
+        if qty <= 0:
+            logger.warning(
+                f"Invalid quantity to cover short: {qty} for {asset}")
+            return False
+
+        # Check if we have a short position
+        if asset not in self.short_positions or self.short_positions[asset]['qty'] < qty:
+            logger.warning(
+                f"Insufficient short position to cover: {asset}, qty: {qty}")
+            return False
+
+        cost = qty * price
+        if cost > self.cash:
+            logger.warning(
+                f"Insufficient cash to cover short: {asset}, qty: {qty}, price: {price}")
+            return False
+
+        try:
+            dhan_product_type = product_type or self.config.get(
+                'productType', 'CNC')
+
+            # Place BUY order to cover short
+            if self.mode == "live" and self.api:
+                order_result = self.api.place_order(
+                    security_id=self.get_security_id(asset),
+                    exchange_segment="NSE_EQ",
+                    transaction_type="BUY",
+                    order_type="MARKET",
+                    quantity=qty,
+                    price=0,
+                    productType=dhan_product_type,
+                    validity="DAY"
+                )
+                logger.info(f"Live order placed (SHORT COVER): {order_result}")
+                logger.info(f"⚠️ SHORT COVER BUY EXECUTED: {qty} {asset}")
+            else:
+                logger.info(
+                    f"Paper trade executed: BUY TO COVER {qty} {asset} at Rs.{price} ({dhan_product_type})")
+
+            # Update portfolio
+            self.cash -= cost
+
+            # Calculate P&L for short trade
+            short_avg_price = self.short_positions[asset]['avg_price']
+            pnl_for_trade = (short_avg_price - price) * \
+                qty  # Profit if price dropped
+            self.realized_pnl += pnl_for_trade
+
+            logger.info(f"Short trade P&L: Rs.{pnl_for_trade:.2f} " +
+                        ("✅ PROFIT" if pnl_for_trade > 0 else "❌ LOSS"))
+
+            # Reduce or remove short position
+            current_short_qty = self.short_positions[asset]['qty']
+            if current_short_qty == qty:
+                del self.short_positions[asset]
+                logger.info(f"Short position fully closed: {asset}")
+            else:
+                self.short_positions[asset]['qty'] -= qty
+                logger.info(
+                    f"Short position partially covered: {qty}/{current_short_qty}")
+
+            trade_data = {
+                "asset": asset,
+                "action": "buy_to_cover",
+                "qty": qty,
+                "price": price,
+                "product_type": dhan_product_type,
+                "mode": self.mode,
+                "timestamp": str(datetime.now()),
+                "realized_pnl": pnl_for_trade,
+                "short_avg_price": short_avg_price
+            }
+
+            self.log_trade(trade_data)
+            self.update_unrealized_pnl()
+            self.save_portfolio()
+            self.notify_trade_callbacks(trade_data)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error covering short position for {asset}: {e}")
             return False
 
     def get_security_id(self, ticker):
@@ -1765,7 +2003,9 @@ class TradingExecutor:
                         "stop_loss": stop_loss,
                         "take_profit": take_profit,
                         "current_price": price,  # Pass current price as fallback
-                        "quantity": qty  # Pass the calculated quantity
+                        "quantity": qty,  # Pass the calculated quantity
+                        "action": action.upper(),
+                        "direction": action.upper()
                     }
 
                     if action.upper() == "BUY":
@@ -1972,7 +2212,6 @@ class PortfolioTracker:
 
 class Stock:
     COINGECKO_API = "https://api.coingecko.com/api/v3"
-    NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
     GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
     STOCKTWITS_BASE_URL = "https://api.stocktwits.com/api/2/streams/symbol"
     FMPC_API_KEY = os.getenv("FMPC_API_KEY")
@@ -1980,25 +2219,13 @@ class Stock:
     CRYPTOPANIC_API_KEY = os.getenv("CRYPTOPANIC_API_KEY")
     SANTIMENT_API_KEY = os.getenv("SANTIMENT_API_KEY")
     SANTIMENT_API = "https://api.santiment.net"
-    REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
-    REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
-    REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT")
 
-    def __init__(self, reddit_client_id=None, reddit_client_secret=None, reddit_user_agent=None, advanced_sentiment_analyzer=None):
+    def __init__(self, advanced_sentiment_analyzer=None):
         self.sentiment_analyzer = SentimentIntensityAnalyzer()
 
         # Initialize Fyers-based ticker mapper
         self.ticker_mapper = FyersTickerMapper()
         logger.info("Dynamic ticker mapper initialized")
-
-        if reddit_client_id and reddit_client_secret and reddit_user_agent:
-            self.reddit = praw.Reddit(
-                client_id=reddit_client_id,
-                client_secret=reddit_client_secret,
-                user_agent=reddit_user_agent
-            )
-        else:
-            self.reddit = None
         self.COINGECKO_API = "https://api.coingecko.com/api/v3"
         self.last_rate_fetch = None
         self.rate_cache = None
@@ -2033,9 +2260,29 @@ class Stock:
                 'neutral': ['Ensemble', 'VotingRegressor', 'StackingRegressor']
             }
         }
-        
+
         # Initialize bot running state for Stock object
         self.bot_running = False
+
+        # Initialize unified trading strategy for BUY/SHORT/SELL decisions
+        strategy_config = {
+            # MIS for intraday
+            "productType": os.getenv("PRODUCT_TYPE", "MIS"),
+            "enable_shortsell": os.getenv("ENABLE_SHORTSELL", "true").lower() in ("true", "1", "yes"),
+            "enable_professional_buy_logic": True,
+            "enable_professional_sell_logic": True,
+            "min_short_signal_strength": -0.4,
+            "min_buy_signal_strength": 0.6
+        }
+        self.trading_strategy = None
+        try:
+            self.trading_strategy = TradingStrategy(strategy_config)
+            logger.info(
+                "✅ Unified trading strategy initialized for BUY/SHORT/SELL decisions")
+        except Exception as e:
+            logger.warning(
+                f"⚠️ Failed to initialize trading strategy: {e}. Falling back to legacy mode.")
+            self.trading_strategy = None
 
     def detect_market_regime(self, price_history):
         """Compatibility wrapper: detect market regime using canonical detector.
@@ -2599,57 +2846,39 @@ class Stock:
             "positive", 0) + results.get("negative", 0) + results.get("neutral", 0)
         return total_articles >= 2  # Minimum threshold for meaningful results
 
-    def newsapi_sentiment(self, ticker):
-        """Comprehensive NewsAPI sentiment with global and Indian sources covering all market factors"""
-        def search_with_query(query):
-            try:
-                # Get simple news sources to avoid rate limits
-                selected_sources = self.get_simple_news_sources()
-                # Limit to 5 sources to avoid rate limits
-                sources_param = ",".join(selected_sources[:5])
-
-                # Focus on last 24 hours for more actionable sentiment
-                from datetime import datetime, timedelta
-                yesterday = (datetime.now() - timedelta(days=1)
-                             ).strftime('%Y-%m-%d')
-
-                # Build URL with Indian sources preference and 24-hour filter
-                url = f"https://newsapi.org/v2/everything?q={quote(query)}&sources={sources_param}&from={yesterday}&apiKey={self.NEWSAPI_KEY}&language=en&sortBy=publishedAt"
-
-                # Check URL length to avoid 400 errors (NewsAPI has ~2000 char limit)
-                if len(url) > 1800:
-                    logger.warning(
-                        f"URL too long ({len(url)} chars), using simplified query")
-                    # Use first company name only for very long queries
-                    company_names = self.get_company_names(
-                        ticker.replace('.NS', ''))
-                    if company_names:
-                        query = f'"{company_names[0]}" stock India'
-
-                # Build URL with simplified query
-                url = f"https://newsapi.org/v2/everything?q={quote(query)}&from={yesterday}&apiKey={self.NEWSAPI_KEY}&language=en&sortBy=publishedAt"
-
-                response = requests.get(url, timeout=5)
-                response.raise_for_status()
-                data = response.json()
-
-                # Process results
-                articles = data.get("articles", [])
-                sentiment = self.analyze_articles(articles)
-                return sentiment
-
-            except Exception as e:
-                logger.error(f"Error fetching NewsAPI sentiment: {e}")
-                return {"positive": 0, "negative": 0, "neutral": 0}
-
-        return self.multi_level_search(ticker, search_with_query)
-
     def analyze_articles(self, articles):
-        """Analyze sentiment of articles using advanced transformer models"""
+        """Analyze sentiment of articles using advanced transformer models with time-decay and finance keywords"""
         positive = 0
         negative = 0
         neutral = 0
         total_confidence = 0.0
+
+        # Custom finance keywords for sentiment adjustment (same as sentiment_tool.py)
+        finance_keywords = {
+            # Strong positive keywords (+0.15)
+            "record profit": 0.15, "beat expectations": 0.15, "surge": 0.15,
+            "breakthrough": 0.15, "massive growth": 0.15, "soars": 0.15,
+            "rally": 0.15, "bullish": 0.15, "outperform": 0.15,
+            "strong buy": 0.15, "upgrade": 0.15, "dividend increase": 0.15,
+
+            # Moderate positive keywords (+0.08)
+            "growth": 0.08, "profit": 0.08, "gain": 0.08,
+            "positive": 0.08, "upbeat": 0.08, "optimistic": 0.08,
+            "recovery": 0.08, "improve": 0.08, "expansion": 0.08,
+            "increase": 0.08, "rise": 0.08, "higher": 0.08,
+
+            # Strong negative keywords (-0.15)
+            "crash": -0.15, "collapse": -0.15, "plunge": -0.15,
+            "miss expectations": -0.15, "layoffs": -0.15, "bankruptcy": -0.15,
+            "fraud": -0.15, "scandal": -0.15, "bearish": -0.15,
+            "sell-off": -0.15, "downgrade": -0.15, "loss": -0.15,
+
+            # Moderate negative keywords (-0.08)
+            "decline": -0.08, "drop": -0.08, "fall": -0.08,
+            "negative": -0.08, "pessimistic": -0.08, "concern": -0.08,
+            "risk": -0.08, "warning": -0.08, "decrease": -0.08,
+            "lower": -0.08, "reduced": -0.08, "weak": -0.08
+        }
 
         for article in articles:
             try:
@@ -2658,6 +2887,40 @@ class Stock:
 
                 if not content.strip():
                     continue
+
+                # Calculate time-decay weight based on article age
+                time_decay_weight = 1.0  # Default
+                published = article.get("published")
+                if published:
+                    try:
+                        # Parse published time and calculate age in hours
+                        from datetime import datetime
+                        if isinstance(published, str):
+                            # Try common date formats
+                            for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%a, %d %b %Y %H:%M:%S"):
+                                try:
+                                    pub_time = datetime.strptime(
+                                        published, fmt)
+                                    age_hours = (
+                                        datetime.now() - pub_time).total_seconds() / 3600.0
+                                    time_decay_weight = np.exp(
+                                        -age_hours / 48.0)
+                                    time_decay_weight = float(
+                                        np.clip(time_decay_weight, 0.1, 1.0))
+                                    break
+                                except ValueError:
+                                    continue
+                    except Exception as e:
+                        logger.debug(f"Error calculating time decay: {e}")
+
+                # Apply finance keyword adjustment
+                content_lower = content.lower()
+                keyword_adjustment = 0.0
+                for keyword, weight in finance_keywords.items():
+                    if keyword in content_lower:
+                        keyword_adjustment += weight
+                keyword_adjustment = float(
+                    np.clip(keyword_adjustment, -0.3, 0.3))
 
                 # Use advanced sentiment analyzer if available
                 if self.advanced_sentiment_analyzer:
@@ -2670,14 +2933,20 @@ class Stock:
                         label = result['label'].lower()
                         confidence = result['score']
 
+                        # Apply keyword adjustment to confidence
                         if 'positive' in label:
-                            positive += 1
+                            adjusted_confidence = min(
+                                1.0, confidence + keyword_adjustment)
+                            positive += 1 * time_decay_weight
                         elif 'negative' in label:
-                            negative += 1
+                            adjusted_confidence = min(
+                                1.0, confidence - keyword_adjustment)
+                            negative += 1 * time_decay_weight
                         else:
-                            neutral += 1
+                            adjusted_confidence = confidence
+                            neutral += 1 * time_decay_weight
 
-                        total_confidence += confidence
+                        total_confidence += adjusted_confidence * time_decay_weight
 
                     except Exception as e:
                         logger.warning(
@@ -2686,31 +2955,39 @@ class Stock:
                         sentiment = self.sentiment_analyzer.polarity_scores(
                             content)
                         score = sentiment.get("compound", 0)
-                        confidence = abs(score)
 
-                        if score > 0.05:
-                            positive += 1
-                        elif score < -0.05:
-                            negative += 1
+                        # Apply keyword adjustment
+                        adjusted_score = np.clip(
+                            score + keyword_adjustment, -1.0, 1.0)
+                        confidence = abs(adjusted_score)
+
+                        if adjusted_score > 0.05:
+                            positive += 1 * time_decay_weight
+                        elif adjusted_score < -0.05:
+                            negative += 1 * time_decay_weight
                         else:
-                            neutral += 1
+                            neutral += 1 * time_decay_weight
 
-                        total_confidence += confidence
+                        total_confidence += confidence * time_decay_weight
                 else:
                     # Use VADER as fallback
                     sentiment = self.sentiment_analyzer.polarity_scores(
                         content)
                     score = sentiment.get("compound", 0)
-                    confidence = abs(score)
 
-                    if score > 0.05:
-                        positive += 1
-                    elif score < -0.05:
-                        negative += 1
+                    # Apply keyword adjustment
+                    adjusted_score = np.clip(
+                        score + keyword_adjustment, -1.0, 1.0)
+                    confidence = abs(adjusted_score)
+
+                    if adjusted_score > 0.05:
+                        positive += 1 * time_decay_weight
+                    elif adjusted_score < -0.05:
+                        negative += 1 * time_decay_weight
                     else:
-                        neutral += 1
+                        neutral += 1 * time_decay_weight
 
-                    total_confidence += confidence
+                    total_confidence += confidence * time_decay_weight
 
             except Exception as e:
                 logger.error(f"Error analyzing article: {e}")
@@ -2720,13 +2997,97 @@ class Stock:
         avg_confidence = total_confidence / max(len(articles), 1)
 
         return {
-            "positive": positive,
-            "negative": negative,
-            "neutral": neutral,
+            "positive": int(positive),
+            "negative": int(negative),
+            "neutral": int(neutral),
             "total_articles": len(articles),
             "avg_confidence": avg_confidence,
             "analyzer": "finbert" if self.advanced_sentiment_analyzer else "vader"
         }
+
+    def analyze_text_sentiment(self, text, published_time=None):
+        """
+        Analyze sentiment of a single text with FinBERT/VADER, time-decay, and finance keywords
+        Returns: compound score adjusted with time-decay and keywords
+        """
+        if not text or not text.strip():
+            return 0.0
+
+        # Custom finance keywords (same as analyze_articles)
+        finance_keywords = {
+            "record profit": 0.15, "beat expectations": 0.15, "surge": 0.15,
+            "breakthrough": 0.15, "massive growth": 0.15, "soars": 0.15,
+            "rally": 0.15, "bullish": 0.15, "outperform": 0.15,
+            "strong buy": 0.15, "upgrade": 0.15, "dividend increase": 0.15,
+            "growth": 0.08, "profit": 0.08, "gain": 0.08,
+            "positive": 0.08, "upbeat": 0.08, "optimistic": 0.08,
+            "recovery": 0.08, "improve": 0.08, "expansion": 0.08,
+            "increase": 0.08, "rise": 0.08, "higher": 0.08,
+            "crash": -0.15, "collapse": -0.15, "plunge": -0.15,
+            "miss expectations": -0.15, "layoffs": -0.15, "bankruptcy": -0.15,
+            "fraud": -0.15, "scandal": -0.15, "bearish": -0.15,
+            "sell-off": -0.15, "downgrade": -0.15, "loss": -0.15,
+            "decline": -0.08, "drop": -0.08, "fall": -0.08,
+            "negative": -0.08, "pessimistic": -0.08, "concern": -0.08,
+            "risk": -0.08, "warning": -0.08, "decrease": -0.08,
+            "lower": -0.08, "reduced": -0.08, "weak": -0.08
+        }
+
+        # Calculate time-decay weight
+        time_decay_weight = 1.0
+        if published_time:
+            try:
+                from datetime import datetime
+                if isinstance(published_time, str):
+                    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%a, %d %b %Y %H:%M:%S"):
+                        try:
+                            pub_time = datetime.strptime(published_time, fmt)
+                            age_hours = (datetime.now() -
+                                         pub_time).total_seconds() / 3600.0
+                            time_decay_weight = np.exp(-age_hours / 48.0)
+                            time_decay_weight = float(
+                                np.clip(time_decay_weight, 0.1, 1.0))
+                            break
+                        except ValueError:
+                            continue
+            except Exception as e:
+                logger.debug(f"Error calculating time decay: {e}")
+
+        # Apply finance keyword adjustment
+        text_lower = text.lower()
+        keyword_adjustment = 0.0
+        for keyword, weight in finance_keywords.items():
+            if keyword in text_lower:
+                keyword_adjustment += weight
+        keyword_adjustment = float(np.clip(keyword_adjustment, -0.3, 0.3))
+
+        # Use FinBERT if available
+        if self.advanced_sentiment_analyzer:
+            try:
+                result = self.advanced_sentiment_analyzer['pipeline'](text[:512])[
+                    0]
+                label = result['label'].lower()
+                confidence = result['score']
+
+                if 'positive' in label:
+                    score = confidence
+                elif 'negative' in label:
+                    score = -confidence
+                else:
+                    score = 0.0
+
+                # Apply adjustments
+                adjusted_score = np.clip(score + keyword_adjustment, -1.0, 1.0)
+                return adjusted_score * time_decay_weight
+
+            except Exception as e:
+                logger.debug(f"FinBERT failed, using VADER: {e}")
+
+        # Fallback to VADER
+        sentiment = self.sentiment_analyzer.polarity_scores(text)
+        score = sentiment.get("compound", 0)
+        adjusted_score = np.clip(score + keyword_adjustment, -1.0, 1.0)
+        return adjusted_score * time_decay_weight
 
     def build_multi_level_search_queries(self, ticker):
         """Build multi-level search queries for robust sentiment analysis"""
@@ -2759,9 +3120,27 @@ class Stock:
         ]
 
     def make_trading_decision(self, analysis):
-        """Make trading decision based on analysis"""
-        trade = self.trading_strategy.make_trade(analysis)
-        return trade
+        """Make trading decision based on analysis using unified strategy"""
+        if self.trading_strategy is None:
+            logger.warning("Trading strategy not initialized, returning hold")
+            return {
+                "success": False,
+                "action": "hold",
+                "message": "Trading strategy not initialized"
+            }
+
+        try:
+            trade = self.trading_strategy.make_trade(analysis)
+            return trade
+        except Exception as e:
+            logger.error(f"Error in trading strategy decision: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {
+                "success": False,
+                "action": "hold",
+                "message": f"Error in trading decision: {str(e)}"
+            }
 
     def run_analysis(self, ticker):
         """Run analysis for a given ticker and return the result."""
@@ -3034,6 +3413,9 @@ class Stock:
                 if self.portfolio.mode == "paper":
                     self.portfolio.generate_paper_pnl_summary()
 
+                # Check and auto square-off intraday positions if market is closing
+                self.check_and_square_off_intraday_positions()
+
                 time.sleep(self.config.get("sleep_interval", 300))
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
@@ -3135,62 +3517,6 @@ class Stock:
             logger.error(f"Error scraping URL with Selenium {url}: {e}")
             return None
 
-    def newsapi_sentiment(self, ticker):
-        """Comprehensive NewsAPI sentiment with global and Indian sources covering all market factors"""
-        if self._is_sentiment_rate_limited('newsapi'):
-            logger.info(
-                "Skipping NewsAPI sentiment due to rate limit cooldown")
-            return {"positive": 0, "negative": 0, "neutral": 1}
-
-        def search_with_query(query):
-            try:
-                # Get simple news sources to avoid rate limits
-                selected_sources = self.get_simple_news_sources()
-                # Limit to 5 sources to avoid rate limits
-                sources_param = ",".join(selected_sources[:5])
-
-                # Focus on last 24 hours for more actionable sentiment
-                from datetime import datetime, timedelta
-                yesterday = (datetime.now() - timedelta(days=1)
-                             ).strftime('%Y-%m-%d')
-
-                # Build URL with Indian sources preference and 24-hour filter
-                url = f"https://newsapi.org/v2/everything?q={quote(query)}&sources={sources_param}&from={yesterday}&apiKey={self.NEWSAPI_KEY}&language=en&sortBy=publishedAt"
-
-                # Check URL length to avoid 400 errors (NewsAPI has ~2000 char limit)
-                if len(url) > 1800:
-                    logger.warning(
-                        f"URL too long ({len(url)} chars), using simplified query")
-                    # Use first company name only for very long queries
-                    company_names = self.get_company_names(
-                        ticker.replace('.NS', ''))
-                    if company_names:
-                        query = f'"{company_names[0]}" stock India'
-
-                # Build URL with simplified query
-                url = f"https://newsapi.org/v2/everything?q={quote(query)}&from={yesterday}&apiKey={self.NEWSAPI_KEY}&language=en&sortBy=publishedAt"
-
-                response = requests.get(url, timeout=10)
-                response.raise_for_status()
-                data = response.json()
-
-                # Process results
-                articles = data.get("articles", [])
-                sentiment = self.analyze_articles(articles)
-                return sentiment
-
-            except Exception as e:
-                # Check if this is a rate limiting error
-                error_str = str(e).lower()
-                if 'rate limit' in error_str or 'too many requests' in error_str or response.status_code == 429:
-                    logger.warning(
-                        "Rate limiting detected for NewsAPI, setting cooldown")
-                    self._set_sentiment_rate_limit('newsapi')
-                logger.error(f"Error fetching NewsAPI sentiment: {e}")
-                return {"positive": 0, "negative": 0, "neutral": 1}
-
-        return self.multi_level_search(ticker, search_with_query)
-
     def gnews_sentiment(self, ticker):
         """Comprehensive GNews sentiment with global market factors and Indian focus"""
         if self._is_sentiment_rate_limited('gnews'):
@@ -3225,24 +3551,19 @@ class Stock:
                     title = article.get("title", "")
                     description = article.get("description", "")
                     content = f"{title} {description}"
+                    published = article.get("publishedAt")
 
                     if content.strip():
-                        sentiment = self.sentiment_analyzer.polarity_scores(
-                            content)
+                        # Use new analyze_text_sentiment with FinBERT, time-decay, and keywords
+                        compound_score = self.analyze_text_sentiment(
+                            content, published)
 
-                        # ENHANCED: Weight earnings/analyst news higher
-                        weight = 1.0
-                        earnings_keywords = ['earnings', 'quarterly', 'results', 'beat', 'miss', 'guidance',
-                                             'analyst', 'upgrade', 'downgrade', 'target', 'rating']
-                        if any(keyword in content.lower() for keyword in earnings_keywords):
-                            weight = 2.0  # Double weight for earnings/analyst news
-
-                        if sentiment["compound"] > 0.1:
-                            sentiments["positive"] += weight
-                        elif sentiment["compound"] < -0.1:
-                            sentiments["negative"] += weight
+                        if compound_score > 0.1:
+                            sentiments["positive"] += 1
+                        elif compound_score < -0.1:
+                            sentiments["negative"] += 1
                         else:
-                            sentiments["neutral"] += weight
+                            sentiments["neutral"] += 1
 
                 return sentiments
 
@@ -3277,74 +3598,7 @@ class Stock:
                 f"Error in enhanced GNews sentiment for {ticker}: {e}")
             return {"positive": 0, "negative": 0, "neutral": 1}
 
-    def reddit_sentiment(self, ticker):
-        if not self.reddit or self._is_sentiment_rate_limited('reddit'):
-            if self._is_sentiment_rate_limited('reddit'):
-                logger.info(
-                    "Skipping Reddit sentiment due to rate limit cooldown")
-            return {"positive": 0, "negative": 0, "neutral": 1}
-        try:
-            subreddit = self.reddit.subreddit("all")
-            query = f"${ticker}"
-            sentiments = {"positive": 0, "negative": 0, "neutral": 1}
-            for submission in subreddit.search(query, limit=10):
-                submission.comments.replace_more(limit=0)
-                for comment in submission.comments.list()[:20]:
-                    sentiment = self.sentiment_analyzer.polarity_scores(
-                        comment.body)
-                    if sentiment["compound"] > 0.1:
-                        sentiments["positive"] += 1
-                    elif sentiment["compound"] < -0.1:
-                        sentiments["negative"] += 1
-                    else:
-                        sentiments["neutral"] += 1
-            return sentiments
-        except Exception as e:
-            # Check if this is a rate limiting error
-            error_str = str(e).lower()
-            if 'rate limit' in error_str or 'too many requests' in error_str:
-                logger.warning(
-                    "Rate limiting detected for Reddit, setting cooldown")
-                self._set_sentiment_rate_limit('reddit')
-            logger.error(f"Error fetching Reddit sentiment: {e}")
-            return {"positive": 0, "negative": 0, "neutral": 1}
-
-    def _get_newsapi_news(self, query):
-        """Helper function to fetch news from NewsAPI as fallback"""
-        import requests
-        from urllib.parse import quote
-        from datetime import datetime, timedelta
-
-        try:
-            # Focus on last 24 hours for more actionable sentiment
-            yesterday = (datetime.now() - timedelta(days=1)
-                         ).strftime('%Y-%m-%d')
-
-            # Build URL for NewsAPI
-            url = f"https://newsapi.org/v2/everything?q={quote(query)}&from={yesterday}&apiKey={Stock.NEWSAPI_KEY}&language=en&sortBy=publishedAt&pageSize=10"
-
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-
-            # Convert NewsAPI format to match GNews format
-            articles = data.get("articles", [])
-            converted_articles = []
-
-            for article in articles:
-                converted_article = {
-                    "title": article.get("title", ""),
-                    "description": article.get("description", ""),
-                    "url": article.get("url", ""),
-                    "published date": article.get("publishedAt", ""),
-                }
-                converted_articles.append(converted_article)
-
-            return converted_articles
-
-        except Exception as e:
-            logger.error(f"Error fetching NewsAPI news: {e}")
-            return []
+    
 
     def google_news_sentiment(self, ticker):
         if self._is_sentiment_rate_limited('google_news'):
@@ -3419,23 +3673,18 @@ class Stock:
 
             for article in news[:10]:
                 description = article.get("description", "")
+                published = article.get("published")
                 if description:
-                    sentiment = self.sentiment_analyzer.polarity_scores(
-                        description)
+                    # Use new analyze_text_sentiment with FinBERT, time-decay, and keywords
+                    compound_score = self.analyze_text_sentiment(
+                        description, published)
 
-                    # ENHANCED: Weight earnings/analyst news higher
-                    weight = 1.0
-                    earnings_keywords = ['earnings', 'quarterly', 'results', 'beat', 'miss', 'guidance',
-                                         'analyst', 'upgrade', 'downgrade', 'target', 'rating']
-                    if any(keyword in description.lower() for keyword in earnings_keywords):
-                        weight = 2.0  # Double weight for earnings/analyst news
-
-                    if sentiment["compound"] > 0.1:
-                        sentiments["positive"] += weight
-                    elif sentiment["compound"] < -0.1:
-                        sentiments["negative"] += weight
+                    if compound_score > 0.1:
+                        sentiments["positive"] += 1
+                    elif compound_score < -0.1:
+                        sentiments["negative"] += 1
                     else:
-                        sentiments["neutral"] += weight
+                        sentiments["neutral"] += 1
             return sentiments
         except Exception as e:
             # Check if this is a rate limiting error
@@ -3459,22 +3708,10 @@ class Stock:
 
             # Get sentiment from all sources with enhanced coverage and error handling
             try:
-                newsapi_sentiment = self.newsapi_sentiment(ticker)
-            except Exception as e:
-                logger.warning(f"NewsAPI sentiment failed for {ticker}: {e}")
-                newsapi_sentiment = neutral_sentiment.copy()
-
-            try:
                 gnews_sentiment = self.gnews_sentiment(ticker)
             except Exception as e:
                 logger.warning(f"GNews sentiment failed for {ticker}: {e}")
                 gnews_sentiment = neutral_sentiment.copy()
-
-            try:
-                reddit_sentiment = self.reddit_sentiment(ticker)
-            except Exception as e:
-                logger.warning(f"Reddit sentiment failed for {ticker}: {e}")
-                reddit_sentiment = neutral_sentiment.copy()
 
             try:
                 google_sentiment = self.google_news_sentiment(ticker)
@@ -3538,13 +3775,11 @@ class Stock:
                 indian_news_sentiment = neutral_sentiment.copy()
 
             # ENHANCED: Dynamic weighted sentiment aggregation based on market impact
-            # Higher weights for sources with better global and financial coverage
+            # Higher weights for sources with better global and financial coverage (removed NewsAPI and Reddit)
             weights = {
-                "newsapi": 3.0,      # Highest weight - comprehensive global financial coverage
                 "gnews": 2.5,        # High weight - good global and Indian coverage
                 "google_news": 2.0,  # High weight - broad market coverage
-                "reddit": 1.2,       # Medium weight - social sentiment indicator
-                "indian_news": 2.9   # NEW: High weight for Indian news sources
+                "indian_news": 2.9   # High weight for Indian news sources
             }
 
             # Add market context weighting based on current market conditions
@@ -3554,39 +3789,33 @@ class Stock:
 
             # Calculate weighted sentiment scores
             weighted_positive = (
-                newsapi_sentiment["positive"] * weights["newsapi"] +
                 gnews_sentiment["positive"] * weights["gnews"] +
-                reddit_sentiment["positive"] * weights["reddit"] +
                 google_sentiment["positive"] * weights["google_news"] +
                 indian_news_sentiment["positive"] * weights["indian_news"]
             )
 
             weighted_negative = (
-                newsapi_sentiment["negative"] * weights["newsapi"] +
                 gnews_sentiment["negative"] * weights["gnews"] +
-                reddit_sentiment["negative"] * weights["reddit"] +
                 google_sentiment["negative"] * weights["google_news"] +
                 indian_news_sentiment["negative"] * weights["indian_news"]
             )
 
             weighted_neutral = (
-                newsapi_sentiment["neutral"] * weights["newsapi"] +
                 gnews_sentiment["neutral"] * weights["gnews"] +
-                reddit_sentiment["neutral"] * weights["reddit"] +
                 google_sentiment["neutral"] * weights["google_news"] +
                 indian_news_sentiment["neutral"] * weights["indian_news"]
             )
 
             # Traditional aggregation (for backward compatibility)
             aggregated = {
-                "positive": (newsapi_sentiment["positive"] + gnews_sentiment["positive"] +
-                             reddit_sentiment["positive"] + google_sentiment["positive"] +
+                "positive": (gnews_sentiment["positive"] +
+                             google_sentiment["positive"] +
                              indian_news_sentiment["positive"]),
-                "negative": (newsapi_sentiment["negative"] + gnews_sentiment["negative"] +
-                             reddit_sentiment["negative"] + google_sentiment["negative"] +
+                "negative": (gnews_sentiment["negative"] +
+                             google_sentiment["negative"] +
                              indian_news_sentiment["negative"]),
-                "neutral": (newsapi_sentiment["neutral"] + gnews_sentiment["neutral"] +
-                            reddit_sentiment["neutral"] + google_sentiment["neutral"] +
+                "neutral": (gnews_sentiment["neutral"] +
+                            google_sentiment["neutral"] +
                             indian_news_sentiment["neutral"])
             }
 
@@ -6219,9 +6448,6 @@ class StockTradingBot:
         self.tracker = PortfolioTracker(self.portfolio, config)
         self.reporter = PerformanceReport(self.portfolio)
         self.stock_analyzer = Stock(
-            reddit_client_id=config.get("reddit_client_id"),
-            reddit_client_secret=config.get("reddit_client_secret"),
-            reddit_user_agent=config.get("reddit_user_agent"),
             advanced_sentiment_analyzer=self.advanced_sentiment_analyzer
         )
 
@@ -6264,7 +6490,7 @@ class StockTradingBot:
             logger.error(
                 f"Failed to initialize professional sell integration: {e}")
             self.professional_sell_integration = None
-        
+
         # Initialize bot running state
         self.bot_running = False
         self.cycle_complete = False  # Track if one full watchlist cycle is completed
@@ -7009,7 +7235,9 @@ class StockTradingBot:
                 portfolio_data = {
                     "total_value": total_value,
                     "available_cash": available_cash,
-                    "holdings": self.portfolio.holdings
+                    "holdings": self.portfolio.holdings,
+                    # Pass product type for leverage calculation
+                    "product_type": self.portfolio.config.get('productType', 'CNC')
                 }
 
                 analysis_data = {
@@ -7045,8 +7273,22 @@ class StockTradingBot:
 
                 if buy_decision.get("action") == "buy":
                     buy_qty = buy_decision.get("qty", 0)
+
+                    # Calculate effective buying power with leverage
+                    product_type = self.portfolio.config.get(
+                        'productType', 'CNC')
+                    leverage = 5.0 if product_type == "MIS" else 1.0
+                    effective_buying_power = available_cash * leverage
+
                     trade_value = buy_qty * current_price
-                    if buy_qty > 0 and trade_value <= available_cash:
+
+                    logger.info(
+                        f"Intraday Leverage Check: Product={product_type}, Leverage={leverage}x")
+                    logger.info(
+                        f"Available Cash: Rs.{available_cash:.2f}, Effective Power: Rs.{effective_buying_power:.2f}")
+                    logger.info(f"Trade Value: Rs.{trade_value:.2f}")
+
+                    if buy_qty > 0 and trade_value <= effective_buying_power:
                         logger.info(
                             f"🟢 BUY SIGNAL CONFIRMED: {ticker} (Regime: {market_regime})")
                         logger.info(
@@ -9303,7 +9545,8 @@ class StockTradingBot:
                             "Trading pause expired, resuming trading...")
                     else:
                         logger.info("Trading is paused, waiting...")
-                        if not self._responsive_sleep(60):  # Wait 1 minute responsively
+                        # Wait 1 minute responsively
+                        if not self._responsive_sleep(60):
                             break
                         continue
 
@@ -9356,7 +9599,7 @@ class StockTradingBot:
                         logger.error(f"Error processing ticker {ticker}: {e}")
                         # Continue with next ticker instead of crashing
                         continue
-                    
+
                     tickers_processed += 1
 
                 # Check if bot should stop before generating report
@@ -9379,25 +9622,30 @@ class StockTradingBot:
                 # Mark cycle as complete and notify
                 self.cycle_complete = True
                 logger.info("=" * 60)
-                logger.info(f"✓ ONE FULL CYCLE COMPLETED - Processed {tickers_processed}/{total_tickers} tickers")
-                logger.info("Bot will now stop. Click 'Start Bot' to run another cycle.")
+                logger.info(
+                    f"✓ ONE FULL CYCLE COMPLETED - Processed {tickers_processed}/{total_tickers} tickers")
+                logger.info(
+                    "Bot will now stop. Click 'Start Bot' to run another cycle.")
                 logger.info("=" * 60)
 
                 # Stop the bot after completing one full cycle
                 self.bot_running = False
-                
+
                 # Call the parent stop method if available to update WebTradingBot state
                 if hasattr(self, '_parent_stop_callback'):
                     try:
-                        logger.info("[CYCLE COMPLETE] Calling parent stop callback to update is_running flag")
+                        logger.info(
+                            "[CYCLE COMPLETE] Calling parent stop callback to update is_running flag")
                         self._parent_stop_callback()
-                        logger.info("[CYCLE COMPLETE] Parent stop callback executed successfully")
+                        logger.info(
+                            "[CYCLE COMPLETE] Parent stop callback executed successfully")
                     except Exception as e:
-                        logger.warning(f"[CYCLE COMPLETE] Error calling parent stop callback: {e}")
-                
+                        logger.warning(
+                            f"[CYCLE COMPLETE] Error calling parent stop callback: {e}")
+
                 # No sleep needed - bot will stop now
                 break
-                
+
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
                 # Add longer delay on error to prevent excessive logging

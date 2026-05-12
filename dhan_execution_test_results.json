@@ -1,0 +1,120 @@
+{
+  "timestamp": "2026-03-31T15:12:45.886327",
+  "client_id": "1107954503",
+  "tests": [
+    {
+      "test_name": "CNC - API Connection",
+      "success": true,
+      "timestamp": "2026-03-31T15:12:46.285316",
+      "details": {
+        "holdings_count": 7,
+        "mode": "CNC"
+      }
+    },
+    {
+      "test_name": "CNC - Portfolio Fetch",
+      "success": false,
+      "timestamp": "2026-03-31T15:12:46.786679",
+      "details": {
+        "error": "'DhanAPIClient' object has no attribute 'get_portfolio'"
+      }
+    },
+    {
+      "test_name": "CNC - Security ID Lookup",
+      "success": true,
+      "timestamp": "2026-03-31T15:12:47.288947",
+      "details": {
+        "symbol": "RELIANCE",
+        "security_id": "13188",
+        "mode": "CNC"
+      }
+    },
+    {
+      "test_name": "CNC - Order Validation",
+      "success": true,
+      "timestamp": "2026-03-31T15:12:48.147150",
+      "details": {
+        "validation_passed": true,
+        "mode": "CNC"
+      }
+    },
+    {
+      "test_name": "CNC - Product Type Configuration",
+      "success": true,
+      "timestamp": "2026-03-31T15:12:48.647608",
+      "details": {
+        "expected": "CNC",
+        "actual": "CNC",
+        "mapped_to": "CNC",
+        "mode": "CNC"
+      }
+    },
+    {
+      "test_name": "CNC - Market Data Fetch",
+      "success": true,
+      "timestamp": "2026-03-31T15:12:50.458241",
+      "details": {
+        "symbol": "RELIANCE",
+        "quote_available": false,
+        "mode": "CNC"
+      }
+    },
+    {
+      "test_name": "INTRADAY - API Connection",
+      "success": true,
+      "timestamp": "2026-03-31T15:12:51.451326",
+      "details": {
+        "holdings_count": 7,
+        "mode": "INTRADAY"
+      }
+    },
+    {
+      "test_name": "INTRADAY - Portfolio Fetch",
+      "success": false,
+      "timestamp": "2026-03-31T15:12:51.952383",
+      "details": {
+        "error": "'DhanAPIClient' object has no attribute 'get_portfolio'"
+      }
+    },
+    {
+      "test_name": "INTRADAY - Security ID Lookup",
+      "success": true,
+      "timestamp": "2026-03-31T15:12:52.453724",
+      "details": {
+        "symbol": "RELIANCE",
+        "security_id": "13188",
+        "mode": "INTRADAY"
+      }
+    },
+    {
+      "test_name": "INTRADAY - Order Validation",
+      "success": true,
+      "timestamp": "2026-03-31T15:12:53.222159",
+      "details": {
+        "validation_passed": true,
+        "mode": "INTRADAY"
+      }
+    },
+    {
+      "test_name": "INTRADAY - Product Type Configuration",
+      "success": true,
+      "timestamp": "2026-03-31T15:12:53.722823",
+      "details": {
+        "expected": "INTRADAY",
+        "actual": "INTRADAY",
+        "mapped_to": "MIS",
+        "mode": "INTRADAY"
+      }
+    },
+    {
+      "test_name": "INTRADAY - Market Data Fetch",
+      "success": true,
+      "timestamp": "2026-03-31T15:12:55.294571",
+      "details": {
+        "symbol": "RELIANCE",
+        "quote_available": false,
+        "mode": "INTRADAY"
+      }
+    }
+  ]
+}

@@ -149,8 +149,8 @@ function App() {
       if (savedData) {
         try {
           const parsed = JSON.parse(savedData);
-          setBotData(prev => ({ 
-            ...prev, 
+          setBotData(prev => ({
+            ...prev,
             ...parsed,
             isRunning: parsed.isRunning || false,
             cycleComplete: parsed.cycleComplete || false
@@ -167,7 +167,7 @@ function App() {
       // Store previous state before updating
       const prevCycleComplete = botData.cycleComplete;
       const prevIsRunning = botData.isRunning;
-      
+
       await loadDataFromBackend();
       await loadLiveStatus();
       await checkMcpStatus();
@@ -177,11 +177,11 @@ function App() {
       setBotData(currentBotData => {
         // Detect transition: was running OR not cycle complete, now cycle complete and not running
         const shouldShowNotification = (
-          (prevIsRunning || !prevCycleComplete) && 
-          currentBotData.cycleComplete && 
+          (prevIsRunning || !prevCycleComplete) &&
+          currentBotData.cycleComplete &&
           !currentBotData.isRunning
         );
-        
+
         if (shouldShowNotification) {
           toast.success(
             '✓ One full cycle completed! Bot has stopped. Click "Start Bot" to run another cycle.',
@@ -196,7 +196,7 @@ function App() {
             }
           );
         }
-        
+
         return currentBotData;
       });
     } catch (error) {
@@ -227,8 +227,8 @@ function App() {
     try {
       setLoading(true);
       await apiService.startBot();
-      setBotData(prev => ({ 
-        ...prev, 
+      setBotData(prev => ({
+        ...prev,
         isRunning: true,
         cycleComplete: false // Reset cycle complete flag when starting bot
       }));

@@ -82,7 +82,8 @@ class LiveTradingExecutor:
 
         self.dhan_client = DhanAPIClient(
             client_id=dhan_client_id,
-            access_token=dhan_access_token
+            access_token=dhan_access_token,
+            config=self.config
         )
 
         # Sync portfolio with Dhan account on initialization
@@ -104,7 +105,76 @@ class LiveTradingExecutor:
             logger.warning(
                 "Buy operations are DISABLED by configuration (ENABLE_BUY=false)")
 
+        self.enable_shortsell = str(self.config.get("enable_shortsell", os.getenv(
+            "ENABLE_SHORTSELL", "false"))).lower() not in ("false", "0", "no", "off")
+        if not self.enable_shortsell:
+            logger.info("Short-selling is disabled by configuration")
+
         logger.info("Live Trading Executor initialized")
+
+    @staticmethod
+    def _normalize_product_type(product_type: str) -> str:
+        """Normalize product type values to Dhan-compatible format"""
+        if not product_type:
+            return "CNC"
+        normalized = product_type.upper()
+        if normalized == "INTRADAY":
+            return "MIS"
+        if normalized == "MARGIN":
+            return "NRML"
+        if normalized == "NRML":
+            return "NRML"
+        return "MIS" if normalized == "MIS" else "CNC"
+
+    def get_current_product_type(self) -> str:
+        """Return the active product type from the Dhan client or local config."""
+        if hasattr(self, 'dhan_client') and self.dhan_client:
+            product_type = getattr(self.dhan_client, 'product_type', None)
+            if product_type:
+                return self._normalize_product_type(product_type)
+        return self._normalize_product_type(self.config.get("productType", "CNC"))
+
+    def _has_short_position(self, symbol: str) -> bool:
+        """Return True if the portfolio has an open short position for the symbol"""
+        holding = self.portfolio_manager.current_holdings_dict.get(symbol)
+        return holding is not None and holding.get("qty", 0) < 0
+
+    def _should_cover_short(self, signal_data: Dict) -> bool:
+        """Determine whether a BUY signal should cover an existing short position"""
+        if not signal_data:
+            return False
+        direction = str(signal_data.get("direction", "")).upper()
+        action = str(signal_data.get("action", "")).upper()
+        cover_hint = signal_data.get("cover_short", False)
+
+        return (
+            cover_hint
+            or direction in {"BUY", "BUY_TO_COVER", "BUY TO COVER", "COVER"}
+            or action in {"BUY", "BUY_TO_COVER", "BUY TO COVER", "COVER"}
+        )
+
+    def _should_short_sell(self, symbol: str, signal_data: Dict) -> bool:
+        """Determine whether a SELL signal should open an intraday short position"""
+        if not self.enable_shortsell:
+            return False
+        product_type = self.config.get("productType", "CNC")
+        if self._normalize_product_type(product_type) != "MIS":
+            return False
+
+        if not signal_data:
+            return False
+
+        direction = str(signal_data.get("direction", "")).upper()
+        action = str(signal_data.get("action", "")).upper()
+        short_hint = signal_data.get(
+            "short_sell", False) or signal_data.get("should_short", False)
+
+        # Allow short-selling when the signal explicitly requests it or when a bearish SELL/SHORT directional signal occurs
+        return (
+            short_hint
+            or direction in {"SELL", "SHORT"}
+            or action in {"SELL", "SHORT"}
+        )
 
     def validate_connection(self) -> bool:
         """Validate Dhan API connection"""
@@ -182,8 +252,9 @@ class LiveTradingExecutor:
                     symbol = holding.get("tradingSymbol", "")
                     quantity = int(holding.get("totalQty", 0))
                     avg_price = float(holding.get("avgCostPrice", 0))
-                    # Use LTP if available
-                    current_price = float(holding.get("ltp", avg_price))
+                    # Use lastTradedPrice if available (Dhan API field name)
+                    current_price = float(holding.get(
+                        "lastTradedPrice", holding.get("ltp", avg_price)))
 
                     if quantity > 0 and symbol:
                         db_holding = Holding(
@@ -207,6 +278,9 @@ class LiveTradingExecutor:
 
                 # Update current portfolio reference
                 self.portfolio_manager.current_portfolio = portfolio
+
+                # Refresh the in-memory holdings dict from database
+                self.portfolio_manager.refresh_holdings_from_database()
 
                 # NEW: Update data service watchlist with current holdings
                 self._update_data_service_watchlist(session, portfolio)
@@ -305,6 +379,7 @@ class LiveTradingExecutor:
         """
         Calculate position size based on user configuration from live_config.json
         Respects max_capital_per_trade setting (user input)
+        Includes INTRADAY LEVERAGE calculation (5x for MIS)
         """
         session = None
         try:
@@ -339,8 +414,22 @@ class LiveTradingExecutor:
                 logger.warning(
                     f"Failed to load config: {config_error}, using default 25%")
 
+            # CRITICAL: Get product type to determine leverage
+            # Dhan provides 5x leverage for MIS (intraday) positions
+            product_type = self.get_current_product_type()
+            leverage = 5.0 if product_type == 'MIS' else 1.0
+
+            logger.info(f"Product Type: {product_type}, Leverage: {leverage}x")
+            logger.info(f"Available Cash: Rs.{available_cash:.2f}")
+
+            # Apply leverage for intraday positions
+            effective_buying_power = available_cash * leverage
+            logger.info(
+                f"Effective Buying Power with {leverage}x leverage: Rs.{effective_buying_power:.2f}")
+
             # Calculate position size based on user's configured allocation
-            position_value = available_cash * max_capital_per_trade
+            # Use leveraged buying power for intraday
+            position_value = effective_buying_power * max_capital_per_trade
             quantity = int(position_value / current_price)
 
             # Ensure at least 1 share if we have enough cash for it
@@ -349,6 +438,10 @@ class LiveTradingExecutor:
 
             logger.info(f"Position sizing for {symbol}:")
             logger.info(f"  Available Cash: Rs.{available_cash:.2f}")
+            logger.info(f"  Product Type: {product_type}")
+            logger.info(f"  Leverage: {leverage}x")
+            logger.info(
+                f"  Effective Buying Power: Rs.{effective_buying_power:.2f}")
             logger.info(
                 f"  Max Capital Per Trade (user config): {max_capital_per_trade:.1%}")
             logger.info(f"  Allocated Position Value: Rs.{position_value:.2f}")
@@ -493,22 +586,46 @@ class LiveTradingExecutor:
             # Calculate required amount
             required_amount = price * requested_quantity
 
-            logger.info(
-                f"Funds check - Available: Rs.{available_cash:.2f}, Required: Rs.{required_amount:.2f} for {requested_quantity} shares")
+            # CRITICAL: Apply intraday leverage if product type is MIS
+            product_type = self.get_current_product_type()
+            leverage = 5.0 if product_type == 'MIS' else 1.0
 
-            # If we have enough funds, return the requested quantity
-            if available_cash >= required_amount:
-                logger.info(
-                    f"✅ Sufficient funds available - returning {requested_quantity} shares")
+            # For intraday (MIS), we can use 5x leverage
+            effective_available_cash = available_cash * leverage
+
+            logger.info(f"Funds check for {symbol}:")
+            logger.info(f"  Product Type: {product_type}")
+            logger.info(f"  Leverage: {leverage}x")
+            logger.info(f"  Base Available Cash: Rs.{available_cash:.2f}")
+            logger.info(
+                f"  Effective Available Cash with leverage: Rs.{effective_available_cash:.2f}")
+            logger.info(
+                f"  Required: Rs.{required_amount:.2f} for {requested_quantity} shares")
+
+            # If we have enough funds (with leverage), return the requested quantity
+            if effective_available_cash >= required_amount:
+                if leverage > 1.0:
+                    logger.info(
+                        f"✅ Sufficient funds with {leverage}x leverage - returning {requested_quantity} shares")
+                else:
+                    logger.info(
+                        f"✅ Sufficient funds available - returning {requested_quantity} shares")
                 return requested_quantity
 
-            # Otherwise, calculate maximum affordable quantity
-            max_affordable_quantity = int(available_cash // price)
+            # Otherwise, calculate maximum affordable quantity (with leverage)
+            max_affordable_quantity = int(effective_available_cash // price)
 
             # Ensure we return at least 1 share if funds allow for it
             if max_affordable_quantity >= 1:
-                logger.warning(
-                    f"⚠️  Insufficient funds - adjusted quantity from {requested_quantity} to {max_affordable_quantity} (Available: Rs.{available_cash:.2f}, Required: Rs.{required_amount:.2f})")
+                if leverage > 1.0:
+                    logger.warning(
+                        f"⚠️  Insufficient funds - adjusted quantity from {requested_quantity} to {max_affordable_quantity} "
+                        f"(Base Cash: Rs.{available_cash:.2f}, Effective with {leverage}x leverage: Rs.{effective_available_cash:.2f}, "
+                        f"Required: Rs.{required_amount:.2f})")
+                else:
+                    logger.warning(
+                        f"⚠️  Insufficient funds - adjusted quantity from {requested_quantity} to {max_affordable_quantity} "
+                        f"(Available: Rs.{available_cash:.2f}, Required: Rs.{required_amount:.2f})")
                 return max_affordable_quantity
             else:
                 logger.error(
@@ -566,12 +683,25 @@ class LiveTradingExecutor:
             if adjusted_quantity <= 0:
                 return {"success": False, "message": "Insufficient funds for purchase"}
 
-            # Place market buy order
+            # If we have an open short position, treat this buy as a cover request first
+            if self._has_short_position(symbol) and self._should_cover_short(signal_data):
+                logger.info(
+                    f"Detected open short position for {symbol}; executing buy-to-cover instead of new long entry")
+                return self.execute_buy_to_cover_order(symbol, adjusted_quantity, current_price, signal_data)
+
+            # Place market buy order with product type
+            # Get product type from signal_data or current execution configuration
+            product_type = self._normalize_product_type(
+                signal_data.get('product_type') or self.get_current_product_type())
+
+            logger.info(f"Placing BUY order with product type: {product_type}")
+
             order_response = self.dhan_client.place_order(
                 symbol=symbol,
                 quantity=adjusted_quantity,
                 order_type="MARKET",
-                side="BUY"
+                side="BUY",
+                product_type=product_type  # Pass product type dynamically
             )
 
             order_id = order_response.get("orderId")
@@ -585,12 +715,13 @@ class LiveTradingExecutor:
                     "timestamp": datetime.now().isoformat(),
                     "signal_data": signal_data
                 }
-                
+
                 # Check order status immediately after placing to see if it's already executed
                 try:
                     self.check_and_update_orders()
                 except Exception as status_error:
-                    logger.warning(f"Failed to check order status immediately after placement: {status_error}")
+                    logger.warning(
+                        f"Failed to check order status immediately after placement: {status_error}")
 
                 # NOTE: We shouldn't record the trade immediately after placing the order.
                 # The order may still fail at the broker level. The actual recording should happen
@@ -600,46 +731,73 @@ class LiveTradingExecutor:
                 try:
                     # Check if the order was immediately executed by checking the status
                     order_details = self.dhan_client.get_order_by_id(order_id)
-                    if order_details and order_details.get("orderStatus", "").upper() == "TRADED":
+                    order_status = order_details.get(
+                        "orderStatus", "").upper() if order_details else "UNKNOWN"
+
+                    # Dhan API order statuses: PENDING, OPEN, TRADED, CANCELLED, REJECTED, MODIFYING, MODIFIED
+                    executed_statuses = ["TRADED", "FILLED", "COMPLETE"]
+                    pending_statuses = ["PENDING", "OPEN", "TRIGGER PENDING"]
+                    failed_statuses = ["CANCELLED",
+                                       "REJECTED", "REJECTED BY EXCHANGE"]
+
+                    if order_status in executed_statuses:
                         # Order was immediately executed, record it in database
+                        # Get actual execution price from order details if available
+                        executed_price = float(
+                            order_details.get("price", current_price))
+                        executed_qty = int(order_details.get(
+                            "tradedQuantity", adjusted_quantity))
+
+                        logger.info(
+                            f"✅ Order EXECUTED: {order_status} | Price: {executed_price} | Qty: {executed_qty}")
+
                         self.portfolio_manager.record_trade(
                             ticker=symbol,
                             action="buy",
-                            quantity=adjusted_quantity,
-                            price=current_price,
+                            quantity=executed_qty,
+                            price=executed_price,
                             stop_loss=signal_data.get("stop_loss"),
-                            take_profit=signal_data.get("take_profit")
+                            take_profit=signal_data.get("take_profit"),
+                            product_type=product_type
                         )
                         logger.info(
-                            f"✅ Buy trade executed and recorded: {adjusted_quantity} {symbol} at Rs.{current_price:.2f}")
-                        
+                            f"✅ Buy trade executed and recorded: {executed_qty} {symbol} at Rs.{executed_price:.2f}")
+
                         # Also update the portfolio after execution
                         self._update_portfolio_after_execution(
-                            symbol, "BUY", adjusted_quantity, current_price
+                            symbol, "BUY", executed_qty, executed_price
                         )
-                    else:
+                    elif order_status in pending_statuses:
                         # Order is pending, don't record in database yet - wait for execution
                         logger.info(
-                            f"⏳ Buy order placed but pending execution: {adjusted_quantity} {symbol} at Rs.{current_price:.2f}")
+                            f"⏳ Buy order placed but PENDING execution: {adjusted_quantity} {symbol} at Rs.{current_price:.2f}")
                         logger.info(f"   Order ID: {order_id}")
-                        logger.info(f"   Current status: {order_details.get('orderStatus', 'UNKNOWN') if order_details else 'UNABLE_TO_FETCH_STATUS'}")
+                        logger.info(f"   Current status: {order_status}")
+                    elif order_status in failed_statuses:
+                        # Order failed immediately
+                        logger.error(
+                            f"❌ Buy order FAILED: {order_status} | Order ID: {order_id}")
+                        logger.error(
+                            f"   Symbol: {symbol} | Quantity: {adjusted_quantity}")
+                        # Don't record in database - order failed
+                    else:
+                        # Unexpected status - log warning and don't record
+                        logger.warning(
+                            f"⚠️ Unexpected order status: {order_status}")
+                        logger.info(f"   Order ID: {order_id}")
+                        logger.info(f"   Full order details: {order_details}")
+
                 except Exception as db_error:
                     logger.error(
                         f"❌ Error checking immediate execution or recording trade: {db_error}")
-                    # As fallback, record the trade anyway to maintain consistency
-                    try:
-                        self.portfolio_manager.record_trade(
-                            ticker=symbol,
-                            action="buy",
-                            quantity=adjusted_quantity,
-                            price=current_price,
-                            stop_loss=signal_data.get("stop_loss"),
-                            take_profit=signal_data.get("take_profit")
-                        )
-                        logger.info(
-                            f"✅ Buy trade recorded after error (fallback): {adjusted_quantity} {symbol} at Rs.{current_price:.2f}")
-                    except Exception as fallback_error:
-                        logger.error(f"❌ Fallback recording also failed: {fallback_error}")
+                    logger.error(f"   Order ID: {order_id}")
+                    import traceback
+                    logger.error(f"   Traceback: {traceback.format_exc()}")
+
+                    # Don't auto-record on error - wait for proper confirmation
+                    # This prevents recording failed orders
+                    logger.warning(
+                        f"⚠️ Skipping trade recording due to error - will sync on next check")
 
                 # Update trade count
                 self._update_daily_trade_count()
@@ -668,6 +826,278 @@ class LiveTradingExecutor:
         except Exception as e:
             logger.error(f"❌ Failed to execute buy order for {symbol}: {e}")
             return {"success": False, "message": f"Buy order failed: {str(e)}"}
+
+    def execute_short_sell_order(self, symbol: str, signal_data: Dict) -> Dict:
+        """Execute an intraday short sell position"""
+        try:
+            if not self.enable_sell or not self.enable_shortsell:
+                logger.info(
+                    "Short sell disabled by configuration. Skipping short sell for %s", symbol)
+                return {"success": False, "message": "Short sell disabled by configuration"}
+
+            if self._check_daily_limits():
+                return {"success": False, "message": "Daily trade limit exceeded"}
+
+            if not self.dhan_client.is_market_open():
+                return {"success": False, "message": "Market is closed"}
+
+            current_price = self.get_real_time_price(symbol)
+            if current_price <= 0:
+                current_price = signal_data.get("current_price", 0)
+                if current_price <= 0:
+                    return {"success": False, "message": "Unable to get current price from any source"}
+                logger.info(
+                    f"Using trading signal price for short sell {symbol}: Rs.{current_price:.2f}")
+
+            requested_quantity = signal_data.get("quantity", 0)
+            if requested_quantity <= 0:
+                signal_strength = signal_data.get("confidence", 0.5)
+                requested_quantity = self.calculate_position_size(
+                    symbol, current_price, signal_strength)
+
+            if requested_quantity <= 0:
+                return {"success": False, "message": "Insufficient funds or invalid quantity"}
+
+            adjusted_quantity = self._adjust_quantity_based_on_funds(
+                symbol, current_price, requested_quantity)
+            if adjusted_quantity <= 0:
+                return {"success": False, "message": "Insufficient funds for short sell"}
+
+            product_type = self._normalize_product_type(
+                signal_data.get('product_type') or self.get_current_product_type())
+            logger.info(
+                f"Placing SHORT SELL order with product type: {product_type}")
+
+            order_response = self.dhan_client.place_order(
+                symbol=symbol,
+                quantity=adjusted_quantity,
+                order_type="MARKET",
+                side="SELL",
+                product_type=product_type
+            )
+
+            order_id = order_response.get("orderId")
+            if order_id:
+                self.pending_orders[order_id] = {
+                    "symbol": symbol,
+                    "quantity": adjusted_quantity,
+                    "side": "SELL",
+                    "is_short_sell": True,
+                    "price": current_price,
+                    "timestamp": datetime.now().isoformat(),
+                    "signal_data": signal_data
+                }
+
+                try:
+                    self.check_and_update_orders()
+                except Exception as status_error:
+                    logger.warning(
+                        f"Failed to check order status immediately after placement: {status_error}")
+
+                try:
+                    order_details = self.dhan_client.get_order_by_id(order_id)
+                    order_status = order_details.get(
+                        "orderStatus", "").upper() if order_details else "UNKNOWN"
+
+                    executed_statuses = ["TRADED", "FILLED", "COMPLETE"]
+                    pending_statuses = ["PENDING", "OPEN", "TRIGGER PENDING"]
+                    failed_statuses = ["CANCELLED",
+                                       "REJECTED", "REJECTED BY EXCHANGE"]
+
+                    if order_status in executed_statuses:
+                        executed_price = float(
+                            order_details.get("price", current_price))
+                        executed_qty = int(order_details.get(
+                            "tradedQuantity", adjusted_quantity))
+
+                        logger.info(
+                            f"✅ Short sell EXECUTED: {order_status} | Price: {executed_price} | Qty: {executed_qty}")
+
+                        self.portfolio_manager.record_trade(
+                            ticker=symbol,
+                            action="sell",
+                            quantity=executed_qty,
+                            price=executed_price,
+                            stop_loss=signal_data.get("stop_loss"),
+                            take_profit=signal_data.get("take_profit"),
+                            product_type=product_type,
+                            is_short_sell=True
+                        )
+                        logger.info(
+                            f"✅ Short sell executed and recorded: {executed_qty} {symbol} at Rs.{executed_price:.2f}")
+                        self._update_portfolio_after_execution(
+                            symbol, "SELL", executed_qty, executed_price,
+                            is_short_sell=True
+                        )
+                    elif order_status in pending_statuses:
+                        logger.info(
+                            f"⏳ Short sell order PENDING: {adjusted_quantity} {symbol} at Rs.{current_price:.2f}")
+                        logger.info(
+                            f"   Order ID: {order_id} | Status: {order_status}")
+                    elif order_status in failed_statuses:
+                        logger.error(
+                            f"❌ Short sell order FAILED: {order_status} | Order ID: {order_id}")
+                    else:
+                        logger.warning(
+                            f"⚠️ Unexpected short sell order status: {order_status}")
+                        logger.info(f"   Order details: {order_details}")
+
+                except Exception as db_error:
+                    logger.error(
+                        f"❌ Error checking short sell execution: {db_error}")
+                    logger.warning(
+                        f"⚠️ Skipping trade recording - will sync on next check")
+
+                self._update_daily_trade_count()
+                logger.info(
+                    f"Short sell order placed: {adjusted_quantity} {symbol} at Rs.{current_price:.2f}")
+                logger.info(f"   Order ID: {order_id}")
+
+                return {
+                    "success": True,
+                    "order_id": order_id,
+                    "symbol": symbol,
+                    "quantity": adjusted_quantity,
+                    "price": current_price,
+                    "message": f"Short sell order placed for {adjusted_quantity} shares of {symbol}"
+                }
+            else:
+                logger.error(
+                    f"❌ Unexpected order response for short sell order: {order_response}")
+                return {"success": False, "message": "Short sell order placement failed - unexpected response"}
+
+        except Exception as e:
+            logger.error(
+                f"❌ Failed to execute short sell order for {symbol}: {e}")
+            return {"success": False, "message": f"Short sell order failed: {str(e)}"}
+
+    def execute_buy_to_cover_order(self, symbol: str, quantity: int, price: float, signal_data: Dict = None) -> Dict:
+        """Buy to cover an open short intraday position"""
+        try:
+            if not self.enable_buy:
+                logger.info(
+                    "Buy disabled by configuration (ENABLE_BUY=false). Skipping cover buy for %s", symbol)
+                return {"success": False, "message": "Buy disabled by configuration"}
+
+            if self._check_daily_limits():
+                return {"success": False, "message": "Daily trade limit exceeded"}
+
+            if not self.dhan_client.is_market_open():
+                return {"success": False, "message": "Market is closed"}
+
+            if quantity <= 0:
+                return {"success": False, "message": "Invalid quantity for cover buy"}
+
+            if not self._has_short_position(symbol):
+                return {"success": False, "message": "No short position to cover"}
+
+            product_type = self._normalize_product_type(
+                signal_data.get('product_type') or self.get_current_product_type()) if signal_data else self.get_current_product_type()
+            logger.info(
+                f"Placing BUY TO COVER for {quantity} {symbol} with product type: {product_type}")
+
+            order_response = self.dhan_client.place_order(
+                symbol=symbol,
+                quantity=quantity,
+                order_type="MARKET",
+                side="BUY",
+                product_type=product_type
+            )
+
+            order_id = order_response.get("orderId")
+            if order_id:
+                self.pending_orders[order_id] = {
+                    "symbol": symbol,
+                    "quantity": quantity,
+                    "side": "BUY",
+                    "is_cover_short": True,
+                    "price": price,
+                    "timestamp": datetime.now().isoformat(),
+                    "signal_data": signal_data
+                }
+
+                try:
+                    self.check_and_update_orders()
+                except Exception as status_error:
+                    logger.warning(
+                        f"Failed to check order status immediately after placement: {status_error}")
+
+                try:
+                    order_details = self.dhan_client.get_order_by_id(order_id)
+                    order_status = order_details.get(
+                        "orderStatus", "").upper() if order_details else "UNKNOWN"
+
+                    executed_statuses = ["TRADED", "FILLED", "COMPLETE"]
+                    pending_statuses = ["PENDING", "OPEN", "TRIGGER PENDING"]
+                    failed_statuses = ["CANCELLED",
+                                       "REJECTED", "REJECTED BY EXCHANGE"]
+
+                    if order_status in executed_statuses:
+                        executed_price = float(
+                            order_details.get("price", price))
+                        executed_qty = int(order_details.get(
+                            "tradedQuantity", quantity))
+
+                        logger.info(
+                            f"✅ Buy-to-cover EXECUTED: {order_status} | Price: {executed_price} | Qty: {executed_qty}")
+
+                        self.portfolio_manager.record_trade(
+                            ticker=symbol,
+                            action="buy",
+                            quantity=executed_qty,
+                            price=executed_price,
+                            pnl=0.0,
+                            stop_loss=signal_data.get("stop_loss"),
+                            take_profit=signal_data.get("take_profit"),
+                            product_type=product_type,
+                            is_cover_short=True
+                        )
+                        logger.info(
+                            f"✅ Cover buy executed and recorded: {executed_qty} {symbol} at Rs.{executed_price:.2f}")
+                        self._update_portfolio_after_execution(
+                            symbol, "BUY", executed_qty, executed_price,
+                            is_cover_short=True
+                        )
+                    elif order_status in pending_statuses:
+                        logger.info(
+                            f"⏳ Buy-to-cover order PENDING: {quantity} {symbol} at Rs.{price:.2f}")
+                        logger.info(
+                            f"   Order ID: {order_id} | Status: {order_status}")
+                    elif order_status in failed_statuses:
+                        logger.error(
+                            f"❌ Buy-to-cover order FAILED: {order_status} | Order ID: {order_id}")
+                    else:
+                        logger.warning(
+                            f"⚠️ Unexpected buy-to-cover order status: {order_status}")
+
+                except Exception as db_error:
+                    logger.error(
+                        f"❌ Error checking buy-to-cover execution: {db_error}")
+                    logger.warning(
+                        f"⚠️ Skipping trade recording - will sync on next check")
+
+                self._update_daily_trade_count()
+                logger.info(
+                    f"Buy to cover order placed: {quantity} {symbol} at Rs.{price:.2f}")
+                logger.info(f"   Order ID: {order_id}")
+
+                return {
+                    "success": True,
+                    "order_id": order_id,
+                    "symbol": symbol,
+                    "quantity": quantity,
+                    "price": price,
+                    "message": f"Buy to cover order placed for {quantity} shares of {symbol}"
+                }
+            else:
+                logger.error(
+                    f"❌ Unexpected order response for buy to cover order: {order_response}")
+                return {"success": False, "message": "Buy to cover order placement failed - unexpected response"}
+
+        except Exception as e:
+            logger.error(
+                f"❌ Failed to execute buy to cover order for {symbol}: {e}")
+            return {"success": False, "message": f"Buy to cover order failed: {str(e)}"}
 
     def execute_sell_order(self, symbol: str, signal_data: Dict = None) -> Dict:
         """Execute a sell order with comprehensive validation"""
@@ -699,20 +1129,30 @@ class LiveTradingExecutor:
                     ticker=symbol
                 ).first()
 
+                if (not holding or holding.quantity <= 0) and self._should_short_sell(symbol, signal_data):
+                    logger.info(
+                        f"No long holdings found for {symbol}; executing intraday short sell")
+                    return self.execute_short_sell_order(symbol, signal_data or {})
+
                 if not holding or holding.quantity <= 0:
                     return {"success": False, "message": "No position to sell"}
 
                 # Calculate profit/loss
                 pnl = (current_price - holding.avg_price) * holding.quantity
 
+                # Get product type from signal_data or config and normalize for Dhan
+                product_type = self._normalize_product_type(
+                    signal_data.get('product_type') or self.get_current_product_type()) if signal_data else self.get_current_product_type()
+
                 # Place order through Dhan API with comprehensive validation
                 logger.info(
-                    f"Attempting to place sell order for {holding.quantity} {symbol}")
+                    f"Attempting to place sell order for {holding.quantity} {symbol} (Product Type: {product_type})")
                 order_response = self.dhan_client.place_order(
                     symbol=symbol,
                     quantity=holding.quantity,
                     order_type="MARKET",
-                    side="SELL"
+                    side="SELL",
+                    product_type=product_type  # Pass product type dynamically
                 )
 
                 order_id = order_response.get("orderId")
@@ -726,16 +1166,18 @@ class LiveTradingExecutor:
                         "timestamp": datetime.now().isoformat(),
                         "signal_data": signal_data
                     }
-                    
+
                     # Check order status immediately after placing to see if it's already executed
                     try:
                         self.check_and_update_orders()
                     except Exception as status_error:
-                        logger.warning(f"Failed to check order status immediately after placement: {status_error}")
+                        logger.warning(
+                            f"Failed to check order status immediately after placement: {status_error}")
 
                     # Check if the order was immediately executed by checking the status
                     try:
-                        order_details = self.dhan_client.get_order_by_id(order_id)
+                        order_details = self.dhan_client.get_order_by_id(
+                            order_id)
                         if order_details and order_details.get("orderStatus", "").upper() == "TRADED":
                             # Order was immediately executed, record it in database
                             self.portfolio_manager.record_trade(
@@ -745,11 +1187,12 @@ class LiveTradingExecutor:
                                 price=current_price,
                                 pnl=pnl,
                                 stop_loss=signal_data.get("stop_loss"),
-                                take_profit=signal_data.get("take_profit")
+                                take_profit=signal_data.get("take_profit"),
+                                product_type=product_type  # Pass product type for storage
                             )
                             logger.info(
                                 f"✅ Sell trade executed and recorded: {holding.quantity} {symbol} at Rs.{current_price:.2f}")
-                            
+
                             # Also update the portfolio after execution
                             self._update_portfolio_after_execution(
                                 symbol, "SELL", holding.quantity, current_price
@@ -759,7 +1202,8 @@ class LiveTradingExecutor:
                             logger.info(
                                 f"⏳ Sell order placed but pending execution: {holding.quantity} {symbol} at Rs.{current_price:.2f}")
                             logger.info(f"   Order ID: {order_id}")
-                            logger.info(f"   Current status: {order_details.get('orderStatus', 'UNKNOWN') if order_details else 'UNABLE_TO_FETCH_STATUS'}")
+                            logger.info(
+                                f"   Current status: {order_details.get('orderStatus', 'UNKNOWN') if order_details else 'UNABLE_TO_FETCH_STATUS'}")
                     except Exception as db_error:
                         logger.error(
                             f"❌ Error checking immediate execution or recording trade: {db_error}")
@@ -772,12 +1216,14 @@ class LiveTradingExecutor:
                                 price=current_price,
                                 pnl=pnl,
                                 stop_loss=signal_data.get("stop_loss"),
-                                take_profit=signal_data.get("take_profit")
+                                take_profit=signal_data.get("take_profit"),
+                                product_type=product_type  # Pass product type for storage
                             )
                             logger.info(
                                 f"✅ Sell trade recorded after error (fallback): {holding.quantity} {symbol} at Rs.{current_price:.2f}")
                         except Exception as fallback_error:
-                            logger.error(f"❌ Fallback recording also failed: {fallback_error}")
+                            logger.error(
+                                f"❌ Fallback recording also failed: {fallback_error}")
 
                     return {
                         "success": True,
@@ -832,7 +1278,11 @@ class LiveTradingExecutor:
                             pending_order["symbol"],
                             pending_order["side"],
                             executed_qty,
-                            executed_price
+                            executed_price,
+                            is_short_sell=pending_order.get(
+                                "is_short_sell", False),
+                            is_cover_short=pending_order.get(
+                                "is_cover_short", False)
                         )
 
                         # Move to executed orders
@@ -871,7 +1321,9 @@ class LiveTradingExecutor:
             return []
 
     def _update_portfolio_after_execution(self, symbol: str, side: str,
-                                          quantity: int, price: float):
+                                          quantity: int, price: float,
+                                          is_short_sell: bool = False,
+                                          is_cover_short: bool = False):
         """Update portfolio after order execution using database"""
         session = None
         try:
@@ -881,8 +1333,8 @@ class LiveTradingExecutor:
                 logger.error("No live portfolio found for execution update")
                 return
 
-            if side == "BUY":
-                # Update or create holding
+            if side == "BUY" and not is_cover_short:
+                # Standard long buy
                 holding = session.query(Holding).filter_by(
                     portfolio_id=portfolio.id,
                     ticker=symbol
@@ -899,7 +1351,6 @@ class LiveTradingExecutor:
                     holding.avg_price = avg_price
                     holding.last_price = price
                 else:
-                    # New holding
                     holding = Holding(
                         portfolio_id=portfolio.id,
                         ticker=symbol,
@@ -909,18 +1360,16 @@ class LiveTradingExecutor:
                     )
                     session.add(holding)
 
-                # Reduce cash
                 portfolio.cash -= quantity * price
 
-                # Update in-memory holdings in portfolio manager
                 if symbol in self.portfolio_manager.current_holdings_dict:
-                    self.portfolio_manager.current_holdings_dict[symbol]["qty"] += quantity
-                    # Recalculate average price
-                    total_qty = self.portfolio_manager.current_holdings_dict[symbol]["qty"]
-                    total_cost = (self.portfolio_manager.current_holdings_dict[symbol]["qty"] - quantity) * \
-                        self.portfolio_manager.current_holdings_dict[symbol]["avg_price"] + (
-                            quantity * price)
-                    self.portfolio_manager.current_holdings_dict[symbol]["avg_price"] = total_cost / total_qty
+                    existing = self.portfolio_manager.current_holdings_dict[symbol]
+                    existing_qty = existing["qty"] + quantity
+                    total_cost = (existing["qty"] * existing["avg_price"]) + (
+                        quantity * price)
+                    existing["qty"] = existing_qty
+                    existing["avg_price"] = total_cost / existing_qty
+                    existing["last_price"] = price
                 else:
                     self.portfolio_manager.current_holdings_dict[symbol] = {
                         "qty": quantity,
@@ -928,50 +1377,114 @@ class LiveTradingExecutor:
                         "last_price": price
                     }
 
+            elif side == "BUY" and is_cover_short:
+                # Cover a short position
+                holding = session.query(Holding).filter_by(
+                    portfolio_id=portfolio.id,
+                    ticker=symbol
+                ).first()
+
+                if holding and holding.quantity < 0:
+                    entry_price = holding.avg_price
+                    pnl = (entry_price - price) * quantity
+                    self.daily_pnl += pnl
+
+                    remaining_qty = holding.quantity + quantity
+                    if remaining_qty == 0:
+                        session.delete(holding)
+                        self.portfolio_manager.current_holdings_dict.pop(
+                            symbol, None)
+                    else:
+                        holding.quantity = remaining_qty
+                        holding.last_price = price
+                        self.portfolio_manager.current_holdings_dict[symbol] = {
+                            "qty": remaining_qty,
+                            "avg_price": holding.avg_price,
+                            "last_price": price
+                        }
+
+                    portfolio.cash -= quantity * price
+                    portfolio.realized_pnl += pnl
+                    logger.info(
+                        f"Short cover P&L: Rs.{pnl:.2f} for {quantity} {symbol}")
+                else:
+                    logger.warning(
+                        f"No short position found for cover buy of {symbol}, treating as normal buy")
+                    self._update_portfolio_after_execution(
+                        symbol, "BUY", quantity, price)
+                    return
+
+            elif side == "SELL" and is_short_sell:
+                holding = session.query(Holding).filter_by(
+                    portfolio_id=portfolio.id,
+                    ticker=symbol
+                ).first()
+
+                if holding:
+                    if holding.quantity < 0:
+                        total_short_qty = abs(holding.quantity) + quantity
+                        average_price = ((abs(holding.quantity) * holding.avg_price) +
+                                         (quantity * price)) / total_short_qty
+                        holding.quantity -= quantity
+                        holding.avg_price = average_price
+                        holding.last_price = price
+                    else:
+                        # Convert a long holding into a short position
+                        net_qty = holding.quantity - quantity
+                        holding.quantity = net_qty
+                        holding.avg_price = price
+                        holding.last_price = price
+                else:
+                    holding = Holding(
+                        portfolio_id=portfolio.id,
+                        ticker=symbol,
+                        quantity=-quantity,
+                        avg_price=price,
+                        last_price=price
+                    )
+                    session.add(holding)
+
+                portfolio.cash += quantity * price
+                self.portfolio_manager.current_holdings_dict[symbol] = {
+                    "qty": holding.quantity,
+                    "avg_price": holding.avg_price,
+                    "last_price": price
+                }
+                logger.info(
+                    f"Opened short position: {quantity} {symbol} at Rs.{price:.2f}")
+
             elif side == "SELL":
-                # Update holding
                 holding = session.query(Holding).filter_by(
                     portfolio_id=portfolio.id,
                     ticker=symbol
                 ).first()
 
                 if holding and holding.quantity >= quantity:
-                    # Calculate P&L
                     pnl = quantity * (price - holding.avg_price)
                     self.daily_pnl += pnl
 
-                    # Update holding
                     remaining_qty = holding.quantity - quantity
                     if remaining_qty > 0:
                         holding.quantity = remaining_qty
                         holding.last_price = price
-
-                        # Update in-memory holdings
                         if symbol in self.portfolio_manager.current_holdings_dict:
                             self.portfolio_manager.current_holdings_dict[symbol]["qty"] = remaining_qty
                             self.portfolio_manager.current_holdings_dict[symbol]["last_price"] = price
                     else:
-                        # Remove holding completely
-                        # Remove from in-memory holdings
                         if symbol in self.portfolio_manager.current_holdings_dict:
                             del self.portfolio_manager.current_holdings_dict[symbol]
+                else:
+                    logger.warning(
+                        f"Attempted to sell {quantity} {symbol} but holdings are insufficient or missing")
 
-                # Add cash
                 portfolio.cash += quantity * price
-
-                # Update realized P&L
                 portfolio.realized_pnl += pnl
-
                 logger.info(f"Trade P&L: Rs.{pnl:.2f} for {quantity} {symbol}")
 
-            # Update portfolio timestamp
             portfolio.last_updated = datetime.now()
             session.commit()
 
-            # Sync portfolio manager current portfolio
             self.portfolio_manager.current_portfolio = portfolio
-
-            # Refresh holdings in portfolio manager to ensure consistency
             self.portfolio_manager.refresh_holdings_from_database()
 
         except Exception as e:

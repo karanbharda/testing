@@ -2,15 +2,14 @@
 from fyers_apiv3 import fyersModel
 
 # Define your Fyers API credentials
-client_id = "9SUZA2X41H-100"  # Replace with your client ID
-secret_key = "VWUJ20PJSG"  # Replace with your secret key
+client_id = "ADDZCSY6QW-200"  # Replace with your client ID
+secret_key = "tBW9m34bYN"  # Replace with your secret key
 redirect_uri = "https://www.google.com/"  # Replace with your redirect URI
 response_type = "code" 
 grant_type = "authorization_code"  
 
 # The authorization code received from Fyers after the user grants access
-auth_code = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBfaWQiOiI5U1VaQTJYNDFIIiwidXVpZCI6IjNlYTViYzNmOWRjMTQ4MTM4ZmVlMWFjNTI0N2RhMTM3IiwiaXBBZGRyIjoiIiwibm9uY2UiOiIiLCJzY29wZSI6IiIsImRpc3BsYXlfbmFtZSI6IkZBQTE4MzE1Iiwib21zIjoiSzEiLCJoc21fa2V5IjoiOWNiZDgwNGNiODVjMDY4MTk3ZGRiNTA3OTMzOTdiNmIzZDdiMGNjYjI5ZjQ0MThhZWQzODcxZWIiLCJpc0RkcGlFbmFibGVkIjoiTiIsImlzTXRmRW5hYmxlZCI6Ik4iLCJhdWQiOiJbXCJkOjFcIixcImQ6MlwiLFwieDowXCIsXCJ4OjFcIixcIng6MlwiXSIsImV4cCI6MTc3NDg3NDcyNywiaWF0IjoxNzc0ODQ0NzI3LCJpc3MiOiJhcGkubG9naW4uZnllcnMuaW4iLCJuYmYiOjE3NzQ4NDQ3MjcsInN1YiI6ImF1dGhfY29kZSJ9.agD_dIadu0lhbeuXOpBq20q_zpiWnq88t1jn0GmtZqU"
-# Create a session object to handle the Fyers API authentication and token generation
+auth_code = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBfaWQiOiJBRERaQ1NZNlFXIiwidXVpZCI6IjgyMWZmM2E5N2VkNDQ5Y2NiZDFlMGNiZmZjMjZlOWRkIiwiaXBBZGRyIjoiIiwibm9uY2UiOiIiLCJzY29wZSI6IiIsImRpc3BsYXlfbmFtZSI6IkZBQTE4MzE1Iiwib21zIjoiSzEiLCJoc21fa2V5IjoiOWViMjQ3NGZkZTViZjEwMmU5MzU5MjFmYmI5MGE2OTUxM2I0NmRlODQ4MTdiNjQzOTVjMjQ4YmEiLCJpc0RkcGlFbmFibGVkIjoiTiIsImlzTXRmRW5hYmxlZCI6Ik4iLCJhdWQiOiJbXCJkOjFcIixcImQ6MlwiLFwieDowXCIsXCJ4OjFcIixcIng6MlwiXSIsImV4cCI6MTc3ODU4NzY5OCwiaWF0IjoxNzc4NTU3Njk4LCJpc3MiOiJhcGkubG9naW4uZnllcnMuaW4iLCJuYmYiOjE3Nzg1NTc2OTgsInN1YiI6ImF1dGhfY29kZSJ9.4LeQUcMdQx8XeBERDCJ64ud9kk289j4ZqqC1Z_sbUZo"
 session = fyersModel.SessionModel(
     client_id=client_id,
     secret_key=secret_key, 

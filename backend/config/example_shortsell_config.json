@@ -1,0 +1,107 @@
+{
+  "mode": "paper",
+  "productType": "MIS",
+  "tickers": [
+    "RELIANCE",
+    "TCS",
+    "INFY",
+    "HDFCBANK",
+    "ICICIBANK"
+  ],
+  "starting_balance": 100000,
+  "current_portfolio_value": 100000,
+  "current_pnl": 0,
+  
+  "riskLevel": "MEDIUM",
+  "stop_loss_pct": 0.05,
+  "max_capital_per_trade": 0.20,
+  "max_trade_limit": 100,
+  
+  "use_risk_reward": true,
+  "risk_reward_ratio": 2.0,
+  "target_profit_pct": 0.10,
+  
+  "period": "3y",
+  "prediction_days": 30,
+  "sleep_interval": 30,
+  
+  "benchmark_tickers": ["^NSEI"],
+  
+  "drawdown_limit_pct": 0.20,
+  "max_concurrent_trades": 5,
+  
+  "Short-selling Configuration (Intraday)": {
+    "description": "These settings enable intraday short-selling: sell first, buy back later",
+    "enable_shortsell": true,
+    "short_stop_loss_pct": 0.05,
+    "short_target_profit_pct": 0.10,
+    "min_short_signals": 2,
+    "min_short_confidence": 0.55,
+    "enable_intraday_time_decay": true,
+    "force_exit_last_hour": false,
+    "minutes_before_mandatory_exit": 15
+  },
+  
+  "Professional Trading Logic": {
+    "enable_professional_buy_logic": true,
+    "enable_professional_sell_logic": true,
+    "enable_professional_shortsell_logic": true,
+    "fallback_to_legacy_buy": false,
+    "fallback_to_legacy_sell": false,
+    "fallback_to_legacy_shortsell": false,
+    
+    "buy_signal_settings": {
+      "min_buy_signals": 3,
+      "max_buy_signals": 5,
+      "min_buy_confidence": 0.60,
+      "min_weighted_buy_score": 0.15
+    },
+    
+    "sell_signal_settings": {
+      "min_sell_signals": 2,
+      "max_sell_signals": 5,
+      "min_sell_confidence": 0.45,
+      "min_weighted_sell_score": 0.06
+    },
+    
+    "shortsell_signal_settings": {
+      "min_short_signals": 2,
+      "max_short_signals": 5,
+      "min_short_confidence": 0.55,
+      "min_weighted_short_score": 0.12
+    }
+  },
+  
+  "Risk Management": {
+    "centralized_risk_limits": true,
+    "max_daily_loss_pct": 0.05,
+    "max_position_size_pct": 0.20,
+    "correlation_limit": 0.7,
+    "sector_exposure_limit": 0.30,
+    "use_dynamic_position_sizing": true,
+    "volatility_adjustment": true
+  },
+  
+  "ML/AI Settings": {
+    "enable_ml_predictions": true,
+    "enable_rl_recommendations": true,
+    "ml_model_path": "models/ml_model.pkl",
+    "rl_model_path": "models/rl_model.pkl",
+    "ml_prediction_weight": 0.20,
+    "rl_recommendation_weight": 0.05
+  },
+  
+  "Data Settings": {
+    "data_provider": "fyers",
+    "data_service_url": "http://localhost:8000",
+    "cache_enabled": true,
+    "cache_duration_minutes": 5
+  },
+  
+  "Logging & Monitoring": {
+    "log_level": "INFO",
+    "enable_audit_trail": true,
+    "enable_signal_tracking": true,
+    "enable_performance_tracking": true
+  }
+}

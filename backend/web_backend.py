@@ -67,6 +67,7 @@ try:
     from dhan_client import DhanAPIClient
     from live_executor import LiveTradingExecutor
     from dhan_sync_service import start_sync_service, stop_sync_service, get_sync_service
+    from db.database import Portfolio, Holding
     LIVE_TRADING_AVAILABLE = True
     logger.info("Live trading components loaded successfully")
 except ImportError as e:
@@ -308,6 +309,7 @@ class BulkWatchlistResponse(BaseModel):
 class SettingsRequest(BaseModel):
     mode: Optional[str] = None
     riskLevel: Optional[str] = None
+    productType: Optional[str] = None  # CNC or INTRADAY
     stop_loss_pct: Optional[float] = None
     target_profit_pct: Optional[float] = None
     use_risk_reward: Optional[bool] = None
@@ -1404,10 +1406,11 @@ class WebTradingBot:
             logger.info(
                 f"Initializing live trading with Dhan client ID: {dhan_client_id[:4]}...{dhan_client_id[-4:] if len(dhan_client_id) > 8 else dhan_client_id}")
 
-            # Initialize Dhan client with credentials from .env
+            # Initialize Dhan client with credentials from .env and current config
             self.dhan_client = DhanAPIClient(
                 client_id=dhan_client_id,
-                access_token=dhan_access_token
+                access_token=dhan_access_token,
+                config=self.config  # Pass config to get product type
             )
 
             # Validate connection and sync portfolio
@@ -1421,6 +1424,7 @@ class WebTradingBot:
                 config={
                     "dhan_client_id": os.getenv("DHAN_CLIENT_ID"),
                     "dhan_access_token": os.getenv("DHAN_ACCESS_TOKEN"),
+                    "productType": self.config.get("productType", "CNC"),
                     "stop_loss_pct": 0.05,
                     "max_capital_per_trade": 0.25,
                     "max_trade_limit": 150
@@ -1537,6 +1541,73 @@ class WebTradingBot:
             logger.error(f"Failed to switch trading mode: {e}")
             return False
 
+    def switch_product_type(self, new_product_type: str) -> bool:
+        """Switch between CNC, Intraday (MIS), and Margin (NRML) product types"""
+        try:
+            if new_product_type not in ["CNC", "INTRADAY", "MIS", "MARGIN", "NRML"]:
+                logger.error(f"Invalid product type: {new_product_type}")
+                return False
+
+            # Normalize INTRADAY to MIS
+            if new_product_type == "INTRADAY":
+                new_product_type = "MIS"
+            # Preserve MARGIN/NRML for advanced orders
+
+            if new_product_type == self.config.get("productType", "CNC"):
+                logger.info(f"Already in {new_product_type} product type")
+                return True
+
+            # Stop bot if running
+            was_running = self.is_running
+            if was_running:
+                logger.info("Stopping bot to switch product type...")
+                self.stop()
+                time.sleep(1)  # Give time to stop
+
+            # Update config
+            old_product_type = self.config.get("productType", "CNC")
+            self.config["productType"] = new_product_type
+
+            # Save the updated configuration to file
+            save_config_to_file(self.config.get("mode", "paper"), self.config)
+
+            # Update Dhan client if in live mode
+            if self.config.get("mode") == "live" and LIVE_TRADING_AVAILABLE:
+                if self.dhan_client:
+                    try:
+                        self.dhan_client.product_type = new_product_type
+                        logger.info(
+                            f"Dhan client product type updated to {new_product_type}")
+                    except Exception as e:
+                        logger.warning(
+                            f"Error updating Dhan client product type: {e}")
+                if hasattr(self, 'live_executor') and self.live_executor and hasattr(self.live_executor, 'dhan_client'):
+                    try:
+                        self.live_executor.dhan_client.product_type = new_product_type
+                        self.live_executor.config["productType"] = new_product_type
+                        logger.info(
+                            f"Live executor Dhan client product type updated to {new_product_type}")
+                    except Exception as e:
+                        logger.warning(
+                            f"Error updating live executor Dhan client product type: {e}")
+
+            # Update trading bot config
+            if hasattr(self, 'trading_bot') and self.trading_bot:
+                self.trading_bot.config.update(self.config)
+
+            # Restart bot if it was running
+            if was_running:
+                time.sleep(1)
+                self.start()
+
+            logger.info(
+                f"Successfully switched from {old_product_type} to {new_product_type} product type")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to switch product type: {e}")
+            return False
+
     def start(self):
         """Start the trading bot with production-level enhancements"""
         if not self.is_running:
@@ -1576,10 +1647,10 @@ class WebTradingBot:
             # Start the actual trading bot in a separate thread
             self.trading_thread = threading.Thread(
                 target=self.trading_bot.run, daemon=True)
-            
+
             # Set up callback to update is_running flag when cycle completes
             self.trading_bot._parent_stop_callback = self.stop
-            
+
             self.trading_thread.start()
             logger.info(
                 "Web Trading Bot started successfully with production enhancements")
@@ -1591,7 +1662,8 @@ class WebTradingBot:
         if self.is_running:
             self.is_running = False
             logger.info("Stopping Trading Bot and all background processes...")
-            logger.info(f"[STOP] Cycle was complete: {getattr(self.trading_bot, 'cycle_complete', False)}")
+            logger.info(
+                f"[STOP] Cycle was complete: {getattr(self.trading_bot, 'cycle_complete', False)}")
 
             # Reset cycle complete flag
             if hasattr(self.trading_bot, 'cycle_complete'):
@@ -1735,37 +1807,52 @@ class WebTradingBot:
         }
 
     def get_portfolio_metrics(self):
-        """Get portfolio metrics from saved portfolio file"""
+        """Get portfolio metrics from LIVE Dhan API or saved portfolio file"""
         import json
         import os
         import yfinance as yf
         from datetime import datetime
 
         try:
-            # Live mode: prefer in-memory portfolio from LiveTradingExecutor (Dhan)
-            if self.config.get("mode", "paper") == "live" and getattr(self, "live_executor", None) and getattr(self.live_executor, "portfolio", None):
-                pf = self.live_executor.portfolio
-                cash = float(getattr(pf, "cash", 0.0))
-                starting_balance = float(getattr(pf, "starting_balance", cash))
-                raw_holdings = getattr(pf, "holdings", {}) or {}
-
-                # Normalize holdings to expected structure {ticker: {qty, avg_price}}
-                holdings = {}
-                for ticker, h in (raw_holdings.items() if isinstance(raw_holdings, dict) else []):
-                    qty = h.get("qty") if "qty" in h else h.get(
-                        "quantity", h.get("Quantity", 0))
-                    avg_price = h.get("avg_price") if "avg_price" in h else h.get(
-                        "avgPrice", h.get("avg_cost_price", h.get("avgCostPrice", 0)))
-                    current_price = h.get(
-                        "current_price", h.get("currentPrice", avg_price))
-                    if qty and avg_price is not None:
-                        holdings[ticker] = {
-                            "qty": float(qty),
-                            "avg_price": float(avg_price),
-                            "currentPrice": float(current_price) if current_price is not None else float(avg_price)
-                        }
-
-                # Compute market value and P&L
+            # PRIORITY 1: If in LIVE mode with Dhan client, use LIVE API data
+            if self.config.get("mode", "paper") == "live" and hasattr(self, 'dhan_client') and self.dhan_client:
+                logger.info("📊 get_portfolio_metrics: Using LIVE Dhan API data")
+                live_metrics = self.dhan_client.get_live_portfolio_metrics()
+                
+                if live_metrics.get('is_live'):
+                    # Convert live metrics to expected format
+                    total_invested = live_metrics.get('total_invested', 0)
+                    
+                    return {
+                        "total_value": round(live_metrics['total_value'], 2),
+                        "cash": round(live_metrics['cash'], 2),
+                        "cash_percentage": round((live_metrics['cash'] / live_metrics['total_value'] * 100) if live_metrics['total_value'] > 0 else 0, 2),
+                        "holdings": live_metrics['holdings'],
+                        "total_invested": round(total_invested, 2),
+                        "invested_percentage": round((total_invested / live_metrics['total_value'] * 100) if live_metrics['total_value'] > 0 else 0, 2),
+                        "current_holdings_value": round(live_metrics['holdings_value'], 2),
+                        "total_return": round(live_metrics['total_pnl'], 2),
+                        "total_return_pct": round((live_metrics['total_pnl'] / live_metrics['total_invested'] * 100) if live_metrics['total_invested'] > 0 else 0, 2),
+                        "unrealized_pnl": round(live_metrics['unrealized_pnl'], 2),
+                        "unrealized_pnl_pct": round((live_metrics['unrealized_pnl'] / total_invested * 100) if total_invested > 0 else 0, 2),
+                        "realized_pnl": round(live_metrics['realized_pnl'], 2),
+                        "realized_pnl_pct": 0,  # Would need trade history to calculate
+                        "total_exposure": round(total_invested, 2),
+                        "exposure_ratio": round((total_invested / live_metrics['total_value'] * 100) if live_metrics['total_value'] > 0 else 0, 2),
+                        "profit_loss": round(live_metrics['total_pnl'], 2),
+                        "profit_loss_pct": round((live_metrics['total_pnl'] / live_metrics['total_invested'] * 100) if live_metrics['total_invested'] > 0 else 0, 2),
+                        "positions": live_metrics['holdings_count'],
+                        "active_positions": live_metrics['holdings_count'],
+                        "trades_today": 0,
+                        "initial_balance": round(live_metrics['total_invested'], 2),
+                        "data_source": "Dhan API Live"
+                    }
+                else:
+                    logger.warning(f"Live Dhan API calculation failed: {live_metrics.get('error')}")
+                    # Fall through to local data fallback
+            
+            # Helper for core metrics calculation
+            def _build_metrics(cash, starting_balance, realized_pnl, holdings):
                 current_market_value = sum(
                     data["qty"] * data.get("currentPrice", data["avg_price"]) for data in holdings.values())
                 total_exposure = sum(data["qty"] * data["avg_price"]
@@ -1774,13 +1861,11 @@ class WebTradingBot:
                 total_value = cash + current_market_value
 
                 total_invested = total_exposure
-                cash_percentage = (cash / total_value) * \
-                    100 if total_value > 0 else 100
+                cash_percentage = (cash / total_value) * 100 if total_value > 0 else 100
                 invested_percentage = (
                     total_invested / total_value) * 100 if total_value > 0 else 0
                 unrealized_pnl_pct = (
                     unrealized_pnl / total_invested) * 100 if total_invested > 0 else 0
-                realized_pnl = float(getattr(pf, "realized_pnl", 0.0))
                 realized_pnl_pct = (
                     realized_pnl / starting_balance) * 100 if starting_balance > 0 else 0
                 total_return = unrealized_pnl + realized_pnl
@@ -1809,6 +1894,58 @@ class WebTradingBot:
                     "trades_today": 0,
                     "initial_balance": round(starting_balance, 2)
                 }
+
+            # PRIORITY 2: Live mode: prefer live DB and current portfolio manager state
+            if self.config.get("mode", "paper") == "live" and getattr(self, "live_executor", None):
+                pm = self.live_executor.portfolio_manager
+                session = None
+                
+                try:
+                    # ALWAYS query with fresh session - extract all data to native Python before closing
+                    session = pm.db.Session()
+                    db_pf = session.query(Portfolio).filter_by(mode="live").first()
+                    
+                    if db_pf:
+                        # Extract ALL data to native Python types WHILE session is open
+                        cash = float(db_pf.cash or 0.0)
+                        starting_balance = float(db_pf.starting_balance or 0.0)
+                        realized_pnl = float(db_pf.realized_pnl or 0.0)
+                        
+                        # Load holdings as dict tuples BEFORE closing
+                        holdings = {}
+                        holdings_query = session.query(Holding).filter_by(portfolio_id=db_pf.id).all()
+                        for h in holdings_query:
+                            if h.quantity and h.quantity > 0:
+                                holdings[h.ticker] = {
+                                    "qty": float(h.quantity),
+                                    "avg_price": float(h.avg_price),
+                                    "currentPrice": float(h.last_price) if h.last_price is not None else float(h.avg_price)
+                                }
+                        
+                        # NOW close - all data already extracted
+                        session.close()
+                        session = None
+                        
+                        # Return with extracted data (no ORM objects)
+                        return _build_metrics(cash, starting_balance, realized_pnl, holdings)
+                    
+                    session.close()
+                    session = None
+                    # Portfolio not in DB - fall through to JSON
+                    
+                except Exception as e:
+                    logger.debug(f"Live DB portfolio read failed: {e}")
+                    if session:
+                        try:
+                            session.rollback()
+                            session.close()
+                        except Exception:
+                            pass
+                    # Don't use pm.current_portfolio here - it's likely detached!
+                    # Fall through to JSON file handling instead
+
+
+            # FIXED: Read from the correct Indian trading bot portfolio files
 
             # FIXED: Read from the correct Indian trading bot portfolio files
             # Use absolute path to data folder and current mode
@@ -1985,11 +2122,25 @@ class WebTradingBot:
             }
 
     def get_recent_trades(self, limit=10):
-        """Get recent trades from saved trade log file"""
+        """Get recent trades from LIVE Dhan API (if live mode) or JSON files (paper mode)"""
         import json
         import os
 
         try:
+            # PRIORITY 1: If in LIVE mode, fetch from Dhan API
+            if self.config.get("mode") == "live" and hasattr(self, 'dhan_client') and self.dhan_client:
+                logger.info("📊 Fetching recent trades from Dhan API...")
+                try:
+                    dhan_trades = self.dhan_client.get_recent_trading_activity(limit=limit)
+                    if dhan_trades:
+                        logger.info(f"✅ Using {len(dhan_trades)} real trades from Dhan API")
+                        return dhan_trades
+                    else:
+                        logger.warning("No trades returned from Dhan API, falling back to JSON")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch Dhan trades: {e}, falling back to JSON")
+            
+            # PRIORITY 2: Fall back to JSON files (paper mode or Dhan API failed)
             # FIXED: Read from the correct Indian trading bot trade log files
             # Use absolute path to data folder and current mode
             current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1998,16 +2149,17 @@ class WebTradingBot:
             # Use Indian-specific trade log files that the trading bot actually writes to
             trade_log_file = os.path.join(
                 project_root, "data", f"trade_log_india_{current_mode}.json")
-            # Removed annoying log - file read is silent now
+            
             if os.path.exists(trade_log_file):
                 with open(trade_log_file, 'r') as f:
                     trades = json.load(f)
 
                 # Return the most recent trades (reversed order)
                 recent_trades = trades[-limit:] if trades else []
+                logger.info(f"Using {len(recent_trades)} trades from JSON file")
                 return list(reversed(recent_trades))
             else:
-                logger.warning("Trade log file not found")
+                logger.warning(f"Trade log file not found: {trade_log_file}")
                 return []
         except Exception as e:
             logger.error(f"Error getting recent trades: {e}")
@@ -2036,6 +2188,8 @@ class WebTradingBot:
                 "cycleComplete": cycle_complete,
                 "config": {
                     "mode": self.config.get("mode", "paper"),
+                    # CNC or INTRADAY
+                    "productType": self.config.get("productType", "CNC"),
                     "tickers": self.config.get("tickers", []),
                     "stopLossPct": self.config.get("stop_loss_pct", 0.05),
                     "maxAllocation": self.config.get("max_capital_per_trade", 0.25),
@@ -2369,6 +2523,7 @@ def initialize_bot():
 
                 config.update({
                     "mode": saved_config.get("mode", config["mode"]),
+                    "productType": saved_config.get("productType", "CNC"),
                     "riskLevel": saved_config.get("riskLevel", config["riskLevel"]),
                     "stop_loss_pct": saved_config.get("stop_loss_pct", config["stop_loss_pct"]),
                     "max_capital_per_trade": saved_config.get("max_capital_per_trade", config["max_capital_per_trade"]),
@@ -2700,105 +2855,135 @@ async def get_trades(limit: int = 10):
 
 @app.get("/api/portfolio/realtime")
 async def get_realtime_portfolio():
-    """Get real-time portfolio updates with current prices and Dhan sync"""
+    """Get real-time portfolio updates using LIVE Dhan API data (no local calculations)"""
     try:
-        # First, sync with Dhan account if in live mode
-        if trading_bot and trading_bot.config.get("mode") == "live":
-            try:
-                # Force sync with Dhan account to get latest balance
-                sync_performed = False
-
-                # Try live executor sync first
-                if hasattr(trading_bot, 'live_executor') and trading_bot.live_executor:
-                    sync_success = trading_bot.live_executor.sync_portfolio_with_dhan()
-                    if sync_success:
-                        logger.debug(
-                            "Successfully synced with Dhan account using live executor")
-                        sync_performed = True
-                    else:
-                        logger.warning(
-                            "Failed to sync with Dhan account using live executor")
-
-                # Also sync VirtualPortfolio if it exists
-                if hasattr(trading_bot, 'portfolio') and trading_bot.portfolio:
-                    portfolio_sync_result = trading_bot.portfolio.sync_with_dhan_account()
-                    if portfolio_sync_result:
-                        logger.debug(
-                            "Successfully synced VirtualPortfolio with Dhan account")
-                        sync_performed = True
-                    else:
-                        logger.warning(
-                            "Failed to sync VirtualPortfolio with Dhan account")
-
-                # Fallback: manually sync using dhan_client
-                elif hasattr(trading_bot, 'dhan_client') and trading_bot.dhan_client:
-                    # Fallback: manually sync using dhan_client
-                    funds = trading_bot.dhan_client.get_funds()
-                    if funds:
-                        # tolerant extraction
-                        available_cash = 0.0
-                        try:
-                            for key in ('availableBalance', 'availabelBalance', 'available_balance', 'available', 'availBalance', 'cash'):
-                                if isinstance(funds, dict) and key in funds:
-                                    available_cash = float(
-                                        funds.get(key, 0.0) or 0.0)
-                                    break
-                            else:
-                                if isinstance(funds, dict):
-                                    for v in funds.values():
-                                        if isinstance(v, (int, float)):
-                                            available_cash = float(v)
-                                            break
-                        except Exception:
-                            available_cash = 0.0
-                        # Update portfolio manager if available
-                        if hasattr(trading_bot, 'portfolio_manager'):
-                            trading_bot.portfolio_manager.update_cash_balance(
-                                available_cash)
-                        logger.debug(
-                            f"Manually synced cash balance: ₹{available_cash}")
-                        sync_performed = True
-
-                if not sync_performed:
-                    logger.warning("No sync method available for Dhan account")
-
-            except Exception as e:
-                logger.warning(
-                    f"Dhan sync failed during realtime update, using local data: {e}")
-
-        if trading_bot:
-            metrics = trading_bot.get_portfolio_metrics()
-
-            # Get current prices for all holdings
-            current_prices = {}
-            fyers_client = get_fyers_client()
-
-            for ticker in metrics.get("holdings", {}).keys():
-                try:
-                    if fyers_client:
-                        # PRODUCTION FIX: Use data service client methods
-                        symbol_data = fyers_client.get_symbol_data(ticker)
-                        if symbol_data:
-                            current_prices[ticker] = {
-                                "price": symbol_data.get("price", 0),
-                                "change": symbol_data.get("change", 0),
-                                "change_pct": symbol_data.get("change_pct", 0),
-                                "volume": symbol_data.get("volume", 0)
-                            }
-                except Exception as e:
-                    logger.warning(
-                        f"Error fetching real-time price for {ticker}: {e}")
-
+        if not trading_bot:
+            raise HTTPException(status_code=500, detail="Trading bot not initialized")
+        
+        # Check if in LIVE mode with Dhan client
+        if trading_bot.config.get("mode") == "live" and hasattr(trading_bot, 'dhan_client') and trading_bot.dhan_client:
+            logger.info("📊 Fetching LIVE portfolio metrics from Dhan API...")
+            
+            # Get live portfolio metrics directly from Dhan API
+            live_metrics = trading_bot.dhan_client.get_live_portfolio_metrics()
+            
+            if live_metrics.get('is_live'):
+                logger.info(f"✅ Using LIVE Dhan API data for portfolio")
+                
+                # Transform to match frontend expectations
+                portfolio_data = {
+                    "mode": "live",
+                    "total_value": live_metrics['total_value'],
+                    "cash": live_metrics['cash'],
+                    "holdings": live_metrics['holdings'],
+                    "positions": live_metrics['positions'],
+                    "total_invested": live_metrics['total_invested'],
+                    "unrealized_pnl": live_metrics['unrealized_pnl'],
+                    "realized_pnl": live_metrics['realized_pnl'],
+                    "total_pnl": live_metrics['total_pnl'],
+                    "holdings_count": live_metrics['holdings_count'],
+                    "positions_count": live_metrics['positions_count'],
+                    "data_source": "Dhan API Live",
+                    "endpoints_used": [
+                        "GET /v2/holdings",
+                        "GET /v2/positions", 
+                        "GET /v2/fundlimit"
+                    ]
+                }
+                
+                # Calculate percentages
+                if portfolio_data['total_value'] > 0:
+                    portfolio_data['cash_percentage'] = (portfolio_data['cash'] / portfolio_data['total_value']) * 100
+                    portfolio_data['holdings_percentage'] = (live_metrics['holdings_value'] / portfolio_data['total_value']) * 100
+                    portfolio_data['positions_percentage'] = (live_metrics['positions_value'] / portfolio_data['total_value']) * 100
+                else:
+                    portfolio_data['cash_percentage'] = 100
+                    portfolio_data['holdings_percentage'] = 0
+                    portfolio_data['positions_percentage'] = 0
+                
+                if portfolio_data['total_invested'] > 0:
+                    portfolio_data['unrealized_pnl_pct'] = (portfolio_data['unrealized_pnl'] / portfolio_data['total_invested']) * 100
+                else:
+                    portfolio_data['unrealized_pnl_pct'] = 0
+                
+                return {
+                    "portfolio": portfolio_data,
+                    "last_updated": datetime.now().isoformat(),
+                    "market_status": _get_indian_market_status(),
+                    "sync_status": "✅ SYNCED with Dhan API"
+                }
+            else:
+                logger.warning(f"⚠️ Live metrics calculation failed: {live_metrics.get('error')}")
+                # Fallback to local data
+                fallback_metrics = trading_bot.get_portfolio_metrics()
+                logger.info("Using fallback local portfolio data")
+        else:
+            # PAPER mode or no Dhan client - use local data
+            logger.info("📊 Using LOCAL portfolio data (paper mode or no Dhan connection)")
+            fallback_metrics = trading_bot.get_portfolio_metrics()
+        
+        # Format fallback response (should not reach here in live mode, but safety fallback)
+        if 'fallback_metrics' in locals():
             return {
-                "portfolio_metrics": metrics,
-                "current_prices": current_prices,
+                "portfolio": fallback_metrics,
                 "last_updated": datetime.now().isoformat(),
-                "market_status": _get_indian_market_status()
+                "market_status": _get_indian_market_status(),
+                "sync_status": "Using local data"
             }
         else:
             raise HTTPException(status_code=500, detail="Bot not initialized")
     except Exception as e:
         logger.error(f"Error getting real-time portfolio: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/trades/recent")
+@log_api_call("/api/trades/recent", "GET")
+async def get_recent_trades_api(limit: int = 50):
+    """Get recent trading activity from LIVE Dhan API (no demo data)"""
+    try:
+        if not trading_bot:
+            raise HTTPException(status_code=500, detail="Trading bot not initialized")
+        
+        # Check if in LIVE mode with Dhan client
+        if trading_bot.config.get("mode") == "live" and hasattr(trading_bot, 'dhan_client') and trading_bot.dhan_client:
+            logger.info(f"📊 Fetching {limit} recent trades from Dhan API...")
+            
+            # Get real trades from Dhan API
+            trades = trading_bot.dhan_client.get_recent_trading_activity(limit=limit)
+            
+            if trades:
+                logger.info(f"✅ Returned {len(trades)} real trades from Dhan API")
+                return {
+                    "trades": trades,
+                    "count": len(trades),
+                    "data_source": "Dhan API Live",
+                    "endpoint": "GET /v2/trades",
+                    "last_updated": datetime.now().isoformat()
+                }
+            else:
+                logger.info("No trades found in Dhan API")
+                return {
+                    "trades": [],
+                    "count": 0,
+                    "data_source": "Dhan API Live (No trades)",
+                    "message": "No trades found in your Dhan account",
+                    "last_updated": datetime.now().isoformat()
+                }
+        else:
+            # PAPER mode - use local trade log
+            logger.info("Using local trade log (paper mode)")
+            recent_trades = trading_bot.get_recent_trades(limit=limit)
+            
+            return {
+                "trades": recent_trades,
+                "count": len(recent_trades),
+                "data_source": "Local Trade Log (Paper Mode)",
+                "last_updated": datetime.now().isoformat()
+            }
+            
+    except Exception as e:
+        logger.error(f"Error getting recent trades: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -3255,6 +3440,8 @@ async def get_settings():
             return {
                 "mode": trading_bot.config.get("mode", "paper"),
                 "riskLevel": trading_bot.config.get("riskLevel", "MEDIUM"),
+                # CNC or INTRADAY
+                "productType": trading_bot.config.get("productType", "CNC"),
                 "stop_loss_pct": trading_bot.config.get("stop_loss_pct", 0.05),
                 "target_profit_pct": trading_bot.config.get("target_profit_pct", 0.1),
                 "use_risk_reward": trading_bot.config.get("use_risk_reward", True),
@@ -3288,6 +3475,7 @@ def save_config_to_file(mode: str, config_data: dict):
         # Prepare config data for saving
         config_to_save = {
             "mode": mode,
+            "productType": config_data.get("productType", "CNC"),
             "riskLevel": config_data.get("riskLevel", "MEDIUM"),
             "stop_loss_pct": config_data.get("stop_loss_pct", 0.05),
             "target_profit_pct": config_data.get("target_profit_pct", 0.1),
@@ -3350,6 +3538,24 @@ async def update_settings(request: SettingsRequest):
                         custom_use_rr=request.use_risk_reward,
                         custom_rr_ratio=request.risk_reward_ratio
                     )
+
+            # Handle product type switching (CNC or INTRADAY)
+            if request.productType is not None:
+                old_product_type = trading_bot.config.get('productType', 'CNC')
+                if request.productType != old_product_type:
+                    if trading_bot.switch_product_type(request.productType):
+                        logger.info(
+                            f"Successfully switched from {old_product_type} to {request.productType} product type")
+                    else:
+                        raise HTTPException(
+                            status_code=400, detail=f"Failed to switch to {request.productType} product type")
+                else:
+                    trading_bot.config['productType'] = request.productType
+                    if hasattr(trading_bot, 'executor') and trading_bot.executor:
+                        trading_bot.executor.config['productType'] = request.productType
+                        if hasattr(trading_bot.executor, 'dhan_client'):
+                            trading_bot.executor.dhan_client.product_type = request.productType
+
             if request.stop_loss_pct is not None:
                 trading_bot.config['stop_loss_pct'] = request.stop_loss_pct
                 # Update executor if it exists
@@ -3391,6 +3597,7 @@ async def update_settings(request: SettingsRequest):
 
             logger.info(f"Settings updated: Mode={trading_bot.config.get('mode')}, "
                         f"Risk Level={trading_bot.config.get('riskLevel')}, "
+                        f"Product Type={trading_bot.config.get('productType', 'CNC')} (Delivery/Intraday), "
                         f"Stop Loss={trading_bot.config.get('stop_loss_pct', 0.05)*100:.1f}%, "
                         f"Target Profit={trading_bot.config.get('target_profit_pct', 0.1)*100:.1f}%, "
                         f"Use RR={trading_bot.config.get('use_risk_reward', True)}, "

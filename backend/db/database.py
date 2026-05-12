@@ -105,7 +105,7 @@ def init_db(db_path: str | None = None):
 
 def create_session(engine):
     """Create a new database session"""
-    Session = sessionmaker(bind=engine)
+    Session = sessionmaker(bind=engine, expire_on_commit=False)
     return Session()
 
 class DatabaseManager:
@@ -113,7 +113,7 @@ class DatabaseManager:
         logger.info(f"Initializing DatabaseManager with db_path: {db_path}")
         try:
             self.engine = init_db(db_path)
-            self.Session = sessionmaker(bind=self.engine)
+            self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
             logger.info("DatabaseManager initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing DatabaseManager: {e}")

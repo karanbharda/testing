@@ -232,7 +232,7 @@ class DualPortfolioManager:
                 holdings_from_db = session.query(Holding).filter_by(
                     portfolio_id=self.current_portfolio.id).all()
                 for holding in holdings_from_db:
-                    if holding.quantity > 0:  # Only include active holdings
+                    if holding.quantity != 0:  # Include long and short positions
                         self.current_holdings_dict[holding.ticker] = {
                             "qty": float(holding.quantity),
                             "avg_price": float(holding.avg_price),
@@ -263,7 +263,9 @@ class DualPortfolioManager:
         self.trade_callbacks.append(callback)
 
     def record_trade(self, ticker: str, action: str, quantity: float, price: float,
-                     pnl: float = 0.0, stop_loss: float = None, take_profit: float = None):
+                     pnl: float = 0.0, stop_loss: float = None, take_profit: float = None,
+                     product_type: str = 'CNC', is_short_sell: bool = False,
+                     is_cover_short: bool = False):
         """Record a trade in the database and update portfolio"""
         session = None
         try:
@@ -294,7 +296,13 @@ class DualPortfolioManager:
                 pnl=pnl,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
+                trade_metadata={
+                    'product_type': product_type,  # Store product type (CNC or INTRADAY)
+                    'mode': self.current_mode,
+                    'is_short_sell': is_short_sell,
+                    'is_cover_short': is_cover_short
+                }
             )
             session.add(trade)
 
@@ -308,72 +316,136 @@ class DualPortfolioManager:
                         f"Insufficient cash for trade: {trade_value:.2f} needed, {portfolio.cash:.2f} available")
 
                 portfolio.cash -= trade_value
-                # Update or create holding
-                holding = session.query(Holding).filter_by(
-                    portfolio_id=portfolio.id, ticker=ticker
-                ).first()
 
-                if holding:
-                    # Update existing holding
-                    total_cost = (holding.quantity *
-                                  holding.avg_price) + trade_value
-                    total_quantity = holding.quantity + quantity
-                    holding.avg_price = total_cost / total_quantity
-                    holding.quantity = total_quantity
-                else:
-                    # Create new holding
-                    holding = Holding(
-                        portfolio_id=portfolio.id,
-                        ticker=ticker,
-                        quantity=quantity,
-                        avg_price=price,
-                        last_price=price
-                    )
-                    session.add(holding)
+                # Handle buy-to-cover for shorts
+                if is_cover_short:
+                    holding = session.query(Holding).filter_by(
+                        portfolio_id=portfolio.id, ticker=ticker
+                    ).first()
 
-                # Update in-memory holdings
-                if ticker in self.current_holdings_dict:
-                    self.current_holdings_dict[ticker]["qty"] += quantity
-                    # Recalculate average price
-                    total_qty = self.current_holdings_dict[ticker]["qty"]
-                    total_cost = (self.current_holdings_dict[ticker]["qty"] - quantity) * \
-                        self.current_holdings_dict[ticker]["avg_price"] + \
-                        trade_value
-                    self.current_holdings_dict[ticker]["avg_price"] = total_cost / total_qty
+                    if not holding or holding.quantity >= 0:
+                        raise ValueError(
+                            f"No short position available to cover for {ticker}")
+
+                    entry_price = holding.avg_price
+                    if pnl == 0.0:
+                        pnl = (entry_price - price) * quantity
+                    portfolio.realized_pnl += pnl
+
+                    holding.quantity += quantity
+                    holding.last_price = price
+                    if holding.quantity == 0:
+                        session.delete(holding)
+                        self.current_holdings_dict.pop(ticker, None)
+                    elif holding.quantity > 0:
+                        # Covered the short and opened a long position for any extra quantity
+                        holding.avg_price = price
+                        self.current_holdings_dict[ticker] = {
+                            "qty": holding.quantity,
+                            "avg_price": price,
+                            "last_price": price
+                        }
+                    else:
+                        self.current_holdings_dict[ticker] = {
+                            "qty": holding.quantity,
+                            "avg_price": holding.avg_price,
+                            "last_price": price
+                        }
                 else:
-                    self.current_holdings_dict[ticker] = {
-                        "qty": quantity,
-                        "avg_price": price,
-                        "last_price": price
-                    }
+                    # Standard long buy
+                    holding = session.query(Holding).filter_by(
+                        portfolio_id=portfolio.id, ticker=ticker
+                    ).first()
+
+                    if holding:
+                        total_cost = (holding.quantity *
+                                      holding.avg_price) + trade_value
+                        total_quantity = holding.quantity + quantity
+                        holding.avg_price = total_cost / total_quantity
+                        holding.quantity = total_quantity
+                        holding.last_price = price
+                    else:
+                        holding = Holding(
+                            portfolio_id=portfolio.id,
+                            ticker=ticker,
+                            quantity=quantity,
+                            avg_price=price,
+                            last_price=price
+                        )
+                        session.add(holding)
+
+                    if ticker in self.current_holdings_dict:
+                        self.current_holdings_dict[ticker]["qty"] += quantity
+                        total_qty = self.current_holdings_dict[ticker]["qty"]
+                        total_cost = (self.current_holdings_dict[ticker]["qty"] - quantity) * \
+                            self.current_holdings_dict[ticker]["avg_price"] + \
+                            trade_value
+                        self.current_holdings_dict[ticker]["avg_price"] = total_cost / total_qty
+                        self.current_holdings_dict[ticker]["last_price"] = price
+                    else:
+                        self.current_holdings_dict[ticker] = {
+                            "qty": quantity,
+                            "avg_price": price,
+                            "last_price": price
+                        }
             else:  # sell
-                # Check if we have enough holdings to sell
                 holding = session.query(Holding).filter_by(
                     portfolio_id=portfolio.id, ticker=ticker
                 ).first()
-                if not holding or holding.quantity < quantity:
-                    raise ValueError(
-                        f"Insufficient quantity for {ticker}: {quantity} requested, {holding.quantity if holding else 0} available")
 
-                portfolio.cash += trade_value
+                if is_short_sell:
+                    # Open or enlarge a short position
+                    portfolio.cash += trade_value
 
-                # Calculate realized P&L if not provided
-                if pnl == 0.0:
-                    pnl = (price - holding.avg_price) * quantity
+                    if holding:
+                        if holding.quantity < 0:
+                            total_short_qty = abs(holding.quantity) + quantity
+                            average_price = ((abs(holding.quantity) * holding.avg_price) +
+                                             (quantity * price)) / total_short_qty
+                            holding.quantity -= quantity
+                            holding.avg_price = average_price
+                            holding.last_price = price
+                        else:
+                            net_qty = holding.quantity - quantity
+                            holding.quantity = net_qty
+                            holding.avg_price = price
+                            holding.last_price = price
+                    else:
+                        holding = Holding(
+                            portfolio_id=portfolio.id,
+                            ticker=ticker,
+                            quantity=-quantity,
+                            avg_price=price,
+                            last_price=price
+                        )
+                        session.add(holding)
 
-                # Update realized P&L
-                portfolio.realized_pnl += pnl
+                    self.current_holdings_dict[ticker] = {
+                        "qty": holding.quantity,
+                        "avg_price": holding.avg_price,
+                        "last_price": holding.last_price
+                    }
 
-                # Update holdings
-                holding.quantity -= quantity
-                if holding.quantity == 0:
-                    session.delete(holding)
+                else:
+                    if not holding or holding.quantity < quantity:
+                        raise ValueError(
+                            f"Insufficient quantity for {ticker}: {quantity} requested, {holding.quantity if holding else 0} available")
 
-                # Update in-memory holdings
-                if ticker in self.current_holdings_dict:
-                    self.current_holdings_dict[ticker]["qty"] -= quantity
-                    if self.current_holdings_dict[ticker]["qty"] <= 0:
-                        del self.current_holdings_dict[ticker]
+                    portfolio.cash += trade_value
+
+                    if pnl == 0.0:
+                        pnl = (price - holding.avg_price) * quantity
+
+                    portfolio.realized_pnl += pnl
+
+                    holding.quantity -= quantity
+                    if holding.quantity == 0:
+                        session.delete(holding)
+
+                    if ticker in self.current_holdings_dict:
+                        self.current_holdings_dict[ticker]["qty"] -= quantity
+                        if self.current_holdings_dict[ticker]["qty"] <= 0:
+                            del self.current_holdings_dict[ticker]
 
             portfolio.last_updated = datetime.now()
             session.commit()
@@ -487,7 +559,7 @@ class DualPortfolioManager:
             # Load holdings from database into holdings dict for backward compatibility
             self.current_holdings_dict = {}
             for holding in self.current_portfolio.holdings:
-                if holding.quantity > 0:  # Only include active holdings
+                if holding.quantity != 0:  # Include long and short positions
                     self.current_holdings_dict[holding.ticker] = {
                         "qty": holding.quantity,
                         "avg_price": holding.avg_price,
